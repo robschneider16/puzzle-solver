@@ -7,6 +7,7 @@
 ;(require rnrs/sorting-6)
 (require racket/list
          racket/format
+         racket/vector
          )
 (require data/heap)
 (require racket/fixnum)
@@ -24,24 +25,28 @@
 
 (provide (all-defined-out))
 
+(define *argv* (current-command-line-arguments))
+
 (define *depth-start-time* "the time from current-seconds at the start of a given depth")
 (define *master-name* "the name of the host where the master process is running")
 (define *local-store* "the root portion of path to where workers can store temporary fringe files")
 (define *share-store* "the main folder where fringe files are stored (and possibly shared via NFS)")
-;#|
-(set! *master-name* "localhost")
-(set! *local-store* "./fringefiles/")
-(set! *share-store* "./fringefiles/")
-;(set! *local-store* "/state/partition1/fringefiles/")
-(define *n-processors* 4)
-;|#
-#|
-(set! *master-name* "wcp")
-(set! *local-store* "/state/partition1/fringefiles/")
-(set! *share-store* "/share/data2/fringefiles/")
-;(set! *share-store* "fringefiles/")
-(define *n-processors* 32)
-|#
+(define *n-processors* "number of chunks to divide fringes into")
+
+(if (vector-member "--remote" *argv*)
+    (begin
+      (set! *master-name* "wcp")
+      (set! *local-store* "/state/partition1/fringefiles/")
+      (set! *share-store* "/share/data2/fringefiles/")
+      ;(set! *share-store* "fringefiles/")
+      (set! *n-processors* 32))
+    (begin
+      (set! *master-name* "localhost")
+      (set! *local-store* "./fringefiles/")
+      (set! *share-store* "./fringefiles/")
+      ;(set! *local-store* "/state/partition1/fringefiles/")
+      (set! *n-processors* 4)))
+
 (define *expand-multiplier* 1)
 (define *merge-multiplier* 1)
 (define *n-expanders* (* *n-processors* *expand-multiplier*))
