@@ -33,6 +33,12 @@
 (define *share-store* "the main folder where fringe files are stored (and possibly shared via NFS)")
 (define *n-processors* "number of chunks to divide fringes into")
 
+(when (vector-member "--help" *argv*)
+      (displayln "options:")
+      (displayln "    --remote: configure to work on the cluster instead of locally")
+      (displayln "    --help: show this message")
+      (exit))
+
 (if (vector-member "--remote" *argv*)
     (begin
       (set! *master-name* "wcp")
