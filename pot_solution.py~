@@ -13,7 +13,7 @@ class pot_solution:
         while i<=num_moves:
             moves = game.available_moves(self.board)
             random_move = choice(moves)
-            self.board = game.swap(random_move, self.board)
+            self.board = game.swap(random_move-1, self.board)
             i += 1
         print "after making " + str(i) + " moves your random board is: "
         self.heur = 1
