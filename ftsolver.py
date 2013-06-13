@@ -9,11 +9,8 @@ import pot_solution
 class ftsolver:
     def __init__(self, board_size): # make a puzzle for it to solve, create a board that becomes part of a potential_solution
         self.puzzle = ftpuzzle.ftpuzzle(board_size) # make a puzzle
-#        self.start_board = range(0,board_size*board_size) # create a board
-#        random.shuffle(self.start_board) # this doesn't work...
-        self.start_board = [1,2,5,3,4,0,6,7,8]
-        ps = pot_solution.pot_solution(self.start_board, 0, 1)
-        self.pot_sols = [ps] # initialize a potential solution --- need to add heuristic here.
+        self.pot_sols = [pot_solution.pot_solution(range(0,board_size*board_size), 0, 1)]
+        self.pot_sols[0].shuffle_board(board_size, 3) # initialize a potential solution - giving it the number of random moves.
 
     def open_nodes(self):
         print self.pot_sols[0].get_board()
