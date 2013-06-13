@@ -31,7 +31,8 @@ def astar_search(start):
     print "At end, Closed has " + str(len(closed)) + " and Open has " + str(len(open))
 
 
-start_state = pot_solution(shuffle_moves=30)
+#start_state = pot_solution(shuffle_moves=30)
+start_state = pot_solution([4,5,3,1,0,2,6,7,8])
 print "Starting with:"
 start_state.print_bs()
 astar_search(start_state)

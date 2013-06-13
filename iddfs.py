@@ -11,8 +11,7 @@ def iddfs(state, max_depth):
         maybe_solution = dfs(state, 0, d)
         if maybe_solution:
             print "Found solution: "
-            print maybe_solution.get_board()
-            print " at depth " + str(d)
+            maybe_solution.print_bs()
             return maybe_solution
     print "No solution found at max depth " + str(max_depth)
 
@@ -36,5 +35,5 @@ def dfs(state, depth, max_depth):
 
 
 start_state = pot_solution(shuffle_moves=20)
-print start_state.get_board()
+start_state.print_bs()
 iddfs(start_state, 10)
