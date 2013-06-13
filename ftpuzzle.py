@@ -51,7 +51,7 @@ def manhat_sum(board): # find how far a from home a number is.
         vert = abs(i//board_size - start//board_size)
         sum +=(hor+vert)
         i += 1
-    print "looks like we have a heuristic of " +str(sum)
+    #print "looks like we have a heuristic of " +str(sum)
     return sum
 
 # depricate
@@ -64,7 +64,7 @@ def find_row(loc):
 def swap(swap_node, board): # give it a node and it will be swaped with the space
     space = board.index(0)
     cboard = list(board)
-    print "trying to swap " + str(space) + " " + str(swap_node)
+    #print "trying to swap " + str(space) + " " + str(swap_node)
     #print_b(board)
     cboard[space] = cboard[swap_node]
     cboard[swap_node] = 0
