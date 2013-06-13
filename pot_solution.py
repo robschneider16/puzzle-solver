@@ -21,10 +21,10 @@ class pot_solution:
             random_move = choice(moves)
             self.board = swap(random_move, self.board)
             i += 1
-        print "after making " + str(i) + " moves your random board is: "
+        #print "after making " + str(i) + " moves your random board is: "
         self.heur = 1
         self.moves = 0
-        print_b(self.board)
+        #self.print_bs()
                 
     def next_board(self, move):
         new_board = swap(move, self.board)

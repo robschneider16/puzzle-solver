@@ -9,41 +9,30 @@ def astar_search(start):
     closed = []
     open = [start]
     while open:
-        print "Closed has " + str(len(closed)) + " and Open has " + str(len(open))
         current_node = open.pop(0)
-        print "continuing with "
-        print_b(current_node.get_board())
-        print "\n"
         # move first open to closed
         closed.append(current_node)
         # check if that was the goal and break if so
         if current_node.is_goal_state():
             print "Found the goal"
-            print_b(current_node.get_board())
+            current_node.print_bs()
             break
         else:
             # expand that node
             expansions = current_node.expand()
-            print "____ EXPANSIONS ____"
-            for s in expansions:
-                s.print_bs()
-                print "\n"
-            print "____________________"
             # filter expansions against closed
-            closed_boards = map(lambda s: s.get_board(), closed)
+            closed_boards = map(lambda s: s.get_board(), closed) # compare only boards, since moves could differ
             filtered_expansions = filter(lambda s: s.get_board() not in closed_boards, expansions)
-            if len(expansions) > len(filtered_expansions):
-                print "FILTERING " + str(len(expansions)) + " to " + str(len(filtered_expansions))
             # add filtered expansions to open
             open.extend(filtered_expansions)
             # sort open
             open = sorted(open, key=lambda s: s.get_moves() + s.get_heur())
             # continue looping
-
-
+    print "At end, Closed has " + str(len(closed)) + " and Open has " + str(len(open))
 
 
 start_state = pot_solution(shuffle_moves=30)
-#open.append(start_state)
+print "Starting with:"
+start_state.print_bs()
 astar_search(start_state)
 
