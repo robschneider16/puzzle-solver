@@ -34,6 +34,7 @@ def dfs(state, depth, max_depth):
     return False
 
 
-start_state = pot_solution(shuffle_moves=20)
+start_state = pot_solution(shuffle_moves=50)
+#start_state = pot_solution([4,5,3,1,0,2,6,7,8])
 start_state.print_bs()
 iddfs(start_state, 10)

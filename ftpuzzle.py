@@ -42,6 +42,7 @@ def available_moves(board):   # finds the nodes that can be opened
     # ---------------------------------
     return moves
 
+# **** NEED TO REMOVE SPACE FROM SUM -- ONLY TILES COUNT
 def manhat_sum(board): # find how far a from home a number is.
     i = 0 # the number
     sum = 0 # the total
