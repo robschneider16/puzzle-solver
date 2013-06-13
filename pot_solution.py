@@ -4,7 +4,7 @@ from ftpuzzle import *
 # The functionality of this class is copied to board_state
  
 class pot_solution:
-    def __init__(self, new_board=range(9), moves_so_far=0, heuristic=None, shuffle_moves=0):
+    def __init__(self, new_board=range(board_size*board_size), moves_so_far=0, heuristic=None, shuffle_moves=0):
         self.board = new_board # a list of integer
         if shuffle_moves != 0:
             self.shuffle_board(shuffle_moves)
@@ -59,13 +59,18 @@ class pot_solution:
     def print_bs(self): # print the board out so it looks like you would expect.
         start = 0
         end = board_size
+        #width = board_size - 1
+        print '-' * (board_size * board_size + 3)
         while end<=len(self.board):
-            print self.board[start:end],
+            print '|',
+            for x in self.board[start:end]:
+                print '{0:{width}}'.format(x,width=board_size-1),
             if start == 0:
-                print "  Prior moves : " + str(self.moves)
+                print "|  Prior moves : " + str(self.moves)
             elif start == board_size:
-                print "  Estimate yet: " + str(self.heur)
+                print "|  Estimate yet: " + str(self.heur)
             else:
-                print "\n"
+                print "|"
             start += board_size
             end += board_size
+        print '-' * (board_size * board_size + 3)

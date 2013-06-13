@@ -26,8 +26,9 @@ def dfs(state, depth, max_depth):
         return False
     # else expand state and recursively dfs on each one
     else:
-        next_states = state.expand() # returns a list of children of current state
-        for a_state in next_states:
+        expansions = state.expand() # returns a list of children of current state
+        # *** NEED TO FILTER expansions according to path so far, which needs to be constructed
+        for a_state in expansions:
             maybe_solution = dfs(a_state, depth+1, max_depth)
             if maybe_solution:
                 return maybe_solution
@@ -37,4 +38,4 @@ def dfs(state, depth, max_depth):
 start_state = pot_solution(shuffle_moves=50)
 #start_state = pot_solution([4,5,3,1,0,2,6,7,8])
 start_state.print_bs()
-iddfs(start_state, 10)
+iddfs(start_state, 25)

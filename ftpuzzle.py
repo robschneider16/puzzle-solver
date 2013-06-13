@@ -17,7 +17,7 @@ import math
 #        || if the position is more than one board size away from the end of the list, there is no down
 
 global board_size
-board_size = 3
+board_size = 4
 
 def available_moves(board):   # finds the nodes that can be opened
     space = board.index(0) # find the space
