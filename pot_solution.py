@@ -55,3 +55,17 @@ class pot_solution:
         return self.board
     def set_board(self, new_board):
         self.board = new_board
+
+    def print_bs(self): # print the board out so it looks like you would expect.
+        start = 0
+        end = board_size
+        while end<=len(self.board):
+            print self.board[start:end],
+            if start == 0:
+                print "  Prior moves : " + str(self.moves)
+            elif start == board_size:
+                print "  Estimate yet: " + str(self.heur)
+            else:
+                print "\n"
+            start += board_size
+            end += board_size

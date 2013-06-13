@@ -16,7 +16,7 @@ import math
 #  edges || if position is less than board size, there is no space up
 #        || if the position is more than one board size away from the end of the list, there is no down
 
-
+global board_size
 board_size = 3
 
 def available_moves(board):   # finds the nodes that can be opened
@@ -77,3 +77,4 @@ def print_b(board): # print the board out so it looks like you would expect.
         print board[start:end]
         start += board_size
         end += board_size
+
