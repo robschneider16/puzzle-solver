@@ -17,7 +17,7 @@ import math
 #        || if the position is more than one board size away from the end of the list, there is no down
 
 global board_size
-board_size = 4
+board_size = 3
 
 def available_moves(board):   # finds the nodes that can be opened
     space = board.index(0) # find the space
@@ -44,9 +44,9 @@ def available_moves(board):   # finds the nodes that can be opened
 
 # **** NEED TO REMOVE SPACE FROM SUM -- ONLY TILES COUNT
 def manhat_sum(board): # find how far a from home a number is.
-    i = 0 # the number
+    #i = 0 # the number
     sum = 0 # the total
-    for space in board:
+    for i in range(1, board_size*board_size):
         start = board.index(i)
         hor = abs((start%board_size) - (i%board_size))
         vert = abs(i//board_size - start//board_size)
