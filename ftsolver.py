@@ -1,4 +1,4 @@
-import ftpuzzle
+from ftpuzzle import *
 import random
 import pot_solution
 # how to solve:
@@ -7,10 +7,13 @@ import pot_solution
 # choose best solution
 
 class ftsolver:
-    def __init__(self, board_size): # make a puzzle for it to solve, create a board that becomes part of a potential_solution
-        self.puzzle = ftpuzzle.ftpuzzle(board_size) # make a puzzle
-        self.pot_sols = [pot_solution.pot_solution(range(0,board_size*board_size), 0, 1)]
-        self.pot_sols[0].shuffle_board(board_size, 3) # initialize a potential solution - giving it the number of random moves.
+    def __init__(self, shuffle_moves=5): # make a puzzle to solve, create a board that becomes part of a potential_solution
+        self.pot_sols = [pot_solution.pot_solution(moves_so_far=0,shuffle_moves=shuffle_moves)]
+
+# We're not making puzzle instances now (ftpuzzle.py does not have a class).
+# Solver probably shouldn't be a class either.
+# Create a global open_nodes and closed_nods, both of which get manipulated
+# by a recursive A* function.
 
     def open_nodes(self):
         print self.pot_sols[0].get_board()

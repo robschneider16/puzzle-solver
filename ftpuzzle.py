@@ -51,8 +51,6 @@ def manhat_sum(board): # find how far a from home a number is.
         vert = abs(i//board_size - start//board_size)
         sum +=(hor+vert)
         i += 1
-    if sum == 0:
-        print_b(board)
     print "looks like we have a heuristic of " +str(sum)
     return sum
 

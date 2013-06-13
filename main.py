@@ -3,7 +3,7 @@ import ftsolver
 import random
 
 class main:
-    game = ftsolver.ftsolver(3)
+    game = ftsolver.ftsolver()
 
     while game.pot_sols[0].get_heur() != 0:
         game.open_nodes()

@@ -1,15 +1,22 @@
 from random import choice
 from ftpuzzle import *
+
+# The functionality of this class is copied to board_state
  
 class pot_solution:
-    def __init__(self, new_board, new_moves, heuristic):
-        self.moves = new_moves # integer
-        self.heur = heuristic  # number
+    def __init__(self, new_board=range(9), moves_so_far=0, heuristic=None, shuffle_moves=0):
         self.board = new_board # a list of integer
+        if shuffle_moves != 0:
+            self.shuffle_board(shuffle_moves)
+        self.moves = moves_so_far # integer
+        if heuristic==None:
+            self.heur = manhat_sum(self.board)  # number
+        else:
+            self.heur = heuristic
 
     def shuffle_board(self, num_moves):
         i = 0
-        while i<=num_moves:
+        while i < num_moves:
             moves = available_moves(self.board)
             random_move = choice(moves)
             self.board = swap(random_move, self.board)
@@ -22,6 +29,14 @@ class pot_solution:
     def next_board(self, move):
         new_board = swap(move, self.board)
         return pot_solution(new_board, self.moves+1, manhat_sum(new_board))
+
+    def expand(self):
+        """return a list of all states reachable from this current state"""
+        return map(self.next_board, available_moves(self.board))
+
+    def is_goal_state(self):
+        """returns True if this current state is a qualified goal state"""
+        return self.get_heur() == 0
 
     def get_heur(self):
         return self.heur
