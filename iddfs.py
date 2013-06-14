@@ -8,7 +8,7 @@ from pot_solution import *
 def iddfs(state, max_depth):
     """iddfs: consumes a board-state and max_depth integer, returns either solution state OR false"""
     for d in range(1,max_depth+1):
-        maybe_solution = dfs(state, 0, d)
+        maybe_solution = dfs(state, 0, d, [])
         if maybe_solution:
             print "Found solution: "
             maybe_solution.print_bs()
@@ -16,7 +16,7 @@ def iddfs(state, max_depth):
     print "No solution found at max depth " + str(max_depth)
 
 
-def dfs(state, depth, max_depth):
+def dfs(state, depth, max_depth, path_so_far):
     """dfs: standard depth-limited depth-first search consumes state, current-depth and max-depth"""
     # if state is goal, report success
     if state.is_goal_state():
@@ -27,9 +27,13 @@ def dfs(state, depth, max_depth):
     # else expand state and recursively dfs on each one
     else:
         expansions = state.expand() # returns a list of children of current state
-        # *** NEED TO FILTER expansions according to path so far, which needs to be constructed
-        for a_state in expansions:
-            maybe_solution = dfs(a_state, depth+1, max_depth)
+        # filter expansions wrt path so-far
+        path_boards = map(lambda s: s.get_board(), path_so_far)
+        filtered_expansions = filter(lambda s: s.get_board() not in path_boards, expansions)
+        for a_state in filtered_expansions:
+            new_path = list(path_so_far)
+            new_path.append(state)
+            maybe_solution = dfs(a_state, depth+1, max_depth, new_path)
             if maybe_solution:
                 return maybe_solution
     return False
