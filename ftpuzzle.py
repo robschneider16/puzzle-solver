@@ -42,9 +42,8 @@ def available_moves(board):   # finds the nodes that can be opened
     # ---------------------------------
     return moves
 
-# **** NEED TO REMOVE SPACE FROM SUM -- ONLY TILES COUNT
 def manhat_sum(board): # find how far a from home a number is.
-    #i = 0 # the number
+    """compute sum of manhattan distances for given board but ignoring the space"""
     sum = 0 # the total
     for i in range(1, board_size*board_size):
         start = board.index(i)
