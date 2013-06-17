@@ -55,14 +55,24 @@ class GState:
         if (p1.ref_point%board_width > 0 # if true, p1.ref_point-1 below will not wrap
             and 0 < int(self.make_bit_string(p1.shape, p1.move_tups[3][0], p1.ref_point-1)
                         & self.make_space_bit_string(self.spaces))):
-            self.swap(p1, -1)
+            self.swap(p1, -1, p1.move_tups[3])
         else:
             raise Exception('Invalid move')
 
-    def swap(self, p, delta):
-        space_index = self.spaces.index(p.ref_point+delta)
-        self.spaces[space_index] = p.ref_point
-        p.ref_point = p.ref_point+delta
+    def swap(self, p, delta, which_move_tups):
+        """Swap all the spaces from spots to be occupied as given in the precondition BitVector
+         to the corresponding spots in the postcondition BitVector"""
+        # Need to do this for each part of the piece mask
+        for space_target_base in range(p.shape[0]*p.shape[1]):
+            if which_move_tups[1][space_target_base] == 1: # need to move the appropriate space
+                
+                i = self.base_to_ref(p.ref_point, delta, space_target_base)
+                space_index = self.spaces.index(i)
+                self.spaces[space_index] = 
+
+                space_index = self.spaces.index(p.ref_point+delta)
+                self.spaces[space_index] = p.ref_point
+                p.ref_point = p.ref_point+delta
 
 
 class Piece:
