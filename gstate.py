@@ -6,7 +6,8 @@ from BitVector import *
 # thus we have one spaces (1x1) and 15 1x1 block-types
 
 # each tuple (for up, right, down and left, respectively) has a precondition for the space's location
-# and a post condition for where the space ends up (given the current ref_point
+# relative to the direction of the intended move (i.e., where the space must be if this block moves)
+# and a post condition for where the space ends up (given the CURRENT ref_point of the block prior to move)
 global tile_tuples
 tile_tuples = [ ( BitVector(bitstring = '1'), BitVector(bitstring = '1') ),
                 ( BitVector(bitstring = '1'), BitVector(bitstring = '1') ),
@@ -59,6 +60,8 @@ class GState:
         else:
             raise Exception('Invalid move')
 
+    # p is a Piece; delta is either -1 for left, +1 for right, -board_width for up,
+    # and +board_width for down; which_move_tups is the bitmask tuple for the appropriae move direction
     def swap(self, p, delta, which_move_tups):
         """Swap all the spaces from spots to be occupied as given in the precondition BitVector
          to the corresponding spots in the postcondition BitVector"""
