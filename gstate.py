@@ -55,15 +55,27 @@ class GState:
         # If valid move
         if (p1.ref_point%board_width > 0 # if true, p1.ref_point-1 below will not wrap
             # Need to ensure the bitwise 'and' with spaces is same as precondition
-            and 0 < int(self.make_bit_string(p1.shape, p1.move_tups[3][0], p1.ref_point-1)
-                        & self.make_space_bit_string(self.spaces))):
+            and 0 < int(self.make_bit_string(p1.shape, p1.move_tups[3][0], p1.ref_point-1) 
+                & self.make_space_bit_string(self.spaces))):
             self.swap(p1, -1, p1.move_tups[3])
         else:
-            raise Exception('Invalid move')
+            raise Exception('Invalid move left')
 
     def move_right(self, p1):
-        if ((p1.ref_point+p1.ncols())%board_width) > 0: # not in danger of going off the board
-            pass
+        if ((p1.ref_point+p1.ncols())%board_width > 0 # not in danger of going off the board
+            and 0 < int(self.make_bit_string(p1.shape, p1.move_tups[3][0], p1.ref_point+1)
+                & self.make_space_bit_string(self.spaces))):
+            self.swap(p1, +1, p1.move_tups[3])
+        else:
+            raise Exception('Invalid move right')
+
+    def move_up(self, p1):
+        if (p1.ref_point%board_width > 0
+            and 0 < int(self.make_bit_string(p1.shape, p1.move_tups[3][0], p1.ref_point+board_width)
+                & self.make_space_bit_string(self.spaces))):
+            self.swap(p1, +board_width, p1.move_tups[3])
+        else:
+            raise Exception('Invalid move up')
 
     # s is the space
     # p is a piece
@@ -81,7 +93,7 @@ class GState:
         # list of bits
         prespaces = []
         for i in range(p.nrows()*p.ncols()):
-            print which_move_tups[0][i]
+            #print which_move_tups[0][i]
             if which_move_tups[0][i] == 1:
                 prespaces.append(i)
 
@@ -129,8 +141,12 @@ gs.move_left(gs.piece_positions[1]) # should work
 for k,v in gs.piece_positions.iteritems():
     print str(k) + ' ' + str(v.ref_point)
 print gs.spaces
-gs.move_left(gs.piece_positions[2]) # should work
+gs.move_up(gs.piece_positions[2]) # should work
 for k,v in gs.piece_positions.iteritems():
     print str(k) + ' ' + str(v.ref_point)
 print gs.spaces
-gs.move_left(gs.piece_positions[3]) # should fail
+gs.move_right(gs.piece_positions[2]) # should FAIL with exception
+for k,v in gs.piece_positions.iteritems():
+    print str(k) + ' ' + str(v.ref_point)
+print gs.spaces
+#gs.move_left(gs.piece_positions[3]) # should fail
