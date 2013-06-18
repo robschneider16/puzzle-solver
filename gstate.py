@@ -122,15 +122,15 @@ class Piece:
 
 
 gs = GState()
-gs.piece_positions[2] = Piece(1, ['foo','foo','foo',(BitVector(bitstring='0110'), BitVector(bitstring='0101'))], (2,2))
+#gs.piece_positions[2] = Piece(1, ['foo','foo','foo',(BitVector(bitstring='0110'), BitVector(bitstring='0101'))], (2,2))
 # gs.spaces.extend([1,3])
 
-# gs.move_left(gs.piece_positions[1])
+gs.move_left(gs.piece_positions[1]) # should work
 for k,v in gs.piece_positions.iteritems():
     print str(k) + ' ' + str(v.ref_point)
 print gs.spaces
-gs.move_left(gs.piece_positions[2])
+gs.move_left(gs.piece_positions[2]) # should work
 for k,v in gs.piece_positions.iteritems():
     print str(k) + ' ' + str(v.ref_point)
 print gs.spaces
-#gs.move_left(gs.piece_positions[3])
+gs.move_left(gs.piece_positions[3]) # should fail
