@@ -99,30 +99,31 @@ class GState:
     def swap(self, p, delta, which_move_tups):
         """Swap all the spaces from spots to be occupied as given in the precondition BitVector
         to the corresponding spots in the postcondition BitVector"""
-
         # list of bits
         prespaces = []
+        postspaces = []
         for i in range(p.nrows()*p.ncols()):
             #print which_move_tups[0][i]
             if which_move_tups[0][i] == 1:
                 prespaces.append(i)
-
-        postspaces = []
-        for i in range(p.nrows()*p.ncols()):
             if which_move_tups[1][i] == 1:
                 postspaces.append(i)
-
         space_tuples = zip(prespaces, postspaces)
-        
         # Need to do this for each part of the piece mask
         for space_tuple in space_tuples:
             prelocation = self.base_to_ref(space_tuple[0], delta, p)
             postlocation = self.base_to_ref(space_tuple[1], 0, p)
             space_index = self.spaces.index(prelocation)
             self.spaces[space_index] = postlocation
-
         p.ref_point += delta
 
+    # print the state of the test boards
+    def printb(self):
+        # 
+        for k,v in self.piece_positions.iteritems():
+            print str(k) + ' ' + str(v.ref_point)
+        print self.spaces
+        print "\n"
 
 class Piece:
     #self.ref_point # a reference location for where this piece is located on the board
@@ -143,30 +144,24 @@ class Piece:
         return self.shape[1]
 
 
-# print the state of the test boards
-def printb(board):
-    for k,v in board.piece_positions.iteritems():
-        print str(k) + ' ' + str(v.ref_point)
-    print board.spaces
-    print "\n"
 
 gs = GState()
 #gs.piece_positions[2] = Piece(1, ['foo','foo','foo',(BitVector(bitstring='0110'), BitVector(bitstring='0101'))], (2,2))
 # gs.spaces.extend([1,3])
 """ Some tests may not pop any errors, HOWEVER I don't belive that they are 100 percent correct. - Mason"""
 
-printb(gs)
+gs.printb()
 gs.move_left(gs.piece_positions[1])
-printb(gs)
+gs.printb()
 gs.move_left(gs.piece_positions[2])
-printb(gs)
+gs.printb()
 gs.move_up(gs.piece_positions[5])
-printb(gs)
+gs.printb()
 gs.move_up(gs.piece_positions[8])
-printb(gs)
+gs.printb()
 #gs.move_down(gs.piece_positions[5]) # SHOULD FAIL
 gs.move_down(gs.piece_positions[8])
 gs.move_down(gs.piece_positions[5])
-printb(gs)
+gs.printb()
 
 
