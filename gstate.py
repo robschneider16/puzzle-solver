@@ -119,11 +119,32 @@ class GState:
 
     # print the state of the test boards
     def printb(self):
-        # 
+        # *** THIS ONLY WORKS FOR 1x1 PUZZLES (e.g., 15-puzzle) WITH ONE SPACE
+        a = range(board_size)
         for k,v in self.piece_positions.iteritems():
-            print str(k) + ' ' + str(v.ref_point)
-        print self.spaces
-        print "\n"
+            #print str(k) + ' ' + str(v.ref_point)
+            a[v.ref_point] = k
+        #print self.spaces
+        a[self.spaces[0]] = 0
+        # NOW PRINT THE BOARD
+        start = 0
+        end = board_width
+        print '-' * (board_size + 3)
+        while end<=board_size:
+            print '|',
+            for x in a[start:end]:
+                print '{0:{width}}'.format(x,width=board_width-1),
+                #            if start == 0:
+                #                print "|  Prior moves : " + str(self.moves)
+                #            elif start == board_size:
+                #                print "|  Estimate yet: " + str(self.heur)
+                #            else:
+            print "|"
+            start += board_width
+            end += board_width
+        print '-' * (board_size + 3)
+
+
 
 class Piece:
     #self.ref_point # a reference location for where this piece is located on the board
@@ -160,8 +181,9 @@ gs.printb()
 gs.move_up(gs.piece_positions[8])
 gs.printb()
 #gs.move_down(gs.piece_positions[5]) # SHOULD FAIL
-gs.move_down(gs.piece_positions[8])
-gs.move_down(gs.piece_positions[5])
+gs.move_right(gs.piece_positions[7])
+gs.printb()
+gs.move_down(gs.piece_positions[4])
 gs.printb()
 
 
