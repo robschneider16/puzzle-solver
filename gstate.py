@@ -60,22 +60,45 @@ class GState:
         else:
             raise Exception('Invalid move')
 
+    def move_right(self, p1):
+        if ((p1.ref_point+p1.ncols())%board_width) > 0: # not in danger of going off the board
+            pass
+
+    # s is the space
+    # p is a piece
+    # d is either -1 for left, +1 for right, -board_width for up, and +board_width for down
+    def base_to_ref(self, s, d, p):
+        # returns a number of the desired space's location
+        return (s/p.nrows() * board_width) + s%p.ncols() + d + p.ref_point
+
     # p is a Piece; delta is either -1 for left, +1 for right, -board_width for up,
     # and +board_width for down; which_move_tups is the bitmask tuple for the appropriae move direction
     def swap(self, p, delta, which_move_tups):
         """Swap all the spaces from spots to be occupied as given in the precondition BitVector
-         to the corresponding spots in the postcondition BitVector"""
-        # Need to do this for each part of the piece mask
-        for space_target_base in range(p.shape[0]*p.shape[1]):
-            if which_move_tups[1][space_target_base] == 1: # need to move the appropriate space
-                
-                i = self.base_to_ref(p.ref_point, delta, space_target_base)
-                space_index = self.spaces.index(i)
-                self.spaces[space_index] = 
+        to the corresponding spots in the postcondition BitVector"""
 
-                space_index = self.spaces.index(p.ref_point+delta)
-                self.spaces[space_index] = p.ref_point
-                p.ref_point = p.ref_point+delta
+        # list of bits
+        # filter(lambda i: if not which_move_tups[0][i]: return i, range(p.nrows()*p.ncols())) 
+        prespaces = []
+        for i in range(p.nrows()*p.ncols()):
+            print which_move_tups[0][i]
+            if which_move_tups[0][i] == 1:
+                prespaces.append(i)
+
+        postspaces = []
+        for i in range(p.nrows()*p.ncols()):
+            if which_move_tups[1][i] == 1:
+                postspaces.append(i)
+
+        space_tuples = zip(prespaces, postspaces)
+        
+        # Need to do this for each part of the piece mask
+        for space_tuple in space_tuples:
+            prelocation = self.base_to_ref(space_tuple[0], delta, p)
+            postlocation = self.base_to_ref(space_tuple[1], 0, p)
+            space_index = self.spaces.index(prelocation)
+            self.spaces[space_index] = postlocation
+            p.ref_point += delta
 
 
 class Piece:
@@ -88,9 +111,20 @@ class Piece:
         self.move_tups = move_tuples
         self.shape = block_shape
 
+    # number of rows in a piece
+    def nrows(self):
+        return self.shape[0]
+
+    # number of colomns in a piece
+    def ncols(self):
+        return self.shape[1]
+
 
 gs = GState()
 gs.move_left(gs.piece_positions[1])
+for k,v in gs.piece_positions.iteritems():
+    print str(k) + ' ' + str(v.ref_point)
+print gs.spaces
 gs.move_left(gs.piece_positions[2])
 for k,v in gs.piece_positions.iteritems():
     print str(k) + ' ' + str(v.ref_point)
