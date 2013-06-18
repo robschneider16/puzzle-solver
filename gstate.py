@@ -54,6 +54,7 @@ class GState:
     def move_left(self, p1):
         # If valid move
         if (p1.ref_point%board_width > 0 # if true, p1.ref_point-1 below will not wrap
+            # Need to ensure the bitwise 'and' with spaces is same as precondition
             and 0 < int(self.make_bit_string(p1.shape, p1.move_tups[3][0], p1.ref_point-1)
                         & self.make_space_bit_string(self.spaces))):
             self.swap(p1, -1, p1.move_tups[3])
@@ -78,7 +79,6 @@ class GState:
         to the corresponding spots in the postcondition BitVector"""
 
         # list of bits
-        # filter(lambda i: if not which_move_tups[0][i]: return i, range(p.nrows()*p.ncols())) 
         prespaces = []
         for i in range(p.nrows()*p.ncols()):
             print which_move_tups[0][i]
@@ -98,7 +98,8 @@ class GState:
             postlocation = self.base_to_ref(space_tuple[1], 0, p)
             space_index = self.spaces.index(prelocation)
             self.spaces[space_index] = postlocation
-            p.ref_point += delta
+
+        p.ref_point += delta
 
 
 class Piece:
@@ -121,7 +122,10 @@ class Piece:
 
 
 gs = GState()
-gs.move_left(gs.piece_positions[1])
+gs.piece_positions[2] = Piece(1, ['foo','foo','foo',(BitVector(bitstring='0110'), BitVector(bitstring='0101'))], (2,2))
+# gs.spaces.extend([1,3])
+
+# gs.move_left(gs.piece_positions[1])
 for k,v in gs.piece_positions.iteritems():
     print str(k) + ' ' + str(v.ref_point)
 print gs.spaces
@@ -129,4 +133,4 @@ gs.move_left(gs.piece_positions[2])
 for k,v in gs.piece_positions.iteritems():
     print str(k) + ' ' + str(v.ref_point)
 print gs.spaces
-gs.move_left(gs.piece_positions[3])
+#gs.move_left(gs.piece_positions[3])
