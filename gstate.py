@@ -69,6 +69,8 @@ class GState:
         else:
             raise Exception('Invalid move right')
 
+    # Keep in mind that when moving up or down, we may be forced to add a variable
+    # 'board_hieght' for boards such as ClimbPro in place of board_width in this context -Mason
     def move_up(self, p1):
         if (p1.ref_point%board_width > 0
             and 0 < int(self.make_bit_string(p1.shape, p1.move_tups[3][0], p1.ref_point+board_width)
@@ -76,6 +78,14 @@ class GState:
             self.swap(p1, +board_width, p1.move_tups[3])
         else:
             raise Exception('Invalid move up')
+
+    def move_down(self, p1):
+        if ((p1.ref_point+p1.nrows())%board_width > 0
+            and 0 < int(self.make_bit_string(p1.shape, p1.move_tups[3][0], p1.ref_point-board_width)
+                & self.make_space_bit_string(self.spaces))):
+            self.swap(p1, -board_width, p1.move_tups[3])
+        else:
+            raise Exception('Invalid move down')
 
     # s is the space
     # p is a piece
@@ -132,21 +142,20 @@ class Piece:
     def ncols(self):
         return self.shape[1]
 
+# print the state of the test boards
+def printb(board):
+    for k,v in board.piece_positions.iteritems():
+        print str(k) + ' ' + str(v.ref_point)
+    print board.spaces
 
 gs = GState()
 #gs.piece_positions[2] = Piece(1, ['foo','foo','foo',(BitVector(bitstring='0110'), BitVector(bitstring='0101'))], (2,2))
 # gs.spaces.extend([1,3])
 
-gs.move_left(gs.piece_positions[1]) # should work
-for k,v in gs.piece_positions.iteritems():
-    print str(k) + ' ' + str(v.ref_point)
-print gs.spaces
-gs.move_up(gs.piece_positions[2]) # should work
-for k,v in gs.piece_positions.iteritems():
-    print str(k) + ' ' + str(v.ref_point)
-print gs.spaces
-gs.move_right(gs.piece_positions[2]) # should FAIL with exception
-for k,v in gs.piece_positions.iteritems():
-    print str(k) + ' ' + str(v.ref_point)
-print gs.spaces
-#gs.move_left(gs.piece_positions[3]) # should fail
+printb(gs)
+gs.move_left(gs.piece_positions[1])
+gs.move_left(gs.piece_positions[2])
+printb(gs)
+gs.move_up(gs.piece_positions[3])
+printb(gs)
+
