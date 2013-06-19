@@ -18,15 +18,15 @@ tile_tuples = [ ( BitVector(bitstring = '1'), BitVector(bitstring = '1') ),
 # A generic-state (gstate) supports the representation of puzzle boards
 # having pieces of arbitrary shape.
 
-
-global board_size
-board_size = 9
 global board_width
 board_width = 3
+global board_size
+board_size = board_width * board_width
 
 global goal_board
 #goal_board = range(board_size)
-goal_board= [3, 1, 0, 8, 2, 7, 5, 4, 6]
+goal_board= [1, 2, 5, 3, 0, 4, 6, 7, 8]
+#goal_board = [1, 2, 3, 7, 4, 5, 6, 11, 8, 9, 10, 15, 12, 13, 14, 0]
 
 class GState:
 
@@ -83,31 +83,31 @@ class GState:
 
     def can_move_right(self, p1):
         return ((p1.ref_point%board_width < board_width-p1.ncols()) # not in danger of going off the board
-                and 0 < int(self.make_bit_string(p1.shape, p1.move_tups[3][0], p1.ref_point+1)
+                and 0 < int(self.make_bit_string(p1.shape, p1.move_tups[1][0], p1.ref_point+1)
                             & self.make_space_bit_string(self.spaces)))
 
     def move_right(self, p1):
-        self.swap(p1, +1, p1.move_tups[3])
+        self.swap(p1, +1, p1.move_tups[1])
         self.nmoves += 1
 
     # Keep in mind that when moving up or down, we may be forced to add a variable
     # 'board_height' for boards such as ClimbPro in place of board_width in this context -Mason
     def can_move_up(self, p1):
         return (p1.ref_point >= board_width 
-                and 0 < int(self.make_bit_string(p1.shape, p1.move_tups[3][0], p1.ref_point-board_width)
+                and 0 < int(self.make_bit_string(p1.shape, p1.move_tups[0][0], p1.ref_point-board_width)
                             & self.make_space_bit_string(self.spaces)))
 
     def move_up(self, p1):
-        self.swap(p1, -board_width, p1.move_tups[3])
+        self.swap(p1, -board_width, p1.move_tups[0])
         self.nmoves += 1
 
     def can_move_down(self, p1):
         return ((p1.ref_point) < board_size - (board_width * p1.nrows())
-                and 0 < int(self.make_bit_string(p1.shape, p1.move_tups[3][0], p1.ref_point+board_width)
+                and 0 < int(self.make_bit_string(p1.shape, p1.move_tups[2][0], p1.ref_point+board_width)
                             & self.make_space_bit_string(self.spaces)))
 
     def move_down(self, p1):
-        self.swap(p1, +board_width, p1.move_tups[3])
+        self.swap(p1, +board_width, p1.move_tups[2])
         self.nmoves += 1
 
     # s is the space
@@ -145,19 +145,19 @@ class GState:
         for k, p in self.piece_positions.iteritems():
             if self.can_move_up(p):
                 ns = copy.deepcopy(self)
-                ns.move_up(p)
+                ns.move_up(ns.piece_positions[k])
                 possible_moves.append(ns)
             if self.can_move_right(p):
                 ns = copy.deepcopy(self)
-                ns.move_right(p)
+                ns.move_right(ns.piece_positions[k])
                 possible_moves.append(ns)
             if self.can_move_down(p):
                 ns = copy.deepcopy(self)
-                ns.move_down(p)
+                ns.move_down(ns.piece_positions[k])
                 possible_moves.append(ns)
             if self.can_move_left(p):
                 ns = copy.deepcopy(self)
-                ns.move_left(p)
+                ns.move_left(ns.piece_positions[k])
                 possible_moves.append(ns)
         return possible_moves
 
@@ -177,7 +177,7 @@ class GState:
         return sum
 
     # print the state of the test boards
-    def printb(self):
+    def print_bs(self):
         # *** THIS ONLY WORKS FOR 1x1 PUZZLES (e.g., 15-puzzle) WITH ONE SPACE
         a = range(board_size)
         for k,v in self.piece_positions.iteritems():
@@ -195,7 +195,7 @@ class GState:
                 print '{0:{width}}'.format(x,width=board_width-1),
             if start == 0:
                 print "|  Prior moves : " + str(self.nmoves)
-            elif start == board_size:
+            elif start == board_width:
                 print "|  Estimate yet: " + str(self.get_heur())
             else:
                 print "|"
@@ -231,19 +231,19 @@ class Piece:
 """ Some tests may not pop any errors, HOWEVER I don't belive that they are 100 percent correct. - Mason"""
 
 
-"""gs.printb()
+"""gs.print_bs()
 gs.move_left(gs.piece_positions[1])
-gs.printb()
+gs.print_bs()
 gs.move_left(gs.piece_positions[2])
-gs.printb()
+gs.print_bs()
 gs.move_up(gs.piece_positions[5])
-gs.printb()
+gs.print_bs()
 gs.move_up(gs.piece_positions[8])
-gs.printb()
+gs.print_bs()
 #gs.move_down(gs.piece_positions[5]) # SHOULD FAIL
 gs.move_right(gs.piece_positions[7])
-gs.printb()
+gs.print_bs()
 gs.move_down(gs.piece_positions[4])
-gs.printb()"""
+gs.print_bs()"""
 
 
