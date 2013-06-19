@@ -9,7 +9,7 @@ import copy
 # each tuple (for up, right, down and left, respectively) has a precondition for the space's location
 # relative to the direction of the intended move (i.e., where the space must be if this block moves)
 # and a post condition for where the space ends up (given the CURRENT ref_point of the block prior to move)
-global tile_tuples
+global tile_tuples # for 1x1 blocks/tiles
 tile_tuples = [ ( BitVector(bitstring = '1'), BitVector(bitstring = '1') ),
                 ( BitVector(bitstring = '1'), BitVector(bitstring = '1') ),
                 ( BitVector(bitstring = '1'), BitVector(bitstring = '1') ),
@@ -19,14 +19,14 @@ tile_tuples = [ ( BitVector(bitstring = '1'), BitVector(bitstring = '1') ),
 # having pieces of arbitrary shape.
 
 global board_width
-board_width = 3
+board_width = 4
 global board_size
 board_size = board_width * board_width
 
 global goal_board
 #goal_board = range(board_size)
-goal_board= [1, 2, 5, 3, 0, 4, 6, 7, 8]
-#goal_board = [1, 2, 3, 7, 4, 5, 6, 11, 8, 9, 10, 15, 12, 13, 14, 0]
+#goal_board= [1, 2, 5, 3, 0, 4, 6, 7, 8]
+goal_board = [1, 2, 3, 7, 4, 5, 6, 11, 8, 9, 10, 15, 12, 13, 14, 0]
 
 class GState:
 
@@ -138,11 +138,14 @@ class GState:
             postlocation = self.base_to_ref(space_tuple[1], 0, p)
             space_index = self.spaces.index(prelocation)
             self.spaces[space_index] = postlocation
+        self.spaces = sorted(self.spaces)  # to support canonical representations
         p.ref_point += delta
 
-    def available_moves(self):
+    def all_available_moves(self):
         possible_moves = []
         for k, p in self.piece_positions.iteritems():
+            # for any valid move, we will also need to repeat the check on the _moved_ piece
+            # in order to gather up the possibility of sliding a piece more than 1 space and even up-and-over
             if self.can_move_up(p):
                 ns = copy.deepcopy(self)
                 ns.move_up(ns.piece_positions[k])
@@ -162,7 +165,7 @@ class GState:
         return possible_moves
 
     def expand(self):
-        return self.available_moves()
+        return self.all_available_moves()
 
     def is_goal_state(self):
         return self.manhat_sum() == 0
@@ -203,6 +206,13 @@ class GState:
             end += board_width
         print '-' * (board_size + 3)
 
+class NxNState(GState):
+    pass
+
+
+class Block10State(GState):
+    pass
+
 
 
 class Piece:
@@ -226,7 +236,13 @@ class Piece:
 
 
 #gs = GState()
-#gs.piece_positions[2] = Piece(1, ['foo','foo','foo',(BitVector(bitstring='0110'), BitVector(bitstring='0101'))], (2,2))
+# For backward 'L' block:
+#  ___
+#  | |
+#--  |
+#|   |
+#-----
+#gs.piece_positions[2] = Piece(1, ['foo',(BitVector(bitstring='0101'), BitVector(bitstring='0110')),'foo',(BitVector(bitstring='0110'), BitVector(bitstring='0101'))], (2,2))
 # gs.spaces.extend([1,3])
 """ Some tests may not pop any errors, HOWEVER I don't belive that they are 100 percent correct. - Mason"""
 

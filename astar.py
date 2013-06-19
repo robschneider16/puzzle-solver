@@ -39,7 +39,7 @@ gs = GState()
 #start_state = pot_solution([4,5,3,1,0,2,6,7,8])
 #start_state = pot_solution([4,1,10,3,5,6,15,0,8,2,14,7,12,9,13,11])
 print "Starting with:"
-gs.print_bs()
+#gs.print_bs()
 #start_state.print_bs()
 astar_search(gs)
 #gs.print_bs()
