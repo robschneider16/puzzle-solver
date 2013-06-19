@@ -51,7 +51,7 @@ class GState:
         board = range(board_size)
         for k,v in self.piece_positions.iteritems():
             board[v.ref_point] = k
-        # This is not general beyond 8- and 15-puzzle at the moment
+        # *** This is not general beyond 8- and 15-puzzle at the moment
         board[self.spaces[0]] = 0
         return board
 
