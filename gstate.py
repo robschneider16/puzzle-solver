@@ -1,5 +1,6 @@
 # Using BitVector-3.3
 from BitVector import *
+import copy
 
 # Static information for piece-types and their movement properties
 # for the 8- and 15-puzzles, each block/tile is distinct because of its number
@@ -17,22 +18,28 @@ tile_tuples = [ ( BitVector(bitstring = '1'), BitVector(bitstring = '1') ),
 # A generic-state (gstate) supports the representation of puzzle boards
 # having pieces of arbitrary shape.
 
+
 global board_size
 board_size = 9
 global board_width
 board_width = 3
 
+global goal_board
+#goal_board = range(board_size)
+goal_board= [3, 1, 0, 8, 2, 7, 5, 4, 6]
+
 class GState:
 
-    def __init__(self, positions=None):
+    def __init__(self, positions=None, prior_moves=0):
         if not positions:
             layout = {}
             for i in range(1,board_size):
-                layout[i] = Piece(i, tile_tuples)
+                layout[i] = Piece(i, tile_tuples, label=str(i))
             self.piece_positions = layout
         else:
             self.piece_positions = positions
         self.spaces = [0] # only one space for 8- and 15-puzzles
+        self.nmoves = prior_moves
 
     def make_bit_string(self, piece_shape, mask, ref_point, increment=0):
         # SHOULD CHECK TO MAKE SURE piece IS ON BOARD AND THROW ERROR IF NOT
@@ -50,42 +57,44 @@ class GState:
             bv[space] = 1
         return bv
 
-    # NOW NEED TO ACTUALLY MOVE BLOCK AND SPACE
+    def can_move_left(self, p1):
+        return (p1.ref_point%board_width > 0 # if true, p1.ref_point-1 below will not wrap
+                # Need to ensure the bitwise 'and' with spaces is same as precondition
+                and 0 < int(self.make_bit_string(p1.shape, p1.move_tups[3][0], p1.ref_point-1) 
+                            & self.make_space_bit_string(self.spaces)))
+
     def move_left(self, p1):
-        # If valid move
-        if (p1.ref_point%board_width > 0 # if true, p1.ref_point-1 below will not wrap
-            # Need to ensure the bitwise 'and' with spaces is same as precondition
-            and 0 < int(self.make_bit_string(p1.shape, p1.move_tups[3][0], p1.ref_point-1) 
-                & self.make_space_bit_string(self.spaces))):
-            self.swap(p1, -1, p1.move_tups[3])
-        else:
-            raise Exception('Invalid move left')
+        self.swap(p1, -1, p1.move_tups[3])
+        self.nmoves += 1
+
+    def can_move_right(self, p1):
+        return ((p1.ref_point+p1.ncols())%board_width > 0 # not in danger of going off the board
+                and 0 < int(self.make_bit_string(p1.shape, p1.move_tups[3][0], p1.ref_point+1)
+                            & self.make_space_bit_string(self.spaces)))
 
     def move_right(self, p1):
-        if ((p1.ref_point+p1.ncols())%board_width > 0 # not in danger of going off the board
-            and 0 < int(self.make_bit_string(p1.shape, p1.move_tups[3][0], p1.ref_point+1)
-                & self.make_space_bit_string(self.spaces))):
-            self.swap(p1, +1, p1.move_tups[3])
-        else:
-            raise Exception('Invalid move right')
+        self.swap(p1, +1, p1.move_tups[3])
+        self.nmoves += 1
 
     # Keep in mind that when moving up or down, we may be forced to add a variable
-    # 'board_hieght' for boards such as ClimbPro in place of board_width in this context -Mason
+    # 'board_height' for boards such as ClimbPro in place of board_width in this context -Mason
+    def can_move_up(self, p1):
+        return (p1.ref_point%board_width > 0
+                and 0 < int(self.make_bit_string(p1.shape, p1.move_tups[3][0], p1.ref_point-board_width)
+                            & self.make_space_bit_string(self.spaces)))
+
     def move_up(self, p1):
-        if (p1.ref_point%board_width > 0
-            and 0 < int(self.make_bit_string(p1.shape, p1.move_tups[3][0], p1.ref_point-board_width)
-                & self.make_space_bit_string(self.spaces))):
-            self.swap(p1, -board_width, p1.move_tups[3])
-        else:
-            raise Exception('Invalid move up')
+        self.swap(p1, -board_width, p1.move_tups[3])
+        self.nmoves += 1
+
+    def can_move_down(self, p1):
+        return ((p1.ref_point)%board_width > 0
+                and 0 < int(self.make_bit_string(p1.shape, p1.move_tups[3][0], p1.ref_point+board_width)
+                            & self.make_space_bit_string(self.spaces)))
 
     def move_down(self, p1):
-        if ((p1.ref_point)%board_width > 0
-            and 0 < int(self.make_bit_string(p1.shape, p1.move_tups[3][0], p1.ref_point+board_width)
-                & self.make_space_bit_string(self.spaces))):
-            self.swap(p1, +board_width, p1.move_tups[3])
-        else:
-            raise Exception('Invalid move down')
+        self.swap(p1, +board_width, p1.move_tups[3])
+        self.nmoves += 1
 
     # s is the space
     # p is a piece
@@ -116,6 +125,42 @@ class GState:
             space_index = self.spaces.index(prelocation)
             self.spaces[space_index] = postlocation
         p.ref_point += delta
+
+    def available_moves(self):
+        possible_moves = []
+        for k, p in self.piece_positions.iteritems():
+            if self.can_move_up(p):
+                ns = copy.deepcopy(self)
+                ns.move_up(p)
+                possible_moves.append(ns)
+            if self.can_move_right(p):
+                ns = copy.deepcopy(self)
+                ns.move_right(p)
+                possible_moves.append(ns)
+            if self.can_move_down(p):
+                ns = copy.deepcopy(self)
+                ns.move_down(p)
+                possible_moves.append(ns)
+            if self.can_move_left(p):
+                ns = copy.deepcopy(self)
+                ns.move_left(p)
+                possible_moves.append(ns)
+        return possible_moves
+
+    def expand(self):
+        return self.available_moves()
+
+    def is_goal_state(self):
+        return self.manhat_sum() == 0
+
+    def manhat_sum(self):
+        sum = 0
+        for k in range(board_size):
+            if goal_board[k] != 0:
+                hor = abs(k%board_width - self.piece_positions[goal_board[k]].ref_point%board_width)
+                vert = abs(k/board_width - self.piece_positions[goal_board[k]].ref_point/board_width)
+                sum += hor + vert
+        return sum
 
     # print the state of the test boards
     def printb(self):
@@ -151,7 +196,7 @@ class Piece:
     #self.move_tups # a pointer to the move tuples for this type
     #self.shape # a tuple with the row and column dimensions
 
-    def __init__(self, reference_point, move_tuples=None, block_shape=(1,1)):
+    def __init__(self, reference_point, move_tuples=None, block_shape=(1,1), label=None):
         self.ref_point = reference_point
         self.move_tups = move_tuples
         self.shape = block_shape
@@ -166,12 +211,13 @@ class Piece:
 
 
 
-gs = GState()
+#gs = GState()
 #gs.piece_positions[2] = Piece(1, ['foo','foo','foo',(BitVector(bitstring='0110'), BitVector(bitstring='0101'))], (2,2))
 # gs.spaces.extend([1,3])
 """ Some tests may not pop any errors, HOWEVER I don't belive that they are 100 percent correct. - Mason"""
 
-gs.printb()
+
+"""gs.printb()
 gs.move_left(gs.piece_positions[1])
 gs.printb()
 gs.move_left(gs.piece_positions[2])
@@ -184,6 +230,6 @@ gs.printb()
 gs.move_right(gs.piece_positions[7])
 gs.printb()
 gs.move_down(gs.piece_positions[4])
-gs.printb()
+gs.printb()"""
 
 

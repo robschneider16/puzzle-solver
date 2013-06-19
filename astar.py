@@ -1,6 +1,7 @@
 from ftpuzzle import *
 import random
-from  pot_solution import *
+#from  pot_solution import *
+from gstate import *
 
 #closed = []
 #open = []
@@ -31,10 +32,12 @@ def astar_search(start):
     print "At end, Closed has " + str(len(closed)) + " and Open has " + str(len(open))
 
 
-start_state = pot_solution(shuffle_moves=50)
+gs = GState()
+#start_state = pot_solution(shuffle_moves=50)
 #start_state = pot_solution([4,5,3,1,0,2,6,7,8])
 #start_state = pot_solution([4,1,10,3,5,6,15,0,8,2,14,7,12,9,13,11])
 print "Starting with:"
-start_state.print_bs()
-astar_search(start_state)
+gs.printb()
+#start_state.print_bs()
+astar_search(gs)
 
