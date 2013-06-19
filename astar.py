@@ -13,6 +13,8 @@ def astar_search(start):
         current_node = open.pop(0)
         # move first open to closed
         closed.append(current_node)
+        # print current state
+        current_node.printb()
         # check if that was the goal and break if so
         if current_node.is_goal_state():
             print "Found the goal"
@@ -40,4 +42,4 @@ print "Starting with:"
 gs.printb()
 #start_state.print_bs()
 astar_search(gs)
-
+gs.printb()

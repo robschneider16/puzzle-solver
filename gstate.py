@@ -41,6 +41,20 @@ class GState:
         self.spaces = [0] # only one space for 8- and 15-puzzles
         self.nmoves = prior_moves
 
+    def get_moves(self):
+        return self.nmoves
+
+    def get_heur(self):
+        return self.manhat_sum()
+
+    def get_board(self):
+        board = range(board_size)
+        for k,v in self.piece_positions.iteritems():
+            board[v.ref_point] = k
+        # This is not general beyond 8- and 15-puzzle at the moment
+        board[self.spaces[0]] = 0
+        return board
+
     def make_bit_string(self, piece_shape, mask, ref_point, increment=0):
         # SHOULD CHECK TO MAKE SURE piece IS ON BOARD AND THROW ERROR IF NOT
         bv = BitVector(size = board_size) # make full board bv
@@ -68,7 +82,7 @@ class GState:
         self.nmoves += 1
 
     def can_move_right(self, p1):
-        return ((p1.ref_point+p1.ncols())%board_width > 0 # not in danger of going off the board
+        return ((p1.ref_point%board_width < board_width-p1.ncols()) # not in danger of going off the board
                 and 0 < int(self.make_bit_string(p1.shape, p1.move_tups[3][0], p1.ref_point+1)
                             & self.make_space_bit_string(self.spaces)))
 
@@ -79,7 +93,7 @@ class GState:
     # Keep in mind that when moving up or down, we may be forced to add a variable
     # 'board_height' for boards such as ClimbPro in place of board_width in this context -Mason
     def can_move_up(self, p1):
-        return (p1.ref_point%board_width > 0
+        return (p1.ref_point >= board_width 
                 and 0 < int(self.make_bit_string(p1.shape, p1.move_tups[3][0], p1.ref_point-board_width)
                             & self.make_space_bit_string(self.spaces)))
 
@@ -88,7 +102,7 @@ class GState:
         self.nmoves += 1
 
     def can_move_down(self, p1):
-        return ((p1.ref_point)%board_width > 0
+        return ((p1.ref_point) < board_size - (board_width * p1.nrows())
                 and 0 < int(self.make_bit_string(p1.shape, p1.move_tups[3][0], p1.ref_point+board_width)
                             & self.make_space_bit_string(self.spaces)))
 
@@ -179,12 +193,12 @@ class GState:
             print '|',
             for x in a[start:end]:
                 print '{0:{width}}'.format(x,width=board_width-1),
-                #            if start == 0:
-                #                print "|  Prior moves : " + str(self.moves)
-                #            elif start == board_size:
-                #                print "|  Estimate yet: " + str(self.heur)
-                #            else:
-            print "|"
+            if start == 0:
+                print "|  Prior moves : " + str(self.nmoves)
+            elif start == board_size:
+                print "|  Estimate yet: " + str(self.get_heur())
+            else:
+                print "|"
             start += board_width
             end += board_width
         print '-' * (board_size + 3)
