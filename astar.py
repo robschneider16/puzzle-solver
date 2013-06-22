@@ -15,7 +15,7 @@ def astar_search(start):
         # move first open to closed
         closed.append(current_node)
         # print current state
-        #current_node.print_bs()
+        current_node.print_bs()
         # check if that was the goal and break if so
         if current_node.is_goal_state():
             print "Found the goal"
