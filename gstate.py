@@ -166,20 +166,28 @@ class GState:
                 # for any valid move, we will also need to repeat the check on the _moved_ piece
                 # in order to gather up the possibility of sliding a piece more than 1 space and even up-and-over
                 if self.can_move_up(p):
-                    ns = copy.deepcopy(self)
-                    ns.move_up(ns.piece_positions[k])
+                    ns = copy.copy(self)
+                    np = copy.copy(p)
+                    ns.piece_positions[k][ns.piece_positions[k].index(p)] = np
+                    ns.move_up(np)
                     possible_moves.append(ns)
                 if self.can_move_right(p):
-                    ns = copy.deepcopy(self)
-                    ns.move_right(ns.piece_positions[k])
+                    ns = copy.copy(self)
+                    np = copy.copy(p)
+                    ns.piece_positions[k][ns.piece_positions[k].index(p)] = np
+                    ns.move_right(np)
                     possible_moves.append(ns)
                 if self.can_move_down(p):
-                    ns = copy.deepcopy(self)
-                    ns.move_down(ns.piece_positions[k])
+                    ns = copy.copy(self)
+                    np = copy.copy(p)
+                    ns.piece_positions[k][ns.piece_positions[k].index(p)] = np
+                    ns.move_down(np)
                     possible_moves.append(ns)
                 if self.can_move_left(p):
-                    ns = copy.deepcopy(self)
-                    ns.move_left(ns.piece_positions[k])
+                    ns = copy.copy(self)
+                    np = copy.copy(p)
+                    ns.piece_positions[k][ns.piece_positions[k].index(p)] = np
+                    ns.move_left(np)
                     possible_moves.append(ns)
         return possible_moves
 
