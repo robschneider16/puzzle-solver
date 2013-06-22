@@ -56,8 +56,9 @@ class GState:
 
     def get_board(self):
         # what is get_board
-        board = [[] for i in range(len(self.piece_positions))]
+        board = {}
         for k,v in self.piece_positions.iteritems():
+            board[k] = []
             for p in sorted(v, key=(lambda k: k.ref_point)):
                 board[k].append(p.ref_point)
             #board[k] = sorted(board[k])
@@ -67,7 +68,6 @@ class GState:
 
     def make_bit_string(self, piece_shape, mask, ref_point, increment=0):
         # SHOULD CHECK TO MAKE SURE piece IS ON BOARD AND THROW ERROR IF NOT
-        print "DEBUG: ... board_size = " + str(self.bsz)
         bv = BitVector(size = self.bsz) # make full board bv
         # use piece ref_point and tuple to overlay the mask from the piece
         for i in range(piece_shape[0]):
@@ -140,12 +140,14 @@ class GState:
         prespaces = []
         postspaces = []
         for i in range(p.nrows()*p.ncols()):
-            print which_move_tups[0][i]
+            print which_move_tups[0][i],
             if which_move_tups[0][i] == 1:
                 prespaces.append(i)
             if which_move_tups[1][i] == 1:
                 postspaces.append(i)
+        print ""
         space_tuples = zip(prespaces, postspaces)
+        print space_tuples
         # Need to do this for each part of the piece mask
         for space_tuple in space_tuples:
             prelocation = self.base_to_ref(space_tuple[0], delta, p)
@@ -160,7 +162,7 @@ class GState:
         possible_moves = []
         # for all the piece types in the puzzle ...
         for k, v in self.piece_positions.iteritems():
-            print k + ": " + str(v)
+            #print k + ": " + str(v)
             # for each of the pieces of a particular type ...
             for p in v:
                 # for any valid move, we will also need to repeat the check on the _moved_ piece
