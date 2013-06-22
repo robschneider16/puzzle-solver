@@ -17,7 +17,7 @@ tile_tuples = [ ( BitVector(bitstring = '1'), BitVector(bitstring = '1') ),
 #---
 #| |
 #---
-#
+# backward-'L'
 bwl_tuples = [ ( BitVector(bitstring = '0110'), BitVector(bitstring = '0011') ),
                 ( BitVector(bitstring = '0101'), BitVector(bitstring = '0110') ),
                 ( BitVector(bitstring = '0011'), BitVector(bitstring = '0110') ),
@@ -27,7 +27,7 @@ bwl_tuples = [ ( BitVector(bitstring = '0110'), BitVector(bitstring = '0011') ),
 #---
 #| |
 #---
-#
+# forward-'L'
 l_tuples = [ ( BitVector(bitstring = '1001'), BitVector(bitstring = '0011') ), 
                 ( BitVector(bitstring = '1001'), BitVector(bitstring = '1010') ),
                 ( BitVector(bitstring = '0011'), BitVector(bitstring = '1001') ),
@@ -37,7 +37,7 @@ l_tuples = [ ( BitVector(bitstring = '1001'), BitVector(bitstring = '0011') ),
 #---
 #| |
 #---
-#
+# 2x2 square block
 sqr_tuples = [ ( BitVector(bitstring = '1100'), BitVector(bitstring = '0011') ),
                 ( BitVector(bitstring = '0101'), BitVector(bitstring = '1010') ),
                 ( BitVector(bitstring = '0011'), BitVector(bitstring = '1100') ),
@@ -47,11 +47,11 @@ sqr_tuples = [ ( BitVector(bitstring = '1100'), BitVector(bitstring = '0011') ),
 #---
 #| |
 #---
-#
-line_tuples = [ ( BitVector(bitstring = '100'), BitVector(bitstring = '001') ),
-                ( BitVector(bitstring = '0101'), BitVector(bitstring = '1010') ),
-                ( BitVector(bitstring = '001'), BitVector(bitstring = '100') ),
-                ( BitVector(bitstring = '1010'), BitVector(bitstring = '0101') )
+# vertical 2x1 block
+line_tuples = [ ( BitVector(bitstring = '10'), BitVector(bitstring = '01') ),
+                ( BitVector(bitstring = '11'), BitVector(bitstring = '11') ),
+                ( BitVector(bitstring = '01'), BitVector(bitstring = '10') ),
+                ( BitVector(bitstring = '11'), BitVector(bitstring = '11') )
                 ]
 
 

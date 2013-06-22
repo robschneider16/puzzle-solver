@@ -1,7 +1,7 @@
-from ftpuzzle import *
-import random
+#from ftpuzzle import *
+#import random
 #from  pot_solution import *
-from gstate import *
+#from gstate import *
 #from board10state import *
 
 #closed = []
