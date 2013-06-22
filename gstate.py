@@ -23,22 +23,29 @@ board_width = 4
 global board_size
 board_size = board_width * board_width
 
+# for 8- and 15- puzzle
 global goal_board
 #goal_board = range(board_size)
 #goal_board= [1, 2, 5, 3, 0, 4, 6, 7, 8]
 goal_board = [1, 2, 3, 7, 4, 5, 6, 11, 8, 9, 10, 15, 12, 13, 14, 0]
 
+# for block10 puzzle
+global goal_state
+goal_state = {"2x2":1}
+# for the 8 puzzle
+#goal_state = {"0":4, "1":0, "2":1, "3":3, "4":5, "5":2, "6":6, "7":7, "8":8}
+
 class GState:
 
-    def __init__(self, positions=None, prior_moves=0):
+    def __init__(self, positions=None, prior_moves=0, space_positions=[0]):
         if not positions:
             layout = {}
             for i in range(1,board_size):
-                layout[i] = Piece(i, tile_tuples, label=str(i))
+                layout[str(i)] = [Piece(i, tile_tuples, label=str(i))]
             self.piece_positions = layout
         else:
             self.piece_positions = positions
-        self.spaces = [0] # only one space for 8- and 15-puzzles
+        self.spaces = space_positions
         self.nmoves = prior_moves
 
     def get_moves(self):
@@ -48,11 +55,14 @@ class GState:
         return self.manhat_sum()
 
     def get_board(self):
-        board = range(board_size)
+        # what is get_board
+        board = [[] for i in range(len(self.piece_positions))]
         for k,v in self.piece_positions.iteritems():
-            board[v.ref_point] = k
+            for p in sorted(v, key=(lambda k: k.ref_point)):
+                board[k].append(p.ref_point)
+            #board[k] = sorted(board[k])
         # *** This is not general beyond 8- and 15-puzzle at the moment
-        board[self.spaces[0]] = 0
+        #board[self.spaces[0]] = 0
         return board
 
     def make_bit_string(self, piece_shape, mask, ref_point, increment=0):
@@ -126,7 +136,7 @@ class GState:
         prespaces = []
         postspaces = []
         for i in range(p.nrows()*p.ncols()):
-            #print which_move_tups[0][i]
+            print which_move_tups[0][i]
             if which_move_tups[0][i] == 1:
                 prespaces.append(i)
             if which_move_tups[1][i] == 1:
@@ -141,27 +151,29 @@ class GState:
         self.spaces = sorted(self.spaces)  # to support canonical representations
         p.ref_point += delta
 
+    # how to pass a method name to a funtion and have the function apply that name onto an object
     def all_available_moves(self):
         possible_moves = []
-        for k, p in self.piece_positions.iteritems():
-            # for any valid move, we will also need to repeat the check on the _moved_ piece
-            # in order to gather up the possibility of sliding a piece more than 1 space and even up-and-over
-            if self.can_move_up(p):
-                ns = copy.deepcopy(self)
-                ns.move_up(ns.piece_positions[k])
-                possible_moves.append(ns)
-            if self.can_move_right(p):
-                ns = copy.deepcopy(self)
-                ns.move_right(ns.piece_positions[k])
-                possible_moves.append(ns)
-            if self.can_move_down(p):
-                ns = copy.deepcopy(self)
-                ns.move_down(ns.piece_positions[k])
-                possible_moves.append(ns)
-            if self.can_move_left(p):
-                ns = copy.deepcopy(self)
-                ns.move_left(ns.piece_positions[k])
-                possible_moves.append(ns)
+        for k, v in self.piece_positions.iteritems():
+            for p in v:
+                # for any valid move, we will also need to repeat the check on the _moved_ piece
+                # in order to gather up the possibility of sliding a piece more than 1 space and even up-and-over
+                if self.can_move_up(p):
+                    ns = copy.deepcopy(self)
+                    ns.move_up(ns.piece_positions[k])
+                    possible_moves.append(ns)
+                if self.can_move_right(p):
+                    ns = copy.deepcopy(self)
+                    ns.move_right(ns.piece_positions[k])
+                    possible_moves.append(ns)
+                if self.can_move_down(p):
+                    ns = copy.deepcopy(self)
+                    ns.move_down(ns.piece_positions[k])
+                    possible_moves.append(ns)
+                if self.can_move_left(p):
+                    ns = copy.deepcopy(self)
+                    ns.move_left(ns.piece_positions[k])
+                    possible_moves.append(ns)
         return possible_moves
 
     def expand(self):
@@ -172,14 +184,25 @@ class GState:
 
     def manhat_sum(self):
         sum = 0
-        for k in range(board_size):
-            if goal_board[k] != 0:
-                hor = abs(k%board_width - self.piece_positions[goal_board[k]].ref_point%board_width)
-                vert = abs(k/board_width - self.piece_positions[goal_board[k]].ref_point/board_width)
-                sum += hor + vert
+        """for k, v in goal_state.iteritems():
+            for p in v:
+                if goal_board[k] != 0:
+                    hor = abs(k%board_width - self.piece_positions[goal_board[k]].ref_point%board_width)
+                    vert = abs(k/board_width - self.piece_positions[goal_board[k]].ref_point/board_width)
+                    sum += hor + vert"""
         return sum
 
     # print the state of the test boards
+    def print_bs(self):
+        a = range(board_size)
+        for k,v in self.piece_positions.iteritems():
+            print k + ": ",
+            for p in v:
+                print str(p.ref_point),
+            print ""
+
+
+class NxNState(GState):
     def print_bs(self):
         # *** THIS ONLY WORKS FOR 1x1 PUZZLES (e.g., 15-puzzle) WITH ONE SPACE
         a = range(board_size)
@@ -205,9 +228,6 @@ class GState:
             start += board_width
             end += board_width
         print '-' * (board_size + 3)
-
-class NxNState(GState):
-    pass
 
 
 class Block10State(GState):
