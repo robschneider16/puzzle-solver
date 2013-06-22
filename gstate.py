@@ -63,7 +63,7 @@ class GState:
                 board[k].append(p.ref_point)
             #board[k] = sorted(board[k])
         # *** This is not general beyond 8- and 15-puzzle at the moment
-        #board[self.spaces[0]] = 0
+        board["spaces"] = sorted(self.spaces)
         return board
 
     def make_bit_string(self, piece_shape, mask, ref_point, increment=0):
@@ -152,10 +152,22 @@ class GState:
         for space_tuple in space_tuples:
             prelocation = self.base_to_ref(space_tuple[0], delta, p)
             postlocation = self.base_to_ref(space_tuple[1], 0, p)
+            print "swap: preloc = " + str(prelocation) + ", postloc = " + str(postlocation)
             space_index = self.spaces.index(prelocation)
             self.spaces[space_index] = postlocation
         self.spaces = sorted(self.spaces)  # to support canonical representations
         p.ref_point += delta
+
+    def custom_copy(self, piece_type, piece):
+        new_state = copy.copy(self)
+        new_piece = copy.copy(piece)
+        new_positions = copy.copy(self.piece_positions)
+        new_spaces = copy.copy(self.spaces)
+        new_positions[piece_type] = copy.copy(self.piece_positions[piece_type])
+        new_positions[piece_type][new_positions[piece_type].index(piece)] = new_piece
+        new_state.piece_positions = new_positions
+        new_state.spaces = new_spaces
+        return (new_state, new_piece)
 
     # how to pass a method name to a funtion and have the function apply that name onto an object
     def all_available_moves(self):
@@ -168,29 +180,21 @@ class GState:
                 # for any valid move, we will also need to repeat the check on the _moved_ piece
                 # in order to gather up the possibility of sliding a piece more than 1 space and even up-and-over
                 if self.can_move_up(p):
-                    ns = copy.copy(self)
-                    np = copy.copy(p)
-                    ns.piece_positions[k][ns.piece_positions[k].index(p)] = np
-                    ns.move_up(np)
-                    possible_moves.append(ns)
+                    ns_np = self.custom_copy(k, p)
+                    ns_np[0].move_up(ns_np[1])
+                    possible_moves.append(ns_np[0])
                 if self.can_move_right(p):
-                    ns = copy.copy(self)
-                    np = copy.copy(p)
-                    ns.piece_positions[k][ns.piece_positions[k].index(p)] = np
-                    ns.move_right(np)
-                    possible_moves.append(ns)
+                    ns_np = self.custom_copy(k, p)
+                    ns_np[0].move_right(ns_np[1])
+                    possible_moves.append(ns_np[0])
                 if self.can_move_down(p):
-                    ns = copy.copy(self)
-                    np = copy.copy(p)
-                    ns.piece_positions[k][ns.piece_positions[k].index(p)] = np
-                    ns.move_down(np)
-                    possible_moves.append(ns)
+                    ns_np = self.custom_copy(k, p)
+                    ns_np[0].move_down(ns_np[1])
+                    possible_moves.append(ns_np[0])
                 if self.can_move_left(p):
-                    ns = copy.copy(self)
-                    np = copy.copy(p)
-                    ns.piece_positions[k][ns.piece_positions[k].index(p)] = np
-                    ns.move_left(np)
-                    possible_moves.append(ns)
+                    ns_np = self.custom_copy(k, p)
+                    ns_np[0].move_left(ns_np[1])
+                    possible_moves.append(ns_np[0])
         return possible_moves
 
     def expand(self):
@@ -217,6 +221,7 @@ class GState:
             for p in v:
                 print str(p.ref_point),
             print ""
+        print "spaces: " + str(self.spaces)
         print "is_goal_state() = " + str(self.is_goal_state())
         print "moves: " + str(self.nmoves) + ", h-estimate: " + str(self.get_heur()) + "\n"
 
