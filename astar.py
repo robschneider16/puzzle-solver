@@ -22,12 +22,12 @@ def astar_search(start):
             current_node.print_bs()
             break
         else:
-            print "astar: Expanding"
+            #print "astar: Expanding"
             # expand that node
             expansions = current_node.expand()
-            print "astar: Found " + str(len(expansions)) + " child nodes"
-            for s in expansions:
-                s.print_bs()
+            #print "astar: Found " + str(len(expansions)) + " child nodes"
+            #for s in expansions:
+            #    s.print_bs()
             # filter expansions against closed
             closed_boards = map(lambda s: s.get_board(), closed) # compare only boards, since moves could differ
             filtered_expansions = filter(lambda s: s.get_board() not in closed_boards, expansions)

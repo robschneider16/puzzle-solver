@@ -130,7 +130,7 @@ class GState:
     # d is either -1 for left, +1 for right, -board_width for up, and +board_width for down
     def base_to_ref(self, s, d, p):
         # returns a number of the desired space's location
-        return (s/p.nrows() * self.bw) + s%p.ncols() + d + p.ref_point
+        return (s/p.ncols() * self.bw) + s%p.ncols() + d + p.ref_point
 
     # p is a Piece; delta is either -1 for left, +1 for right, -board_width for up,
     # and +board_width for down; which_move_tups is the bitmask tuple for the appropriae move direction
@@ -146,11 +146,12 @@ class GState:
             if which_move_tups[1][i] == 1:
                 postspaces.append(i)
         space_tuples = zip(prespaces, postspaces)
+        #print "swap space_tuples: " + str(space_tuples)
         # Need to do this for each part of the piece mask
         for space_tuple in space_tuples:
             prelocation = self.base_to_ref(space_tuple[0], delta, p)
             postlocation = self.base_to_ref(space_tuple[1], 0, p)
-            print "swap: preloc = " + str(prelocation) + ", postloc = " + str(postlocation)
+            #print "swap: preloc = " + str(prelocation) + ", postloc = " + str(postlocation)
             space_index = self.spaces.index(prelocation)
             self.spaces[space_index] = postlocation
         self.spaces = sorted(self.spaces)  # to support canonical representations
@@ -172,33 +173,33 @@ class GState:
         possible_moves = []
         # for all the piece types in the puzzle ...
         for k, v in self.piece_positions.iteritems():
-            print "all_available_moves: processing piece type: " + k
+            #print "all_available_moves: processing piece type: " + k
             # for each of the pieces of a particular type ...
             for p in v:
-                print "all_available_moves: processing piece at ref_point: " + str(p.ref_point)
+                #print "all_available_moves: processing piece at ref_point: " + str(p.ref_point)
                 # for any valid move, we will also need to repeat the check on the _moved_ piece
                 # in order to gather up the possibility of sliding a piece more than 1 space and even up-and-over
                 if self.can_move_up(p):
-                    print "can move up " + k + ":" + str(p.ref_point) + " in board:"
-                    self.print_bs()
+                    #print "can move up " + k + ":" + str(p.ref_point) + " in board:"
+                    #self.print_bs()
                     ns = copy.deepcopy(self)
                     ns.move_up(ns.piece_positions[k][self.piece_positions[k].index(p)])
                     possible_moves.append(ns)
                 if self.can_move_right(p):
-                    print "can move right " + k + ":" + str(p.ref_point) + " in board:"
-                    self.print_bs()
+                    #print "can move right " + k + ":" + str(p.ref_point) + " in board:"
+                    #self.print_bs()
                     ns = copy.deepcopy(self)
                     ns.move_right(ns.piece_positions[k][self.piece_positions[k].index(p)])
                     possible_moves.append(ns)
                 if self.can_move_down(p):
-                    print "can move down " + k + ":" + str(p.ref_point) + " in board:"
-                    self.print_bs()
+                    #print "can move down " + k + ":" + str(p.ref_point) + " in board:"
+                    #self.print_bs()
                     ns = copy.deepcopy(self)
                     ns.move_down(ns.piece_positions[k][self.piece_positions[k].index(p)])
                     possible_moves.append(ns)
                 if self.can_move_left(p):
-                    print "can move left " + k + ":" + str(p.ref_point) + " in board:"
-                    self.print_bs()
+                    #print "can move left " + k + ":" + str(p.ref_point) + " in board:"
+                    #self.print_bs()
                     ns = copy.deepcopy(self)
                     ns.move_left(ns.piece_positions[k][self.piece_positions[k].index(p)])
                     possible_moves.append(ns)
