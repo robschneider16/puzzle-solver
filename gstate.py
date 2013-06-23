@@ -162,10 +162,10 @@ class GState:
         new_state = copy.copy(self)
         new_piece = copy.copy(piece)
         new_positions = copy.copy(self.piece_positions)
-        new_spaces = copy.copy(self.spaces)
         new_positions[piece_type] = copy.copy(self.piece_positions[piece_type])
         new_positions[piece_type][new_positions[piece_type].index(piece)] = new_piece
         new_state.piece_positions = new_positions
+        new_spaces = copy.copy(self.spaces)
         new_state.spaces = new_spaces
         return (new_state, new_piece)
 
@@ -174,27 +174,28 @@ class GState:
         possible_moves = []
         # for all the piece types in the puzzle ...
         for k, v in self.piece_positions.iteritems():
-            #print k + ": " + str(v)
+            print "all_available_moves: processing piece type: " + k
             # for each of the pieces of a particular type ...
             for p in v:
+                print "all_available_moves: processing piece at rep_point: " + str(p.ref_point)
                 # for any valid move, we will also need to repeat the check on the _moved_ piece
                 # in order to gather up the possibility of sliding a piece more than 1 space and even up-and-over
                 if self.can_move_up(p):
-                    ns_np = self.custom_copy(k, p)
-                    ns_np[0].move_up(ns_np[1])
-                    possible_moves.append(ns_np[0])
+                    ns = copy.deepcopy(self)
+                    ns.move_up(ns.piece_positions[k][self.piece_positions[k].index(p)])
+                    possible_moves.append(ns)
                 if self.can_move_right(p):
-                    ns_np = self.custom_copy(k, p)
-                    ns_np[0].move_right(ns_np[1])
-                    possible_moves.append(ns_np[0])
+                    ns = copy.deepcopy(self)
+                    ns.move_right(ns.piece_positions[k][self.piece_positions[k].index(p)])
+                    possible_moves.append(ns)
                 if self.can_move_down(p):
-                    ns_np = self.custom_copy(k, p)
-                    ns_np[0].move_down(ns_np[1])
-                    possible_moves.append(ns_np[0])
+                    ns = copy.deepcopy(self)
+                    ns.move_down(ns.piece_positions[k][self.piece_positions[k].index(p)])
+                    possible_moves.append(ns)
                 if self.can_move_left(p):
-                    ns_np = self.custom_copy(k, p)
-                    ns_np[0].move_left(ns_np[1])
-                    possible_moves.append(ns_np[0])
+                    ns = copy.deepcopy(self)
+                    ns.move_left(ns.piece_positions[k][self.piece_positions[k].index(p)])
+                    possible_moves.append(ns)
         return possible_moves
 
     def expand(self):
