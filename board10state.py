@@ -82,7 +82,8 @@ layout["2x1"] = [Piece(7, line_tuples, (2,1)),
 layout["2x2"] = [Piece(13, sqr_tuples, (2,2))]
 layout["bwL"] = [Piece(18, bwl_tuples, (2,2))]
 bs = Board10State(layout, space_positions=[1,2,5,6], board_width=4, board_height=6)
-#astar_search(bs)
+bs.can_move_right(bs.piece_positions["fwL"][0])
+astar_search(bs)
 #bs.move_up(bs.piece_positions["1x1"][0])
 #bs.move_down(bs.piece_positions["1x1"][0])
 #print bs.can_move_down(bs.piece_positions["1x1"][0])

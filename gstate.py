@@ -72,7 +72,8 @@ class GState:
         # use piece ref_point and tuple to overlay the mask from the piece
         for i in range(piece_shape[0]):
             leftslice = ref_point+(i*self.bw) # left edge placement of the Piece mask 
-            bv[leftslice:leftslice+piece_shape[1]] = mask[i:i+piece_shape[1]]
+            bv[leftslice:leftslice+piece_shape[1]] = mask[i*piece_shape[1]:(i*piece_shape[1])+piece_shape[1]]
+        #print "make_bit_string: for pc at " + str(ref_point) + " with bw=" + str(self.bw) + ", resulting bv = " + str(bv)
         return bv
 
     # Only spaces move, thus spaces are not represented as Pieces
@@ -140,14 +141,11 @@ class GState:
         prespaces = []
         postspaces = []
         for i in range(p.nrows()*p.ncols()):
-            print which_move_tups[0][i],
             if which_move_tups[0][i] == 1:
                 prespaces.append(i)
             if which_move_tups[1][i] == 1:
                 postspaces.append(i)
-        print ""
         space_tuples = zip(prespaces, postspaces)
-        print space_tuples
         # Need to do this for each part of the piece mask
         for space_tuple in space_tuples:
             prelocation = self.base_to_ref(space_tuple[0], delta, p)
@@ -230,8 +228,8 @@ class GState:
                 print str(p.ref_point),
             print ""
         print "spaces: " + str(self.spaces)
-        #print "is_goal_state() = " + str(self.is_goal_state())
-        print "moves: " + str(self.nmoves) # + ", h-estimate: " + str(self.get_heur()) + "\n"
+        print "is_goal_state() = " + str(self.is_goal_state())
+        print "moves: " + str(self.nmoves) + ", h-estimate: " + str(self.get_heur()) + "\n"
 
 
 class NxNState(GState):
