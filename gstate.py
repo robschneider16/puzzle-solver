@@ -76,9 +76,9 @@ class GState:
         return bv
 
     # Only spaces move, thus spaces are not represented as Pieces
-    def make_space_bit_string(self, space_locs):
+    def make_space_bit_string(self):
         bv = BitVector(size = self.bsz)
-        for space in space_locs:
+        for space in self.spaces:
             bv[space] = 1
         return bv
 
@@ -86,7 +86,7 @@ class GState:
         return (p1.ref_point%self.bw > 0 # if true, p1.ref_point-1 below will not wrap
                 and (self.make_bit_string(p1.shape, p1.move_tups[3][0], p1.ref_point-1)
                      == (self.make_bit_string(p1.shape, p1.move_tups[3][0], p1.ref_point-1) 
-                         & self.make_space_bit_string(self.spaces))))
+                         & self.make_space_bit_string())))
 
     def move_left(self, p1):
         self.swap(p1, -1, p1.move_tups[3])
@@ -96,7 +96,7 @@ class GState:
         return ((p1.ref_point%self.bw < self.bw-p1.ncols()) # not in danger of going off the board
                 and (self.make_bit_string(p1.shape, p1.move_tups[1][0], p1.ref_point+1)
                      == (self.make_bit_string(p1.shape, p1.move_tups[1][0], p1.ref_point+1)
-                         & self.make_space_bit_string(self.spaces))))
+                         & self.make_space_bit_string())))
 
     def move_right(self, p1):
         self.swap(p1, +1, p1.move_tups[1])
@@ -108,7 +108,7 @@ class GState:
         return (p1.ref_point >= self.bw 
                 and (self.make_bit_string(p1.shape, p1.move_tups[0][0], p1.ref_point-self.bw)
                      == (self.make_bit_string(p1.shape, p1.move_tups[0][0], p1.ref_point-self.bw)
-                         & self.make_space_bit_string(self.spaces))))
+                         & self.make_space_bit_string())))
 
     def move_up(self, p1):
         self.swap(p1, -self.bw, p1.move_tups[0])
@@ -118,7 +118,7 @@ class GState:
         return ((p1.ref_point) < self.bsz - (self.bw * p1.nrows())
                 and (self.make_bit_string(p1.shape, p1.move_tups[2][0], p1.ref_point+self.bw)
                      == (self.make_bit_string(p1.shape, p1.move_tups[2][0], p1.ref_point+self.bw)
-                         & self.make_space_bit_string(self.spaces))))
+                         & self.make_space_bit_string())))
 
     def move_down(self, p1):
         self.swap(p1, +self.bw, p1.move_tups[2])
@@ -177,22 +177,30 @@ class GState:
             print "all_available_moves: processing piece type: " + k
             # for each of the pieces of a particular type ...
             for p in v:
-                print "all_available_moves: processing piece at rep_point: " + str(p.ref_point)
+                print "all_available_moves: processing piece at ref_point: " + str(p.ref_point)
                 # for any valid move, we will also need to repeat the check on the _moved_ piece
                 # in order to gather up the possibility of sliding a piece more than 1 space and even up-and-over
                 if self.can_move_up(p):
+                    print "can move up " + k + ":" + str(p.ref_point) + " in board:"
+                    self.print_bs()
                     ns = copy.deepcopy(self)
                     ns.move_up(ns.piece_positions[k][self.piece_positions[k].index(p)])
                     possible_moves.append(ns)
                 if self.can_move_right(p):
+                    print "can move right " + k + ":" + str(p.ref_point) + " in board:"
+                    self.print_bs()
                     ns = copy.deepcopy(self)
                     ns.move_right(ns.piece_positions[k][self.piece_positions[k].index(p)])
                     possible_moves.append(ns)
                 if self.can_move_down(p):
+                    print "can move down " + k + ":" + str(p.ref_point) + " in board:"
+                    self.print_bs()
                     ns = copy.deepcopy(self)
                     ns.move_down(ns.piece_positions[k][self.piece_positions[k].index(p)])
                     possible_moves.append(ns)
                 if self.can_move_left(p):
+                    print "can move left " + k + ":" + str(p.ref_point) + " in board:"
+                    self.print_bs()
                     ns = copy.deepcopy(self)
                     ns.move_left(ns.piece_positions[k][self.piece_positions[k].index(p)])
                     possible_moves.append(ns)
@@ -216,15 +224,14 @@ class GState:
 
     # print the state of the test boards
     def print_bs(self):
-        a = range(self.bsz)
         for k,v in self.piece_positions.iteritems():
             print k + ": ",
             for p in v:
                 print str(p.ref_point),
             print ""
         print "spaces: " + str(self.spaces)
-        print "is_goal_state() = " + str(self.is_goal_state())
-        print "moves: " + str(self.nmoves) + ", h-estimate: " + str(self.get_heur()) + "\n"
+        #print "is_goal_state() = " + str(self.is_goal_state())
+        print "moves: " + str(self.nmoves) # + ", h-estimate: " + str(self.get_heur()) + "\n"
 
 
 class NxNState(GState):
@@ -254,9 +261,6 @@ class NxNState(GState):
             end += self.bw
         print '-' * (self.bsz + 3)
 
-
-class Block10State(GState):
-    pass
 
 
 
