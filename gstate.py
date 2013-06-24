@@ -19,18 +19,6 @@ tile_tuples = [ ( BitVector(bitstring = '1'), BitVector(bitstring = '1') ),
 # having pieces of arbitrary shape.
 
 
-# for 8- and 15- puzzle
-global goal_board
-#goal_board = range(board_size)
-goal_board= [1, 2, 5, 3, 0, 4, 6, 7, 8]
-#goal_board = [1, 2, 3, 7, 4, 5, 6, 11, 8, 9, 10, 15, 12, 13, 14, 0]
-
-# for block10 puzzle
-global goal_state
-goal_state = {"2x2":1}
-# for the 8 puzzle
-#goal_state = {"0":4, "1":0, "2":1, "3":3, "4":5, "5":2, "6":6, "7":7, "8":8}
-
 class GState:
 
     def __init__(self, positions=None, prior_moves=0, space_positions=[0],
@@ -41,7 +29,7 @@ class GState:
         if not positions:
             layout = {}
             for i in range(1,self.bsz):
-                layout[str(i)] = [Piece(i, tile_tuples, label=str(i))]
+                layout[str(i)] = [Piece(i, tile_tuples)]
             self.piece_positions = layout
         else:
             self.piece_positions = positions
@@ -231,36 +219,6 @@ class GState:
         print "spaces: " + str(self.spaces)
         print "is_goal_state() = " + str(self.is_goal_state())
         print "moves: " + str(self.nmoves) + ", h-estimate: " + str(self.get_heur()) + "\n"
-
-
-class NxNState(GState):
-    def print_bs(self):
-        # *** THIS ONLY WORKS FOR 1x1 PUZZLES (e.g., 15-puzzle) WITH ONE SPACE
-        a = range(self.bsz)
-        for k,v in self.piece_positions.iteritems():
-            #print str(k) + ' ' + str(v.ref_point)
-            a[v.ref_point] = k
-        #print self.spaces
-        a[self.spaces[0]] = 0
-        # NOW PRINT THE BOARD
-        start = 0
-        end = self.bw
-        print '-' * (self.bsz + 3)
-        while end<=self.bsz:
-            print '|',
-            for x in a[start:end]:
-                print '{0:{width}}'.format(x,width=self.bw-1),
-            if start == 0:
-                print "|  Prior moves : " + str(self.nmoves)
-            elif start == self.bw:
-                print "|  Estimate yet: " + str(self.get_heur())
-            else:
-                print "|"
-            start += self.bw
-            end += self.bw
-        print '-' * (self.bsz + 3)
-
-
 
 
 class Piece:
