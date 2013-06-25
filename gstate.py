@@ -43,14 +43,18 @@ class GState:
         return self.manhat_sum()
 
     def get_board(self):
-        # what is get_board
+        """return a representation of the board that is appropriate for a search methode
+        to compare nodes on closed and open lists"""
+        # **** we use this result to check if a board(state) is "in" the closed list
+        # ... python may be doing something odd with dictionaries as part of a board for a "board in closed" check
+        # *** somehow, we're getting in loops visiting nodes that should have been closed
+        # -- maybe this is part of the problem (or not)
         board = {}
         for k,v in self.piece_positions.iteritems():
             board[k] = []
             for p in sorted(v, key=(lambda k: k.ref_point)):
                 board[k].append(p.ref_point)
-            #board[k] = sorted(board[k])
-        # *** This is not general beyond 8- and 15-puzzle at the moment
+            board[k] = sorted(board[k])
         board["spaces"] = sorted(self.spaces)
         return board
 
@@ -211,13 +215,7 @@ class GState:
 
     # print the state of the test boards
     def print_bs(self):
-        for k,v in self.piece_positions.iteritems():
-            print k + ": ",
-            for p in v:
-                print str(p.ref_point),
-            print ""
-        print "spaces: " + str(self.spaces)
-        print "is_goal_state() = " + str(self.is_goal_state())
+        print self.get_board()
         print "moves: " + str(self.nmoves) + ", h-estimate: " + str(self.get_heur()) + "\n"
 
 
