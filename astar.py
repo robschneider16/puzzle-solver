@@ -14,18 +14,18 @@ def astar_search(start):
         current_node = open.pop(0)
         # move first open to closed
         closed.append(current_node)
-        # print current state
-        #current_node.print_bs()
+        #print current state
+        current_node.print_bs()
         # check if that was the goal and break if so
         if current_node.is_goal_state():
             print "Found the goal"
             current_node.print_bs()
             break
         else:
-            #print "astar: Expanding"
+            print "astar: Expanding"
             # expand that node
             expansions = current_node.expand()
-            #print "astar: Found " + str(len(expansions)) + " child nodes"
+            print "astar: Found " + str(len(expansions)) + " child nodes"
             #for s in expansions:
             #    s.print_bs()
             # filter expansions against closed
@@ -36,7 +36,7 @@ def astar_search(start):
             # sort open
             open = sorted(open, key=lambda s: s.get_moves() + s.get_heur())
             # continue looping
-            #print "Closed has " + str(len(closed)) + " and Open has " + str(len(open))
+            print "Closed has " + str(len(closed)) + " and Open has " + str(len(open))
     print "At end, Closed has " + str(len(closed)) + " and Open has " + str(len(open))
 
 """

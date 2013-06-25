@@ -55,17 +55,33 @@ line_tuples = [ ( BitVector(bitstring = '10'), BitVector(bitstring = '01') ),
                 ]
 
 
-# declare the board shape
-# NOTE: for ClimbPro boards the upper left and right hand corners should have immovable blocks
-
+# declare the goal_state of the board
 global goal_state
 goal_state = {"2x2":1}
 
 class Board10State(GState):
 
+    # finds the heuristic of the 2x2 to the spaces on the board
+    def get_space_distance(self):
+        # remaps the ref_point of the 2x2 to the center for the 
+        # purposes of finding the distance between all the spaces
+        augmented_row    = self.piece_positions["2x2"][0].ref_point/self.bw + .5
+        augmented_column = self.piece_positions["2x2"][0].ref_point%self.bw + .5
+        s = 0
+        for i in self.spaces:
+            s += abs(augmented_row-(i/self.bw))      # distance between rows and space
+            s += abs(augmented_column-(i%self.bw))   # distance between cols and space
+        return s
+
     def get_heur(self):
-        return (abs(self.piece_positions["2x2"][0].ref_point%self.bw - goal_state["2x2"]%self.bw) 
-            + abs(self.piece_positions["2x2"][0].ref_point/self.bw - goal_state["2x2"]/self.bw))
+        return (
+            # the number of horizontal spaces between the 2x2 and the goal_state
+            abs(self.piece_positions["2x2"][0].ref_point%self.bw - goal_state["2x2"]%self.bw) 
+            # the number of vertical spaces between the 2x2 and the goal_state
+            + abs(self.piece_positions["2x2"][0].ref_point/self.bw - goal_state["2x2"]/self.bw)
+            # the heuristic of units between the 2x2 block and the space
+            + (self.get_space_distance()/13.0)
+            )
 
     def is_goal_state(self):
         return self.piece_positions["2x2"][0].ref_point == goal_state["2x2"]
