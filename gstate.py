@@ -52,9 +52,13 @@ class GState:
         board = {}
         for k,v in self.piece_positions.iteritems():
             board[k] = []
+            #print "in first loop"
             for p in sorted(v, key=(lambda k: k.ref_point)):
                 board[k].append(p.ref_point)
+                #print "in second loop"
+            print "out of the SECOND loop!!!!"
             board[k] = sorted(board[k])
+        print "out of the FIRST loop!!!!"
         board["spaces"] = sorted(self.spaces)
         return board
 
