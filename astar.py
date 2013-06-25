@@ -28,9 +28,11 @@ def astar_search(start):
             print "astar: Found " + str(len(expansions)) + " child nodes"
             #for s in expansions:
             #    s.print_bs()
-            # filter expansions against closed
+            # filter expansions against closed AND open list
             closed_boards = map(lambda s: s.get_board(), closed) # compare only boards, since moves could differ
-            filtered_expansions = filter(lambda s: s.get_board() not in closed_boards, expansions)
+            all_boards = map(lambda s: s.get_board(), open)
+            all_boards.extend(closed_boards)
+            filtered_expansions = filter(lambda s: s.get_board() not in all_boards, expansions)
             # add filtered expansions to open
             open.extend(filtered_expansions)
             # sort open

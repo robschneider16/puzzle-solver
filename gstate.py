@@ -46,9 +46,6 @@ class GState:
         """return a representation of the board that is appropriate for a search methode
         to compare nodes on closed and open lists"""
         # **** we use this result to check if a board(state) is "in" the closed list
-        # ... python may be doing something odd with dictionaries as part of a board for a "board in closed" check
-        # *** somehow, we're getting in loops visiting nodes that should have been closed
-        # -- maybe this is part of the problem (or not)
         board = {}
         for k,v in self.piece_positions.iteritems():
             board[k] = []
@@ -56,9 +53,9 @@ class GState:
             for p in sorted(v, key=(lambda k: k.ref_point)):
                 board[k].append(p.ref_point)
                 #print "in second loop"
-            print "out of the SECOND loop!!!!"
-            board[k] = sorted(board[k])
-        print "out of the FIRST loop!!!!"
+            #print "out of the SECOND loop!!!!"
+            #board[k] = sorted(board[k])
+        #print "out of the FIRST loop!!!!"
         board["spaces"] = sorted(self.spaces)
         return board
 
@@ -67,7 +64,7 @@ class GState:
         bv = BitVector(size = self.bsz) # make full board bv
         # use piece ref_point and tuple to overlay the mask from the piece
         for i in range(piece_shape[0]):
-            leftslice = ref_point+(i*self.bw) # left edge placement of the Piece mask 
+            leftslice = ref_point+(i*self.bw) # left edge placement of the Piece mask
             bv[leftslice:leftslice+piece_shape[1]] = mask[i*piece_shape[1]:(i*piece_shape[1])+piece_shape[1]]
         #print "make_bit_string: for pc at " + str(ref_point) + " with bw=" + str(self.bw) + ", resulting bv = " + str(bv)
         return bv
@@ -82,7 +79,7 @@ class GState:
     def can_move_left(self, p1):
         return (p1.ref_point%self.bw > 0 # if true, p1.ref_point-1 below will not wrap
                 and (self.make_bit_string(p1.shape, p1.move_tups[3][0], p1.ref_point-1)
-                     == (self.make_bit_string(p1.shape, p1.move_tups[3][0], p1.ref_point-1) 
+                     == (self.make_bit_string(p1.shape, p1.move_tups[3][0], p1.ref_point-1)
                          & self.make_space_bit_string())))
 
     def move_left(self, p1):
@@ -102,7 +99,7 @@ class GState:
     # Keep in mind that when moving up or down, we may be forced to add a variable
     # 'board_height' for boards such as ClimbPro in place of board_width in this context -Mason
     def can_move_up(self, p1):
-        return (p1.ref_point >= self.bw 
+        return (p1.ref_point >= self.bw
                 and (self.make_bit_string(p1.shape, p1.move_tups[0][0], p1.ref_point-self.bw)
                      == (self.make_bit_string(p1.shape, p1.move_tups[0][0], p1.ref_point-self.bw)
                          & self.make_space_bit_string())))
