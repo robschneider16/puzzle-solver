@@ -33,6 +33,13 @@ l_tuples = [ ( BitVector(bitstring = '1001'), BitVector(bitstring = '0011') ),
              ( BitVector(bitstring = '0011'), BitVector(bitstring = '1001') ),
              ( BitVector(bitstring = '1010'), BitVector(bitstring = '1001') )
              ]
+
+# inverted-(forward)-'L'
+ifl_tuples = [ ( BitVector(bitstring = '1100'), BitVector(bitstring = '0110') ), 
+                ( BitVector(bitstring = '0110'), BitVector(bitstring = '1010') ),
+                ( BitVector(bitstring = '0110'), BitVector(bitstring = '1100') ),
+                ( BitVector(bitstring = '1010'), BitVector(bitstring = '0110') )
+                ]
 #
 #---
 #| |
@@ -87,18 +94,29 @@ class Board10State(GState):
         return self.piece_positions["2x2"][0].ref_point == goal_state["2x2"]
 
 
-layout = {}
-layout["fwL"] = [Piece(4, l_tuples, (2,2))]
-layout["1x1"] = [Piece(10, tile_tuples, (1,1)),
+v11_layout = {}
+v11_layout["fwL"] = [Piece(4, l_tuples, (2,2))]
+v11_layout["1x1"] = [Piece(10, tile_tuples, (1,1)),
                  Piece(12, tile_tuples, (1,1)),
                  Piece(15, tile_tuples, (1,1)),
                  Piece(21, tile_tuples, (1,1)) ]
-layout["2x1"] = [Piece(7, line_tuples, (2,1)),
+v11_layout["2x1"] = [Piece(7, line_tuples, (2,1)),
                 Piece(16, line_tuples, (2,1)) ]
-layout["2x2"] = [Piece(13, sqr_tuples, (2,2))]
-layout["bwL"] = [Piece(18, bwl_tuples, (2,2))]
-bs = Board10State(layout, space_positions=[1,2,5,6], board_width=4, board_height=6)
-bs.can_move_right(bs.piece_positions["fwL"][0])
+v11_layout["2x2"] = [Piece(13, sqr_tuples, (2,2))]
+v11_layout["bwL"] = [Piece(18, bwl_tuples, (2,2))]
+
+v12_layout = {}
+v12_layout["ifL"] = [Piece(12, ifl_tuples, (2,2))]
+v12_layout["1x1"] = [Piece(9, tile_tuples, (1,1)),
+                 Piece(14, tile_tuples, (1,1)),
+                 Piece(20, tile_tuples, (1,1)),
+                 Piece(23, tile_tuples, (1,1)) ]
+v12_layout["2x1"] = [Piece(4, line_tuples, (2,1)),
+                Piece(15, line_tuples, (2,1)) ]
+v12_layout["2x2"] = [Piece(17, sqr_tuples, (2,2))]
+v12_layout["bwL"] = [Piece(6, bwl_tuples, (2,2))]
+
+bs = Board10State(v12_layout, space_positions=[1,2,5,6], board_width=4, board_height=6)
 astar_search(bs)
 #bs.move_up(bs.piece_positions["1x1"][0])
 #bs.move_down(bs.piece_positions["1x1"][0])
