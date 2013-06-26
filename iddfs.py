@@ -31,7 +31,7 @@ def dfs(state, depth, max_depth, path_so_far):
         # filter expansions wrt path so-far
         path_boards = map(lambda s: s.get_board(), path_so_far)
         filtered_expansions = sorted(filter(lambda s: s.get_board() not in path_boards, expansions),
-                                     key=lambda s: s.get_moves() + s.get_heur())
+                                     key=lambda s: s.get_moves() + s.get_h())
         for a_state in filtered_expansions:
             new_path = list(path_so_far)
             new_path.append(state)
@@ -55,7 +55,7 @@ def beam_search(state, beam_width):
             closed_boards = map(lambda s: s.get_board(), closed) # compare only boards, since moves could differ
             filtered_expansions = filter(lambda s: s.get_board() not in closed_boards, expansions)
             open_beam.extend(filtered_expansions)
-            open_beam = sorted(open_beam, key=lambda s: s.get_moves() + s.get_heur())[0:beam_width]
+            open_beam = sorted(open_beam, key=lambda s: s.get_moves() + s.get_h())[0:beam_width]
     print "At end, Closed has " + str(len(closed)) + " and Open has " + str(len(open_beam))
             
 

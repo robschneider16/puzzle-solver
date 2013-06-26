@@ -73,7 +73,7 @@ class Board10State(GState):
             s += abs(augmented_column-(i%self.bw))   # distance between cols and space
         return s
 
-    def get_heur(self):
+    def get_h(self):
         return (
             # the number of horizontal spaces between the 2x2 and the goal_state
             abs(self.piece_positions["2x2"][0].ref_point%self.bw - goal_state["2x2"]%self.bw) 

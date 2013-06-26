@@ -36,7 +36,7 @@ class NxNState(GState):
         # NOW PRINT THE BOARD
         start = 0
         end = self.bw
-        heur_val = self.get_heur()
+        heur_val = self.get_h()
         print '-' * (self.bsz + 3)
         while end<=self.bsz:
             print '|',

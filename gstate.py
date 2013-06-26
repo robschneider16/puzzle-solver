@@ -37,27 +37,29 @@ class GState:
         self.spaces = space_positions
         self.nmoves = prior_moves
 
-    def get_moves(self):
+    def get_g(self):
         return self.nmoves
 
-    def get_heur(self):
+    def get_h(self):
         return self.manhat_sum()
 
+    def get_f(self):
+        return self.get_g() + self.get_h()
+
     def get_board(self):
-        """return a representation of the board that is appropriate for a search methode
-        to compare nodes on closed and open lists"""
+        """return a string representation of the board that is appropriate for a search algorithm
+        to index states by board on closed and open lists"""
         # **** we use this result to check if a board(state) is "in" the closed list
-        board = {}
+        board = ""
         for k,v in self.piece_positions.iteritems():
-            board[k] = []
-            #print "in first loop"
+            board += "[" + k + ":"
             for p in sorted(v, key=(lambda k: k.ref_point)):
-                board[k].append(p.ref_point)
-                #print "in second loop"
-            #print "out of the SECOND loop!!!!"
-            #board[k] = sorted(board[k])
-        #print "out of the FIRST loop!!!!"
-        board["spaces"] = sorted(self.spaces)
+                board += " " + str(p.ref_point) 
+            board += "]"
+        board += "[spaces:"
+        for space in sorted(self.spaces):
+            board += " " + str(space)
+        board += "]"
         return board
 
     def make_bit_string(self, piece_shape, mask, ref_point, increment=0):
@@ -148,7 +150,6 @@ class GState:
             #print "swap: preloc = " + str(prelocation) + ", postloc = " + str(postlocation)
             space_index = self.spaces.index(prelocation)
             self.spaces[space_index] = postlocation
-        self.spaces = sorted(self.spaces)  # to support canonical representations
         p.ref_point += delta
 
     def custom_copy(self, piece_type, piece):
@@ -203,7 +204,7 @@ class GState:
         return self.all_available_moves()
 
     def is_goal_state(self):
-        return self.get_heur() == 0
+        return self.get_h() == 0
 
     def manhat_sum(self):
         sum = 0
@@ -218,7 +219,7 @@ class GState:
     # print the state of the test boards
     def print_bs(self):
         print self.get_board()
-        print "moves: " + str(self.nmoves) + ", h-estimate: " + str(self.get_heur()) + "\n"
+        print "moves: " + str(self.nmoves) + ", h-estimate: " + str(self.get_h()) + "\n"
 
 
 class Piece:

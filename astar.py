@@ -8,12 +8,18 @@
 #open = []
 
 def astar_search(start):
-    closed = []
+    # closed is dictionary mapping boards from get_board() to states
+    closed = {}
     open = [start]
     while open:
+        # set current to best of open
         current_node = open.pop(0)
-        # move first open to closed
-        closed.append(current_node)
+        # if previously considered and this doesn't look to be any better, skip to next on open
+        if current_node.get_board() in closed:
+            if current_node.get_f() >= closed[current_node.get_board()].get_f():
+                continue
+        # otherwise, add current to closed
+        closed[current_node.get_board()] = current_node
         #print current state
         current_node.print_bs()
         # check if that was the goal and break if so
@@ -29,19 +35,14 @@ def astar_search(start):
             #for s in expansions:
             #    s.print_bs()
             # filter expansions against closed AND open list
-            for i in filtered_expansions:
-                for j in open:
-                    if i.get_board() == j.get_board() && i.get_moves() < j.get_moves():
-                        open.append(i)
-                        open.remove(j)
-            closed_boards = map(lambda s: s.get_board(), closed) # compare only boards, since moves could differ
-            all_boards = map(lambda s: s.get_board(), open)
-            all_boards.extend(closed_boards)
-            filtered_expansions = filter(lambda s: s.get_board() not in all_boards, expansions)
+            #closed_boards = map(lambda s: s.get_board(), closed) # compare only boards, since moves could differ
+            #all_boards = map(lambda s: s.get_board(), open)
+            #all_boards.extend(closed_boards)
+            #filtered_expansions = filter(lambda s: s.get_board() not in all_boards, expansions)
             # add filtered expansions to open
-            open.extend(filtered_expansions)
+            open.extend(expansions)
             # sort open
-            open = sorted(open, key=lambda s: s.get_moves() + s.get_heur())
+            open = sorted(open, key=lambda s: s.get_f())
             # continue looping
             print "Closed has " + str(len(closed)) + " and Open has " + str(len(open))
     print "At end, Closed has " + str(len(closed)) + " and Open has " + str(len(open))
