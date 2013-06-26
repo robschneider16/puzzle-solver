@@ -23,6 +23,7 @@ class GState:
 
     def __init__(self, positions=None, prior_moves=0, space_positions=[0],
                  board_width=3, board_height=3):
+        #last_moved_piece = 
         self.bw = board_width
         self.bh = board_height
         self.bsz = board_width*board_height

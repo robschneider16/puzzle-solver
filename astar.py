@@ -29,6 +29,11 @@ def astar_search(start):
             #for s in expansions:
             #    s.print_bs()
             # filter expansions against closed AND open list
+            for i in filtered_expansions:
+                for j in open:
+                    if i.get_board() == j.get_board() && i.get_moves() < j.get_moves():
+                        open.append(i)
+                        open.remove(j)
             closed_boards = map(lambda s: s.get_board(), closed) # compare only boards, since moves could differ
             all_boards = map(lambda s: s.get_board(), open)
             all_boards.extend(closed_boards)
