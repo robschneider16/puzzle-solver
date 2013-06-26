@@ -8,59 +8,58 @@ global tile_tuples # still for 1x1 blocks/tiles
 #| |
 #---
 #
-tile_tuples = [ ( BitVector(bitstring = '1'), BitVector(bitstring = '1') ),
-                ( BitVector(bitstring = '1'), BitVector(bitstring = '1') ),
-                ( BitVector(bitstring = '1'), BitVector(bitstring = '1') ),
-                ( BitVector(bitstring = '1'), BitVector(bitstring = '1') )
-                ]
-#
+tile_tuples = [(BitVector(bitstring = '1'), BitVector(bitstring = '1')),
+               (BitVector(bitstring = '1'), BitVector(bitstring = '1')),
+               (BitVector(bitstring = '1'), BitVector(bitstring = '1')),
+               (BitVector(bitstring = '1'), BitVector(bitstring = '1'))]
+
 #---
 #| |
 #---
 # backward-'L'
-bwl_tuples = [ ( BitVector(bitstring = '0110'), BitVector(bitstring = '0011') ),
-               ( BitVector(bitstring = '0101'), BitVector(bitstring = '0110') ),
-               ( BitVector(bitstring = '0011'), BitVector(bitstring = '0110') ),
-               ( BitVector(bitstring = '0110'), BitVector(bitstring = '0101') )
-               ]
-#
+bwl_tuples = [(BitVector(bitstring = '0110'), BitVector(bitstring = '0011')),
+              (BitVector(bitstring = '0101'), BitVector(bitstring = '0110')),
+              (BitVector(bitstring = '0011'), BitVector(bitstring = '0110')),
+              (BitVector(bitstring = '0110'), BitVector(bitstring = '0101'))]
+
 #---
 #| |
 #---
 # forward-'L'
-l_tuples = [ ( BitVector(bitstring = '1001'), BitVector(bitstring = '0011') ), 
-             ( BitVector(bitstring = '1001'), BitVector(bitstring = '1010') ),
-             ( BitVector(bitstring = '0011'), BitVector(bitstring = '1001') ),
-             ( BitVector(bitstring = '1010'), BitVector(bitstring = '1001') )
-             ]
+l_tuples = [(BitVector(bitstring = '1001'), BitVector(bitstring = '0011')), 
+            (BitVector(bitstring = '1001'), BitVector(bitstring = '1010')),
+            (BitVector(bitstring = '0011'), BitVector(bitstring = '1001')),
+            (BitVector(bitstring = '1010'), BitVector(bitstring = '1001'))]
 
 # inverted-(forward)-'L'
-ifl_tuples = [ ( BitVector(bitstring = '1100'), BitVector(bitstring = '0110') ), 
-                ( BitVector(bitstring = '0110'), BitVector(bitstring = '1010') ),
-                ( BitVector(bitstring = '0110'), BitVector(bitstring = '1100') ),
-                ( BitVector(bitstring = '1010'), BitVector(bitstring = '0110') )
-                ]
-#
+ifl_tuples = [(BitVector(bitstring = '1100'), BitVector(bitstring = '0110')), 
+              (BitVector(bitstring = '0110'), BitVector(bitstring = '1010')),
+              (BitVector(bitstring = '0110'), BitVector(bitstring = '1100')),
+              (BitVector(bitstring = '1010'), BitVector(bitstring = '0110'))]
+
 #---
 #| |
 #---
 # 2x2 square block
-sqr_tuples = [ ( BitVector(bitstring = '1100'), BitVector(bitstring = '0011') ),
-                ( BitVector(bitstring = '0101'), BitVector(bitstring = '1010') ),
-                ( BitVector(bitstring = '0011'), BitVector(bitstring = '1100') ),
-                ( BitVector(bitstring = '1010'), BitVector(bitstring = '0101') )
-                ]
-#
+sqr_tuples = [(BitVector(bitstring = '1100'), BitVector(bitstring = '0011')),
+              (BitVector(bitstring = '0101'), BitVector(bitstring = '1010')),
+              (BitVector(bitstring = '0011'), BitVector(bitstring = '1100')),
+              (BitVector(bitstring = '1010'), BitVector(bitstring = '0101'))]
+
 #---
 #| |
 #---
 # vertical 2x1 block
-line_tuples = [ ( BitVector(bitstring = '10'), BitVector(bitstring = '01') ),
-                ( BitVector(bitstring = '11'), BitVector(bitstring = '11') ),
-                ( BitVector(bitstring = '01'), BitVector(bitstring = '10') ),
-                ( BitVector(bitstring = '11'), BitVector(bitstring = '11') )
-                ]
+line_tuples = [(BitVector(bitstring = '10'), BitVector(bitstring = '01')),
+               (BitVector(bitstring = '11'), BitVector(bitstring = '11')),
+               (BitVector(bitstring = '01'), BitVector(bitstring = '10')),
+               (BitVector(bitstring = '11'), BitVector(bitstring = '11'))]
 
+# inverted-'T' 2x3 block
+it_tuples = [(BitVector(bitstring = '010101'), BitVector(bitstring = '000111')),
+             (BitVector(bitstring = '010001'), BitVector(bitstring = '010100')),
+             (BitVector(bitstring = '000111'), BitVector(bitstring = '010101')),
+             (BitVector(bitstring = '010100'), BitVector(bitstring = '010001'))]
 
 # declare the goal_state of the board
 global goal_state
