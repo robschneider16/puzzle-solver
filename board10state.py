@@ -50,20 +50,27 @@ sqr_tuples = [(BitVector(bitstring = '1100'), BitVector(bitstring = '0011')),
 #| |
 #---
 # vertical 2x1 block
-line_tuples = [(BitVector(bitstring = '10'), BitVector(bitstring = '01')),
-               (BitVector(bitstring = '11'), BitVector(bitstring = '11')),
-               (BitVector(bitstring = '01'), BitVector(bitstring = '10')),
-               (BitVector(bitstring = '11'), BitVector(bitstring = '11'))]
+vline_tuples = [(BitVector(bitstring = '10'), BitVector(bitstring = '01')),
+                (BitVector(bitstring = '11'), BitVector(bitstring = '11')),
+                (BitVector(bitstring = '01'), BitVector(bitstring = '10')),
+                (BitVector(bitstring = '11'), BitVector(bitstring = '11'))]
+
+# horizontal 1x2 block
+hline_tuples = [(BitVector(bitstring = '11'), BitVector(bitstring = '11')),
+                (BitVector(bitstring = '01'), BitVector(bitstring = '10')),
+                (BitVector(bitstring = '11'), BitVector(bitstring = '11')),
+                (BitVector(bitstring = '10'), BitVector(bitstring = '01'))]
 
 # inverted-'T' 2x3 block
-it_tuples = [(BitVector(bitstring = '010101'), BitVector(bitstring = '000111')),
+ivt_tuples = [(BitVector(bitstring = '010101'), BitVector(bitstring = '000111')),
              (BitVector(bitstring = '010001'), BitVector(bitstring = '010100')),
              (BitVector(bitstring = '000111'), BitVector(bitstring = '010101')),
              (BitVector(bitstring = '010100'), BitVector(bitstring = '010001'))]
 
 # declare the goal_state of the board
 global goal_state
-goal_state = {"2x2":1}
+#goal_state = {"2x2":1} # for Board 10, Variants 11 and 12
+goal_state = {"ivT":2} # for Climb 12, Variant 1
 
 class Board10State(GState):
 
@@ -99,8 +106,8 @@ v11_layout["1x1"] = [Piece(10, tile_tuples, (1,1)),
                  Piece(12, tile_tuples, (1,1)),
                  Piece(15, tile_tuples, (1,1)),
                  Piece(21, tile_tuples, (1,1)) ]
-v11_layout["2x1"] = [Piece(7, line_tuples, (2,1)),
-                Piece(16, line_tuples, (2,1)) ]
+v11_layout["2x1"] = [Piece(7, vline_tuples, (2,1)),
+                Piece(16, vline_tuples, (2,1)) ]
 v11_layout["2x2"] = [Piece(13, sqr_tuples, (2,2))]
 v11_layout["bwL"] = [Piece(18, bwl_tuples, (2,2))]
 
@@ -110,12 +117,21 @@ v12_layout["1x1"] = [Piece(9, tile_tuples, (1,1)),
                  Piece(14, tile_tuples, (1,1)),
                  Piece(20, tile_tuples, (1,1)),
                  Piece(23, tile_tuples, (1,1)) ]
-v12_layout["2x1"] = [Piece(4, line_tuples, (2,1)),
-                Piece(15, line_tuples, (2,1)) ]
+v12_layout["2x1"] = [Piece(4, vline_tuples, (2,1)),
+                Piece(15, vline_tuples, (2,1)) ]
 v12_layout["2x2"] = [Piece(17, sqr_tuples, (2,2))]
 v12_layout["bwL"] = [Piece(6, bwl_tuples, (2,2))]
 
-bs = Board10State(v12_layout, space_positions=[1,2,5,6], board_width=4, board_height=6)
+climb12_layout = { # on a 6x5 board, with 0,1,3, and 4 blocked off in the first row
+    "ifL": [Piece(11, ifl_tuples, (2,2))],
+    "1x1": [Piece(15, tile_tuples, (1,1)), Piece(19, tile_tuples, (1,1)), Piece(25, tile_tuples, (1,1)), Piece(29, tile_tuples, (1,1))],
+    "2x1": [Piece(5, vline_tuples, (2,1)), Piece(9, vline_tuples, (2,1))],
+    "bwL": [Piece(12, bwl_tuples, (2,2))],
+    "1x2": [Piece(20, hline_tuples, (1,2)), Piece(23, hline_tuples, (1,2))],
+    "ivT": [Piece(21, ivt_tuples, (2,3))]}
+
+
+bs = Board10State(climb12_layout, space_positions=[1,2,5,6], board_width=4, board_height=6)
 astar_search(bs)
 #bs.move_up(bs.piece_positions["1x1"][0])
 #bs.move_down(bs.piece_positions["1x1"][0])
