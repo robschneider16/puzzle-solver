@@ -168,7 +168,7 @@ class GState:
         possible_moves = []
         # for all the piece types in the puzzle ...
         for k, v in self.piece_positions.iteritems():
-            #print "all_available_moves: processing piece type: " + k
+            print "all_available_moves: processing piece type: " + k
             # for each of the pieces of a particular type ...
             for p in v:
                 #print "all_available_moves: processing piece at ref_point: " + str(p.ref_point)
