@@ -3,13 +3,8 @@ from astar import *
 from random import choice
 
 global goal_state
-# for the 8 puzzle
-# 1 2 5
-# 3 0 4
-# 6 7 8
-goal_state = {"1":1, "2":2, "3":3, "4":4, "5":5, "6":6, "7":7, "8":8}
-#goal_state = {"1":1, "2":2, "3":3, "4":4, "5":5, "6":6, "7":7, "8":8, "9":9, "10":10, "11":11, "12":12, "13":13, "14":14, "15":15}
-
+goal_state = {"1":[1], "2":[2], "3":[3], "4":[4], "5":[5], "6":[6], "7":[7], "8":[8]}
+#goal_state = {"1":[1], "2":[2], "3":[3], "4":[4], "5":[5], "6":[6], "7":[7], "8":[8], "9":[9], "10":[10], "11":[11], "12":[12], "13":[13], "14":[14], "15":[15]}
 
 # for 8- and 15- type puzzles
 # ASSUME only one block of each type
@@ -19,10 +14,9 @@ class NxNState(GState):
         """using the goal_board """
         sum = 0
         for k, p in goal_state.iteritems():
-            if k != "0":
-                hor = abs(self.piece_positions[k][0].ref_point%self.bw - p%self.bw)
-                vert = abs(self.piece_positions[k][0].ref_point/self.bw - p/self.bw)
-                sum += hor + vert
+            hor = abs(self.piece_positions[k][0].ref_point%self.bw - p[0]%self.bw)
+            vert = abs(self.piece_positions[k][0].ref_point/self.bw - p[0]/self.bw)
+            sum += hor + vert
         return sum
 
     def print_bs(self):
@@ -52,6 +46,8 @@ class NxNState(GState):
             end += self.bw
         print '-' * (self.bsz + 3)
 
+
+
 def shuffle_board(start, shuffle_times):
     i = 0
     shuffled_state = start
@@ -64,6 +60,6 @@ def shuffle_board(start, shuffle_times):
 
 bs = NxNState()
 #bs = NxNState(board_width=4, board_height=4)
-sbs = shuffle_board(bs,50)
-sbs.print_bs()
-astar_search(sbs)
+#sbs = shuffle_board(bs,50)
+bs.print_bs()
+astar_search(bs)

@@ -19,6 +19,7 @@ tile_tuples = [ ( BitVector(bitstring = '1'), BitVector(bitstring = '1') ),
 # having pieces of arbitrary shape.
 
 
+
 class GState:
 
     def __init__(self, positions=None, prior_moves=0, space_positions=[0],
@@ -168,7 +169,7 @@ class GState:
         possible_moves = []
         # for all the piece types in the puzzle ...
         for k, v in self.piece_positions.iteritems():
-            print "all_available_moves: processing piece type: " + k
+            #print "all_available_moves: processing piece type: " + k
             # for each of the pieces of a particular type ...
             for p in v:
                 #print "all_available_moves: processing piece at ref_point: " + str(p.ref_point)
@@ -206,15 +207,6 @@ class GState:
     def is_goal_state(self):
         return self.get_h() == 0
 
-    def manhat_sum(self):
-        sum = 0
-        """for k, v in goal_state.iteritems():
-            for p in v:
-                if goal_board[k] != 0:
-                    hor = abs(k%self.bw - self.piece_positions[goal_board[k]].ref_point%self.bw)
-                    vert = abs(k/self.bw - self.piece_positions[goal_board[k]].ref_point/self.bw)
-                    sum += hor + vert"""
-        return sum
 
     # print the state of the test boards
     def print_bs(self):
