@@ -28,10 +28,10 @@ def astar_search(start):
             current_node.print_bs()
             break
         else:
-            print "astar: Expanding"
+            #print "astar: Expanding"
             # expand that node
             expansions = current_node.expand()
-            print "astar: Found " + str(len(expansions)) + " child nodes"
+            #print "astar: Found " + str(len(expansions)) + " child nodes"
             #for s in expansions:
             #    s.print_bs()
             # filter expansions against closed AND open list

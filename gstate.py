@@ -164,42 +164,59 @@ class GState:
         new_state.spaces = new_spaces
         return (new_state, new_piece)
 
-    # how to pass a method name to a funtion and have the function apply that name onto an object
+    def one_piece_one_step_moves(self,k,p):
+        part_possible_moves = []
+        #print "all_available_moves: processing piece at ref_point: " + str(p.ref_point)
+        if self.can_move_up(p):
+            #print "can move up " + k + ":" + str(p.ref_point) + " in board:"
+            #self.print_bs()
+            ns = copy.deepcopy(self)
+            ns.move_up(ns.piece_positions[k][self.piece_positions[k].index(p)])
+            part_possible_moves.append(ns)
+        if self.can_move_right(p):
+            #print "can move right " + k + ":" + str(p.ref_point) + " in board:"
+            #self.print_bs()
+            ns = copy.deepcopy(self)
+            ns.move_right(ns.piece_positions[k][self.piece_positions[k].index(p)])
+            part_possible_moves.append(ns)
+        if self.can_move_down(p):
+            #print "can move down " + k + ":" + str(p.ref_point) + " in board:"
+            #self.print_bs()
+            ns = copy.deepcopy(self)
+            ns.move_down(ns.piece_positions[k][self.piece_positions[k].index(p)])
+            part_possible_moves.append(ns)
+        if self.can_move_left(p):
+            #print "can move left " + k + ":" + str(p.ref_point) + " in board:"
+            #self.print_bs()
+            ns = copy.deepcopy(self)
+            ns.move_left(ns.piece_positions[k][self.piece_positions[k].index(p)])
+            part_possible_moves.append(ns)
+        return part_possible_moves
+
     def all_available_moves(self):
-        possible_moves = []
+        possible_moves = {} # key state.get_board() and value state
         # for all the piece types in the puzzle ...
         for k, v in self.piece_positions.iteritems():
             #print "all_available_moves: processing piece type: " + k
             # for each of the pieces of a particular type ...
             for p in v:
-                #print "all_available_moves: processing piece at ref_point: " + str(p.ref_point)
-                # for any valid move, we will also need to repeat the check on the _moved_ piece
-                # in order to gather up the possibility of sliding a piece more than 1 space and even up-and-over
-                if self.can_move_up(p):
-                    #print "can move up " + k + ":" + str(p.ref_point) + " in board:"
-                    #self.print_bs()
-                    ns = copy.deepcopy(self)
-                    ns.move_up(ns.piece_positions[k][self.piece_positions[k].index(p)])
-                    possible_moves.append(ns)
-                if self.can_move_right(p):
-                    #print "can move right " + k + ":" + str(p.ref_point) + " in board:"
-                    #self.print_bs()
-                    ns = copy.deepcopy(self)
-                    ns.move_right(ns.piece_positions[k][self.piece_positions[k].index(p)])
-                    possible_moves.append(ns)
-                if self.can_move_down(p):
-                    #print "can move down " + k + ":" + str(p.ref_point) + " in board:"
-                    #self.print_bs()
-                    ns = copy.deepcopy(self)
-                    ns.move_down(ns.piece_positions[k][self.piece_positions[k].index(p)])
-                    possible_moves.append(ns)
-                if self.can_move_left(p):
-                    #print "can move left " + k + ":" + str(p.ref_point) + " in board:"
-                    #self.print_bs()
-                    ns = copy.deepcopy(self)
-                    ns.move_left(ns.piece_positions[k][self.piece_positions[k].index(p)])
-                    possible_moves.append(ns)
-        return possible_moves
+                new_moves = self.one_piece_one_step_moves(k,p)
+                filtered_moves = [m for m in new_moves if m.get_board() not in possible_moves]
+                while  filtered_moves != []:
+                    next_bunch = []
+                    for m in filtered_moves:
+                        # add remainder to possible_moves
+                        possible_moves[m.get_board()] = m
+                        # map filtered_new_moves over one_piece_one_step_moves
+                        next_bunch.extend(m.one_piece_one_step_moves(k,m.piece_positions[k][self.piece_positions[k].index(p)]))
+                    # filter against possible
+                    filtered_moves = [m for m in next_bunch if m.get_board() not in possible_moves]
+        # don't forget to make sure all possible moves have the right number of prior moves
+        just_moves = []
+        for k, m in possible_moves.iteritems():
+            m.nmoves = self.nmoves + 1
+            just_moves.append(m)
+        return just_moves
 
     def expand(self):
         return self.all_available_moves()

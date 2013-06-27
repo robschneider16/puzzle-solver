@@ -70,7 +70,7 @@ ivt_tuples = [(BitVector(bitstring = '010101'), BitVector(bitstring = '000111'))
 # declare the goal_state of the board
 global goal_state
 goal_state = {"gpc":[1]} # for Board 10, Variants 11 and 12
-goal_state = {"gpc":[2]} # for Climb 12, Variant 1
+#goal_state = {"gpc":[2]} # for Climb 12, Variant 1
 
 class SinglePieceGoalState(GState):
 
@@ -131,8 +131,8 @@ climb12_layout = { # on a 6x5 board, with 0,1,3, and 4 blocked off in the first 
     "gpc": [Piece(21, ivt_tuples, (2,3))]}
 
 
-#bs = SinglePieceGoalState(v12_layout, space_positions=[1,2,5,6], board_width=4, board_height=6)
-bs = SinglePieceGoalState(climb12_layout, space_positions=[2,6,7,8], board_width=5, board_height=6)
+bs = SinglePieceGoalState(v12_layout, space_positions=[1,2,5,6], board_width=4, board_height=6)
+#bs = SinglePieceGoalState(climb12_layout, space_positions=[2,6,7,8], board_width=5, board_height=6)
 astar_search(bs)
 #bs.move_up(bs.piece_positions["1x1"][0])
 #bs.move_down(bs.piece_positions["1x1"][0])
