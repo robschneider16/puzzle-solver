@@ -89,12 +89,12 @@ class SinglePieceGoalState(GState):
 
     def get_h(self):
         # the heuristic of units between the goal_piece block and the spaces
-        some_sum = self.get_space_distance()/13.0
+        some_sum = self.get_space_distance()/(len(self.spaces)*(self.bw + self.bh))# confident h is consistent
         # the number of horizontal spaces between the goal_piece and the goal_state
         some_sum += abs(self.piece_positions["gpc"][0].ref_point%self.bw - goal_state["gpc"][0]%self.bw) 
         # the number of vertical spaces between the goal_piece and the goal_state
         some_sum += abs(self.piece_positions["gpc"][0].ref_point/self.bw - goal_state["gpc"][0]/self.bw)
-        return some_sum
+        return some_sum # confident h is admissible (and consistent)
 
     def is_goal_state(self):
         return self.piece_positions["gpc"][0].ref_point == goal_state["gpc"][0]

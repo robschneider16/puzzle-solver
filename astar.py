@@ -1,3 +1,4 @@
+from heapq import *
 #from ftpuzzle import *
 #import random
 #from  pot_solution import *
@@ -10,10 +11,11 @@
 def astar_search(start):
     # closed is dictionary mapping boards from get_board() to states
     closed = {}
-    open = [start]
+    open = []
+    heappush(open, (start.get_f(), start))
     while open:
         # set current to best of open
-        current_node = open.pop(0)
+        current_node = heappop(open)[1]
         # if previously considered and this doesn't look to be any better, skip to next on open
         if current_node.get_board() in closed:
             if current_node.get_f() >= closed[current_node.get_board()].get_f():
@@ -40,9 +42,8 @@ def astar_search(start):
             #all_boards.extend(closed_boards)
             #filtered_expansions = filter(lambda s: s.get_board() not in all_boards, expansions)
             # add filtered expansions to open
-            open.extend(expansions)
-            # sort open
-            open = sorted(open, key=lambda s: s.get_f())
+            for expansion in expansions:
+                heappush(open, (expansion.get_f(), expansion))
             # continue looping
             print "Closed has " + str(len(closed)) + " and Open has " + str(len(open))
     print "At end, Closed has " + str(len(closed)) + " and Open has " + str(len(open))
