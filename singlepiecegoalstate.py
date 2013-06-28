@@ -132,12 +132,6 @@ climb12_layout = { # on a 6x5 board, with 0,1,3, and 4 blocked off in the first 
 
 
 # DON'T FORGET TO CHANGE goal_state WHEN CHANGING PROBLEM
-#bs = SinglePieceGoalState(v12_layout, space_positions=[1,2,5,6], board_width=4, board_height=6)
-bs = SinglePieceGoalState(climb12_layout, space_positions=[2,6,7,8], board_width=5, board_height=6)
+#bs = SinglePieceGoalState(v12_layout, space_positions=[1,2,5,6], board_width=4, board_height=6) # 3m12sec on Wayne's home machine
+bs = SinglePieceGoalState(climb12_layout, space_positions=[2,6,7,8], board_width=5, board_height=6) #...still waiting to complete
 astar_search(bs)
-#bs.move_up(bs.piece_positions["1x1"][0])
-#bs.move_down(bs.piece_positions["1x1"][0])
-#print bs.can_move_down(bs.piece_positions["1x1"][0])
-#bs.move_down(bs.piece_positions["1x1"][0]) # FAIL
-#bs.print_bs()
-#bs.piece_positions[2] = Piece(1, (2,2))
