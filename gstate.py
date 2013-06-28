@@ -2,9 +2,6 @@
 from BitVector import *
 import copy
 
-# Static information for piece-types and their movement properties
-# for the 8- and 15-puzzles, each block/tile is distinct because of its number
-# thus we have one spaces (1x1) and 15 1x1 block-types
 
 # each tuple (for up, right, down and left, respectively) has a precondition for the space's location
 # relative to the direction of the intended move (i.e., where the space must be if this block moves)
@@ -15,11 +12,9 @@ tile_tuples = [ ( BitVector(bitstring = '1'), BitVector(bitstring = '1') ),
                 ( BitVector(bitstring = '1'), BitVector(bitstring = '1') ),
                 ( BitVector(bitstring = '1'), BitVector(bitstring = '1') ) ]
 
+
 # A generic-state (gstate) supports the representation of puzzle boards
-# having pieces of arbitrary shape.
-
-
-
+# having pieces of arbitrary shape and the movement of those pieces.
 class GState:
 
     def __init__(self, positions=None, prior_moves=0, space_positions=[0],
@@ -30,6 +25,7 @@ class GState:
         self.bsz = board_width*board_height
         if not positions:
             layout = {}
+            # default: N-by-N puzzle
             for i in range(1,self.bsz):
                 layout[str(i)] = [Piece(i, tile_tuples)]
             self.piece_positions = layout
@@ -50,7 +46,6 @@ class GState:
     def get_board(self):
         """return a string representation of the board that is appropriate for a search algorithm
         to index states by board on closed and open lists"""
-        # **** we use this result to check if a board(state) is "in" the closed list
         board = ""
         for k,v in self.piece_positions.iteritems():
             board += "[" + k + ":"
@@ -64,7 +59,6 @@ class GState:
         return board
 
     def make_bit_string(self, piece_shape, mask, ref_point, increment=0):
-        # SHOULD CHECK TO MAKE SURE piece IS ON BOARD AND THROW ERROR IF NOT
         bv = BitVector(size = self.bsz) # make full board bv
         # use piece ref_point and tuple to overlay the mask from the piece
         for i in range(piece_shape[0]):
@@ -100,8 +94,6 @@ class GState:
         self.swap(p1, +1, p1.move_tups[1])
         self.nmoves += 1
 
-    # Keep in mind that when moving up or down, we may be forced to add a variable
-    # 'board_height' for boards such as ClimbPro in place of board_width in this context -Mason
     def can_move_up(self, p1):
         return (p1.ref_point >= self.bw
                 and (self.make_bit_string(p1.shape, p1.move_tups[0][0], p1.ref_point-self.bw)
@@ -247,34 +239,5 @@ class Piece:
     # number of colomns in a piece
     def ncols(self):
         return self.shape[1]
-
-
-
-#gs = GState()
-# For backward 'L' block:
-#  ___
-#  | |
-#--  |
-#|   |
-#-----
-#gs.piece_positions[2] = Piece(1, ['foo',(BitVector(bitstring='0101'), BitVector(bitstring='0110')),'foo',(BitVector(bitstring='0110'), BitVector(bitstring='0101'))], (2,2))
-# gs.spaces.extend([1,3])
-""" Some tests may not pop any errors, HOWEVER I don't belive that they are 100 percent correct. - Mason"""
-
-
-"""gs.print_bs()
-gs.move_left(gs.piece_positions[1])
-gs.print_bs()
-gs.move_left(gs.piece_positions[2])
-gs.print_bs()
-gs.move_up(gs.piece_positions[5])
-gs.print_bs()
-gs.move_up(gs.piece_positions[8])
-gs.print_bs()
-#gs.move_down(gs.piece_positions[5]) # SHOULD FAIL
-gs.move_right(gs.piece_positions[7])
-gs.print_bs()
-gs.move_down(gs.piece_positions[4])
-gs.print_bs()"""
 
 

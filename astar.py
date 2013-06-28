@@ -1,12 +1,5 @@
 from heapq import *
-#from ftpuzzle import *
-#import random
-#from  pot_solution import *
-#from gstate import *
-#from board10state import *
 
-#closed = []
-#open = []
 
 def astar_search(start):
     # closed is dictionary mapping boards from get_board() to states
@@ -23,7 +16,7 @@ def astar_search(start):
         # otherwise, add current to closed
         closed[current_node.get_board()] = current_node
         #print current state
-        current_node.print_bs()
+        #current_node.print_bs()
         # check if that was the goal and break if so
         if current_node.is_goal_state():
             print "Found the goal"
@@ -36,22 +29,16 @@ def astar_search(start):
             #print "astar: Found " + str(len(expansions)) + " child nodes"
             #for s in expansions:
             #    s.print_bs()
-            # filter expansions against closed AND open list
-            #closed_boards = map(lambda s: s.get_board(), closed) # compare only boards, since moves could differ
-            #all_boards = map(lambda s: s.get_board(), open)
-            #all_boards.extend(closed_boards)
-            #filtered_expansions = filter(lambda s: s.get_board() not in all_boards, expansions)
             # add filtered expansions to open
             for expansion in expansions:
                 heappush(open, (expansion.get_f(), expansion))
             # continue looping
-            print "Closed has " + str(len(closed)) + " and Open has " + str(len(open))
+            #print "Closed has " + str(len(closed)) + " and Open has " + str(len(open))
     print "At end, Closed has " + str(len(closed)) + " and Open has " + str(len(open))
 
 """
 def fringe_sort(start):
-    now = [start]
-    later = []
+    fringe = [start]
     threshold = start.get_h()
     found = False
     while not found and now != []:  # some test
@@ -67,5 +54,4 @@ def fringe_sort(start):
         except:
             threshold = 
 """
-
 
