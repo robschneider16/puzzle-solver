@@ -69,8 +69,8 @@ ivt_tuples = [(BitVector(bitstring = '010101'), BitVector(bitstring = '000111'))
 
 # declare the goal_state of the board
 global goal_state
-goal_state = {"gpc":[1]} # for Board 10, Variants 11 and 12
-#goal_state = {"gpc":[2]} # for Climb 12, Variant 1
+#goal_state = {"gpc":[1]} # for Board 10, Variants 11 and 12
+goal_state = {"gpc":[2]} # for Climb 12, Variant 1
 
 class SinglePieceGoalState(GState):
 
@@ -105,9 +105,9 @@ v11_layout["fwL"] = [Piece(4, l_tuples, (2,2))]
 v11_layout["1x1"] = [Piece(10, tile_tuples, (1,1)),
                      Piece(12, tile_tuples, (1,1)),
                      Piece(15, tile_tuples, (1,1)),
-                     Piece(21, tile_tuples, (1,1)) ]
+                     Piece(21, tile_tuples, (1,1))]
 v11_layout["2x1"] = [Piece(7, vline_tuples, (2,1)),
-                     Piece(16, vline_tuples, (2,1)) ]
+                     Piece(16, vline_tuples, (2,1))]
 v11_layout["gpc"] = [Piece(13, sqr_tuples, (2,2))]
 v11_layout["bwL"] = [Piece(18, bwl_tuples, (2,2))]
 
@@ -116,9 +116,9 @@ v12_layout["ifL"] = [Piece(12, ifl_tuples, (2,2))]
 v12_layout["1x1"] = [Piece(9, tile_tuples, (1,1)),
                      Piece(14, tile_tuples, (1,1)),
                      Piece(20, tile_tuples, (1,1)),
-                     Piece(23, tile_tuples, (1,1)) ]
+                     Piece(23, tile_tuples, (1,1))]
 v12_layout["2x1"] = [Piece(4, vline_tuples, (2,1)),
-                Piece(15, vline_tuples, (2,1)) ]
+                     Piece(15, vline_tuples, (2,1))]
 v12_layout["gpc"] = [Piece(17, sqr_tuples, (2,2))]
 v12_layout["bwL"] = [Piece(6, bwl_tuples, (2,2))]
 
@@ -131,8 +131,9 @@ climb12_layout = { # on a 6x5 board, with 0,1,3, and 4 blocked off in the first 
     "gpc": [Piece(21, ivt_tuples, (2,3))]}
 
 
-bs = SinglePieceGoalState(v12_layout, space_positions=[1,2,5,6], board_width=4, board_height=6)
-#bs = SinglePieceGoalState(climb12_layout, space_positions=[2,6,7,8], board_width=5, board_height=6)
+# DON'T FORGET TO CHANGE goal_state WHEN CHANGING PROBLEM
+#bs = SinglePieceGoalState(v12_layout, space_positions=[1,2,5,6], board_width=4, board_height=6)
+bs = SinglePieceGoalState(climb12_layout, space_positions=[2,6,7,8], board_width=5, board_height=6)
 astar_search(bs)
 #bs.move_up(bs.piece_positions["1x1"][0])
 #bs.move_down(bs.piece_positions["1x1"][0])

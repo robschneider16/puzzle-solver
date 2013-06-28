@@ -48,27 +48,24 @@ def astar_search(start):
             print "Closed has " + str(len(closed)) + " and Open has " + str(len(open))
     print "At end, Closed has " + str(len(closed)) + " and Open has " + str(len(open))
 
-
 """
-# Board10::Test
-layout = {}
-layout[0] = Piece(4, l_tuples, (2,2))
-layout[1] = Piece(10, tile_tuples, (1,1))
-layout[2] = Piece(7, line_tuples, (2,1))
-layout[3] = Piece(12, tile_tuples, (1,1))
-layout[4] = Piece(13, sqr_tuples, (2,2))
-layout[5] = Piece(15, tile_tuples, (1,1))
-layout[6] = Piece(16, line_tuples, (2,1))
-layout[7] = Piece(21, tile_tuples, (1,1))
-layout[8] = Piece(18, bwl_tuples, (2,2))
-bs = Board10State(layout)
-astar_search(bs)"""
-"""gs = GState()
-#start_state = pot_solution(shuffle_moves=50)
-#start_state = pot_solution([4,5,3,1,0,2,6,7,8])
-#start_state = pot_solution([4,1,10,3,5,6,15,0,8,2,14,7,12,9,13,11])
-print "Starting with:"
-#gs.print_bs()
-#start_state.print_bs()
-astar_search(gs)
-#gs.print_bs()"""
+def fringe_sort(start):
+    now = [start]
+    later = []
+    threshold = start.get_h()
+    found = False
+    while not found and now != []:  # some test
+        for node in now:
+        children = node.expand()
+        for child in children:
+            if child.get_f() < threshold:
+                heappush(now, (child.get_f(), child))
+            else:
+                heappush(later, (child.get_f(), child))
+        try:
+            head = heappop(now)
+        except:
+            threshold = 
+"""
+
+
