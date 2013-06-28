@@ -160,9 +160,8 @@ class GState:
         new_positions[piece_type] = copy.copy(self.piece_positions[piece_type])
         new_positions[piece_type][new_positions[piece_type].index(piece)] = new_piece
         new_state.piece_positions = new_positions
-        new_spaces = copy.copy(self.spaces)
-        new_state.spaces = new_spaces
-        return (new_state, new_piece)
+        new_state.spaces = copy.copy(self.spaces)
+        return new_state
 
     def one_piece_one_step_moves(self,k,p):
         part_possible_moves = []
@@ -170,25 +169,25 @@ class GState:
         if self.can_move_up(p):
             #print "can move up " + k + ":" + str(p.ref_point) + " in board:"
             #self.print_bs()
-            ns = copy.deepcopy(self)
+            ns = self.custom_copy(k,p)
             ns.move_up(ns.piece_positions[k][self.piece_positions[k].index(p)])
             part_possible_moves.append(ns)
         if self.can_move_right(p):
             #print "can move right " + k + ":" + str(p.ref_point) + " in board:"
             #self.print_bs()
-            ns = copy.deepcopy(self)
+            ns = self.custom_copy(k,p)
             ns.move_right(ns.piece_positions[k][self.piece_positions[k].index(p)])
             part_possible_moves.append(ns)
         if self.can_move_down(p):
             #print "can move down " + k + ":" + str(p.ref_point) + " in board:"
             #self.print_bs()
-            ns = copy.deepcopy(self)
+            ns = self.custom_copy(k,p)
             ns.move_down(ns.piece_positions[k][self.piece_positions[k].index(p)])
             part_possible_moves.append(ns)
         if self.can_move_left(p):
             #print "can move left " + k + ":" + str(p.ref_point) + " in board:"
             #self.print_bs()
-            ns = copy.deepcopy(self)
+            ns = self.custom_copy(k,p)
             ns.move_left(ns.piece_positions[k][self.piece_positions[k].index(p)])
             part_possible_moves.append(ns)
         return part_possible_moves

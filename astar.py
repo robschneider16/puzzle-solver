@@ -48,6 +48,7 @@ def astar_search(start):
             print "Closed has " + str(len(closed)) + " and Open has " + str(len(open))
     print "At end, Closed has " + str(len(closed)) + " and Open has " + str(len(open))
 
+
 """
 # Board10::Test
 layout = {}
