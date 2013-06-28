@@ -1,7 +1,7 @@
 from BitVector import *
 from gstate import *
 from astar import *
-
+from drawer import artist
 global tile_tuples # still for 1x1 blocks/tiles
 #
 #---
@@ -97,7 +97,9 @@ class SinglePieceGoalState(GState):
         return some_sum # confident h is admissible (and consistent)
 
     def is_goal_state(self):
+        my_artist.draw_state(self.piece_positions)
         return self.piece_positions["gpc"][0].ref_point == goal_state["gpc"][0]
+
 
 
 v11_layout = {}
@@ -134,6 +136,8 @@ climb12_layout = { # on a 6x5 board, with 0,1,3, and 4 blocked off in the first 
 # DON'T FORGET TO CHANGE goal_state WHEN CHANGING PROBLEM
 #bs = SinglePieceGoalState(v12_layout, space_positions=[1,2,5,6], board_width=4, board_height=6)
 bs = SinglePieceGoalState(climb12_layout, space_positions=[2,6,7,8], board_width=5, board_height=6)
+my_artist = artist(bs)
+#my_artist.draw_state(bs)
 astar_search(bs)
 #bs.move_up(bs.piece_positions["1x1"][0])
 #bs.move_down(bs.piece_positions["1x1"][0])
