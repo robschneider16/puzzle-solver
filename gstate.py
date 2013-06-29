@@ -223,14 +223,20 @@ class GState:
 
 
 class Piece:
+    piece_id_counter = 0
     #self.ref_point # a reference location for where this piece is located on the board
     #self.move_tups # a pointer to the move tuples for this type
     #self.shape # a tuple with the row and column dimensions
 
-    def __init__(self, reference_point, move_tuples=None, block_shape=(1,1), label=None):
+    def __init__(self, reference_point, move_tuples=None, block_shape=(1,1), label=None, pid=None):
         self.ref_point = reference_point
         self.move_tups = move_tuples
         self.shape = block_shape
+        if pid:
+            self.id = pid
+        else:
+            self.id = Piece.piece_id_counter
+            Piece.piece_id_counter += 1
 
     # number of rows in a piece
     def nrows(self):

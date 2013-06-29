@@ -69,8 +69,8 @@ ivt_tuples = [(BitVector(bitstring = '010101'), BitVector(bitstring = '000111'))
 
 # declare the goal_state of the board
 global goal_state
-#goal_state = {"gpc":[1]} # for Board 10, Variants 11 and 12
-goal_state = {"gpc":[2]} # for Climb 12, Variant 1
+goal_state = {"gpc":[1]} # for Board 10, Variants 11 and 12
+#goal_state = {"gpc":[2]} # for Climb 12, Variant 1
 
 class SinglePieceGoalState(GState):
 
@@ -97,46 +97,52 @@ class SinglePieceGoalState(GState):
         return some_sum # confident h is admissible (and consistent)
 
     def is_goal_state(self):
-        my_artist.draw_state(self.piece_positions)
+        #my_artist.draw_state(self.piece_positions)
         return self.piece_positions["gpc"][0].ref_point == goal_state["gpc"][0]
 
 
 
 v11_layout = {}
-v11_layout["fwL"] = [Piece(4, l_tuples, (2,2))]
-v11_layout["1x1"] = [Piece(10, tile_tuples, (1,1)),
-                     Piece(12, tile_tuples, (1,1)),
-                     Piece(15, tile_tuples, (1,1)),
-                     Piece(21, tile_tuples, (1,1))]
-v11_layout["2x1"] = [Piece(7, vline_tuples, (2,1)),
-                     Piece(16, vline_tuples, (2,1))]
-v11_layout["gpc"] = [Piece(13, sqr_tuples, (2,2))]
-v11_layout["bwL"] = [Piece(18, bwl_tuples, (2,2))]
+v11_layout["gpc"] = [Piece(13, sqr_tuples, (2,2), pid=0)]
+v11_layout["fwL"] = [Piece(4, l_tuples, (2,2), pid=1)]
+v11_layout["1x1"] = [Piece(10, tile_tuples, (1,1), pid=2),
+                     Piece(12, tile_tuples, (1,1), pid=3),
+                     Piece(15, tile_tuples, (1,1), pid=4),
+                     Piece(21, tile_tuples, (1,1), pid=5)]
+v11_layout["2x1"] = [Piece(7, vline_tuples, (2,1), pid=6),
+                     Piece(16, vline_tuples, (2,1), pid=7)]
+v11_layout["bwL"] = [Piece(18, bwl_tuples, (2,2), pid=8)]
 
 v12_layout = {}
-v12_layout["ifL"] = [Piece(12, ifl_tuples, (2,2))]
-v12_layout["1x1"] = [Piece(9, tile_tuples, (1,1)),
-                     Piece(14, tile_tuples, (1,1)),
-                     Piece(20, tile_tuples, (1,1)),
-                     Piece(23, tile_tuples, (1,1))]
-v12_layout["2x1"] = [Piece(4, vline_tuples, (2,1)),
-                     Piece(15, vline_tuples, (2,1))]
-v12_layout["gpc"] = [Piece(17, sqr_tuples, (2,2))]
-v12_layout["bwL"] = [Piece(6, bwl_tuples, (2,2))]
+v12_layout["gpc"] = [Piece(17, sqr_tuples, (2,2), pid=0)]
+v12_layout["ifL"] = [Piece(12, ifl_tuples, (2,2), pid=1)]
+v12_layout["1x1"] = [Piece(9, tile_tuples, (1,1), pid=2),
+                     Piece(14, tile_tuples, (1,1), pid=3),
+                     Piece(20, tile_tuples, (1,1), pid=4),
+                     Piece(23, tile_tuples, (1,1), pid=5)]
+v12_layout["2x1"] = [Piece(4, vline_tuples, (2,1), pid=6),
+                     Piece(15, vline_tuples, (2,1), pid=7)]
+v12_layout["bwL"] = [Piece(6, bwl_tuples, (2,2), pid=8)]
 
 climb12_layout = { # on a 6x5 board, with 0,1,3, and 4 blocked off in the first row
-    "ifL": [Piece(11, ifl_tuples, (2,2))],
-    "1x1": [Piece(15, tile_tuples, (1,1)), Piece(19, tile_tuples, (1,1)), Piece(25, tile_tuples, (1,1)), Piece(29, tile_tuples, (1,1))],
-    "2x1": [Piece(5, vline_tuples, (2,1)), Piece(9, vline_tuples, (2,1))],
-    "bwL": [Piece(12, bwl_tuples, (2,2))],
-    "1x2": [Piece(20, hline_tuples, (1,2)), Piece(23, hline_tuples, (1,2))],
-    "gpc": [Piece(21, ivt_tuples, (2,3))]}
+    "gpc": [Piece(21, ivt_tuples, (2,3), pid=0)],
+    "ifL": [Piece(11, ifl_tuples, (2,2), pid=1)],
+    "1x1": [Piece(15, tile_tuples, (1,1), pid=2),
+            Piece(19, tile_tuples, (1,1), pid=3),
+            Piece(25, tile_tuples, (1,1), pid=4),
+            Piece(29, tile_tuples, (1,1), pid=5)],
+    "2x1": [Piece(5, vline_tuples, (2,1), pid=6),
+            Piece(9, vline_tuples, (2,1), pid=7)],
+    "bwL": [Piece(12, bwl_tuples, (2,2), pid=8)],
+    "1x2": [Piece(20, hline_tuples, (1,2), pid=9),
+            Piece(23, hline_tuples, (1,2), pid=10)]
+    }
 
 
 # DON'T FORGET TO CHANGE goal_state WHEN CHANGING PROBLEM
 
-#bs = SinglePieceGoalState(v12_layout, space_positions=[1,2,5,6], board_width=4, board_height=6)
-bs = SinglePieceGoalState(climb12_layout, space_positions=[2,6,7,8], board_width=5, board_height=6)
-my_artist = artist(bs)
+bs = SinglePieceGoalState(v12_layout, space_positions=[1,2,5,6], board_width=4, board_height=6)
+#bs = SinglePieceGoalState(climb12_layout, space_positions=[2,6,7,8], board_width=5, board_height=6)
+#my_artist = artist(bs)
 #my_artist.draw_state(bs)
 astar_search(bs)

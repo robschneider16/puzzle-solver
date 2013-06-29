@@ -6,7 +6,8 @@ shapes = {} #move to shape profiles file
 shapes["fwL"] = [[0,0],[0,1],[1,1],]
 shapes["1x1"] = [[0,0]]
 shapes["2x1"] = [[0,0],[0,1]]
-shapes["gpc"] = [[1,0],[0,1],[1,1],[2,1]]
+#shapes["gpc"] = [[1,0],[0,1],[1,1],[2,1]]
+shapes["gpc"] = [[0,0],[0,1],[1,0],[1,1]]
 shapes["bwL"] = [[1,0],[1,1],[0,1]]
 shapes["ifL"] = [[0,0],[1,0],[0,1]]
 shapes["1x2"] = [[0,0],[1,0]]
@@ -38,7 +39,7 @@ class artist:
         color_wheel = self.set_colors()
         for k, v in pp.iteritems():
             for p in v:
-                self.draw_piece(k, p.ref_point, color_wheel.pop())
+                self.draw_piece(k, p.ref_point, color_wheel[p.id])
         self.win.getMouse()
         self.new_window()
 
