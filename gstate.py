@@ -74,41 +74,45 @@ class GState:
             bv[space] = 1
         return bv
 
-    def can_move_left(self, p1):
-        return (p1.ref_point%self.bw > 0 # if true, p1.ref_point-1 below will not wrap
-                and (self.make_bit_string(p1.shape, p1.move_tups[3][0], p1.ref_point-1)
-                     == (self.make_bit_string(p1.shape, p1.move_tups[3][0], p1.ref_point-1)
-                         & self.make_space_bit_string())))
+    def can_move_left(self, p1, space_bit_string):
+        if p1.ref_point%self.bw <= 0: # off board to left
+            return False
+        else:
+            lbs = self.make_bit_string(p1.shape, p1.move_tups[3][0], p1.ref_point-1)
+            return (lbs == (lbs & space_bit_string))
 
     def move_left(self, p1):
         self.swap(p1, -1, p1.move_tups[3])
         self.nmoves += 1
 
-    def can_move_right(self, p1):
-        return ((p1.ref_point%self.bw < self.bw-p1.ncols()) # not in danger of going off the board
-                and (self.make_bit_string(p1.shape, p1.move_tups[1][0], p1.ref_point+1)
-                     == (self.make_bit_string(p1.shape, p1.move_tups[1][0], p1.ref_point+1)
-                         & self.make_space_bit_string())))
+    def can_move_right(self, p1, space_bit_string):
+        if (p1.ref_point%self.bw >= self.bw-p1.ncols()): # about to go off the board
+            False
+        else:
+            lbs = self.make_bit_string(p1.shape, p1.move_tups[1][0], p1.ref_point+1)
+            return (lbs == (lbs & space_bit_string))
 
     def move_right(self, p1):
         self.swap(p1, +1, p1.move_tups[1])
         self.nmoves += 1
 
-    def can_move_up(self, p1):
-        return (p1.ref_point >= self.bw
-                and (self.make_bit_string(p1.shape, p1.move_tups[0][0], p1.ref_point-self.bw)
-                     == (self.make_bit_string(p1.shape, p1.move_tups[0][0], p1.ref_point-self.bw)
-                         & self.make_space_bit_string())))
+    def can_move_up(self, p1, space_bit_string):
+        if (p1.ref_point < self.bw): # about to go off top
+            return False
+        else:
+            lbs = self.make_bit_string(p1.shape, p1.move_tups[0][0], p1.ref_point-self.bw)
+            return (lbs == (lbs & space_bit_string))
 
     def move_up(self, p1):
         self.swap(p1, -self.bw, p1.move_tups[0])
         self.nmoves += 1
 
-    def can_move_down(self, p1):
-        return ((p1.ref_point) < self.bsz - (self.bw * p1.nrows())
-                and (self.make_bit_string(p1.shape, p1.move_tups[2][0], p1.ref_point+self.bw)
-                     == (self.make_bit_string(p1.shape, p1.move_tups[2][0], p1.ref_point+self.bw)
-                         & self.make_space_bit_string())))
+    def can_move_down(self, p1, space_bit_string):
+        if (p1.ref_point) >= self.bsz - (self.bw * p1.nrows()): # about to go off bottom
+            return False
+        else:
+            lbs = self.make_bit_string(p1.shape, p1.move_tups[2][0], p1.ref_point+self.bw)
+            return (lbs == (lbs & space_bit_string))
 
     def move_down(self, p1):
         self.swap(p1, +self.bw, p1.move_tups[2])
@@ -158,25 +162,26 @@ class GState:
     def one_piece_one_step_moves(self,k,p):
         part_possible_moves = []
         #print "all_available_moves: processing piece at ref_point: " + str(p.ref_point)
-        if self.can_move_up(p):
+        sbs = self.make_space_bit_string()
+        if self.can_move_up(p,sbs):
             #print "can move up " + k + ":" + str(p.ref_point) + " in board:"
             #self.print_bs()
             ns = self.custom_copy(k,p)
             ns.move_up(ns.piece_positions[k][self.piece_positions[k].index(p)])
             part_possible_moves.append(ns)
-        if self.can_move_right(p):
+        if self.can_move_right(p,sbs):
             #print "can move right " + k + ":" + str(p.ref_point) + " in board:"
             #self.print_bs()
             ns = self.custom_copy(k,p)
             ns.move_right(ns.piece_positions[k][self.piece_positions[k].index(p)])
             part_possible_moves.append(ns)
-        if self.can_move_down(p):
+        if self.can_move_down(p,sbs):
             #print "can move down " + k + ":" + str(p.ref_point) + " in board:"
             #self.print_bs()
             ns = self.custom_copy(k,p)
             ns.move_down(ns.piece_positions[k][self.piece_positions[k].index(p)])
             part_possible_moves.append(ns)
-        if self.can_move_left(p):
+        if self.can_move_left(p,sbs):
             #print "can move left " + k + ":" + str(p.ref_point) + " in board:"
             #self.print_bs()
             ns = self.custom_copy(k,p)

@@ -36,22 +36,33 @@ def astar_search(start):
             #print "Closed has " + str(len(closed)) + " and Open has " + str(len(open))
     print "At end, Closed has " + str(len(closed)) + " and Open has " + str(len(open))
 
-"""
-def fringe_sort(start):
-    fringe = [start]
-    threshold = start.get_h()
-    found = False
-    while not found and now != []:  # some test
-        for node in now:
-        children = node.expand()
-        for child in children:
-            if child.get_f() < threshold:
-                heappush(now, (child.get_f(), child))
-            else:
-                heappush(later, (child.get_f(), child))
-        try:
-            head = heappop(now)
-        except:
-            threshold = 
-"""
+def fringe_search(start):
+    """
+    As a first cut, this implement a fringe-like breadth-first search.
+    No sorting, expanding evenly across all states of a given number of prior moves
+    """
+    prev_fringe = {}
+    current_fringe = {hash(start.get_board()): start}
+    fringe_count = 0
+    goal_node = False
+    while not goal_node and current_fringe != []:
+        fringe_count += 1
+        print "Fringe " + str(fringe_count) + ": holding " + str(len(current_fringe)) + " search nodes"
+        next_fringe = {}
+        for bshsh, node in current_fringe.iteritems():
+            if node.is_goal_state():
+                goal_node = node
+                break
+            children = node.expand()
+            for child in children:
+                child_bshsh = hash(child.get_board())
+                if ((child_bshsh not in prev_fringe) and (child_bshsh not in current_fringe) and (child_bshsh not in next_fringe)):
+                    next_fringe[child_bshsh] = child
+        prev_fringe = current_fringe
+        current_fringe = next_fringe
+    if goal_node:
+        print "Found the goal"
+        goal_node.print_bs()
+    else:
+        print "No solution found"
 
