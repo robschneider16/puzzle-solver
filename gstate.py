@@ -40,7 +40,7 @@ class GState:
         self.spaces = space_positions
         self.nmoves = prior_moves
         self.dir_deltas = [-board_width, 1, board_width, -1] # appropriate delta for each move directions starting with up and clockwise
-        self.prev_state = previous_state
+        self.prev_state = previous_state # for extracting sequence of moves for the solution
 
     def get_g(self):
         return self.nmoves
@@ -66,65 +66,26 @@ class GState:
         board += "]"
         return board
 
-    def make_bit_string(self, piece_shape, mask, ref_point, increment=0):
-        bv = BitVector(size = self.bsz) # make full board bv
-        # use piece ref_point and tuple to overlay the mask from the piece
-        for i in range(piece_shape[0]):
-            leftslice = ref_point+(i*self.bw) # left edge placement of the Piece mask
-            bv[leftslice:leftslice+piece_shape[1]] = mask[i*piece_shape[1]:(i*piece_shape[1])+piece_shape[1]]
-        #print "make_bit_string: for pc at " + str(ref_point) + " with bw=" + str(self.bw) + ", resulting bv = " + str(bv)
-        return bv
-
-    # Only spaces move, thus spaces are not represented as Pieces
-    def make_space_bit_string(self):
-        bv = BitVector(size = self.bsz)
-        for space in self.spaces:
-            bv[space] = 1
-        return bv
-
-    def can_move_left(self, p1, space_bit_string):
-        if p1.ref_point%self.bw <= 0: # off board to left
+    def can_move(self, p1, mov_tup_index, delta):
+        """
+        Determine if the given piece, p1, can move in the direction given by mov_tup_index,
+        with 0 meaning 'up' and working clockwise as with the move tuples.
+        """
+        moved_rp = p1.ref_point + delta
+        if ((moved_rp >= 0) and (moved_rp < self.bsz) and
+            ((p1.ref_point/self.bw == moved_rp/self.bw) or (p1.ref_point%self.bw == moved_rp%self.bw))):
+            for s in map(lambda i: self.base_to_ref(i, delta, p1), p1.move_tups[mov_tup_index][0]):
+                if s not in self.spaces:
+                    return False
+            return True
+        else:
             return False
-        else:
-            lbs = self.make_bit_string(p1.shape, p1.move_tups[3][0], p1.ref_point-1)
-            return (lbs == (lbs & space_bit_string))
 
-    def move_left(self, p1):
-        self.swap(p1, -1, p1.move_tups[3])
+    def move(self, p1, move_tup_index):
+        self.swap(p1, self.dir_deltas[move_tup_index], p1.move_tups[move_tup_index])
         self.nmoves += 1
 
-    def can_move_right(self, p1, space_bit_string):
-        if (p1.ref_point%self.bw >= self.bw-p1.ncols()): # about to go off the board
-            False
-        else:
-            lbs = self.make_bit_string(p1.shape, p1.move_tups[1][0], p1.ref_point+1)
-            return (lbs == (lbs & space_bit_string))
 
-    def move_right(self, p1):
-        self.swap(p1, +1, p1.move_tups[1])
-        self.nmoves += 1
-
-    def can_move_up(self, p1, space_bit_string):
-        if (p1.ref_point < self.bw): # about to go off top
-            return False
-        else:
-            lbs = self.make_bit_string(p1.shape, p1.move_tups[0][0], p1.ref_point-self.bw)
-            return (lbs == (lbs & space_bit_string))
-
-    def move_up(self, p1):
-        self.swap(p1, -self.bw, p1.move_tups[0])
-        self.nmoves += 1
-
-    def can_move_down(self, p1, space_bit_string):
-        if (p1.ref_point) >= self.bsz - (self.bw * p1.nrows()): # about to go off bottom
-            return False
-        else:
-            lbs = self.make_bit_string(p1.shape, p1.move_tups[2][0], p1.ref_point+self.bw)
-            return (lbs == (lbs & space_bit_string))
-
-    def move_down(self, p1):
-        self.swap(p1, +self.bw, p1.move_tups[2])
-        self.nmoves += 1
 
     # s is the space
     # p is a piece
@@ -136,27 +97,14 @@ class GState:
     # p is a Piece; delta is either -1 for left, +1 for right, -board_width for up,
     # and +board_width for down; which_move_tups is the bitmask tuple for the appropriae move direction
     def swap(self, p, delta, which_move_tups):
-        """Swap all the spaces from spots to be occupied as given in the precondition BitVector
-        to the corresponding spots in the postcondition BitVector"""
-        # list of bits
-        prespaces = []
-        postspaces = []
-        for i in range(p.nrows()*p.ncols()):
-            if which_move_tups[0][i] == 1:
-                prespaces.append(i)
-            if which_move_tups[1][i] == 1:
-                postspaces.append(i)
-        space_tuples = zip(prespaces, postspaces)
-        #print "swap space_tuples: " + str(space_tuples)
-        # Need to do this for each part of the piece mask
-        for space_tuple in space_tuples:
-            prelocation = self.base_to_ref(space_tuple[0], delta, p)
-            postlocation = self.base_to_ref(space_tuple[1], 0, p)
-            #print "swap: preloc = " + str(prelocation) + ", postloc = " + str(postlocation)
-            space_index = self.spaces.index(prelocation)
-            self.spaces[space_index] = postlocation
+        for space_tuple in zip(which_move_tups[0],which_move_tups[1]):
+            preloc = self.base_to_ref(space_tuple[0], delta, p)
+            postloc = self.base_to_ref(space_tuple[1], 0, p)
+            space_index = self.spaces.index(preloc)
+            self.spaces[space_index] = postloc
         p.ref_point += delta
 
+    # only copy the part of the state relevant to the piece being moved and the spaces
     def custom_copy(self, piece_type, piece):
         new_state = copy.copy(self)
         new_piece = copy.copy(piece)
@@ -169,32 +117,11 @@ class GState:
 
     def one_piece_one_step_moves(self,k,p):
         part_possible_moves = []
-        #print "all_available_moves: processing piece at ref_point: " + str(p.ref_point)
-        sbs = self.make_space_bit_string()
-        if self.can_move_up(p,sbs):
-            #print "can move up " + k + ":" + str(p.ref_point) + " in board:"
-            #self.print_bs()
-            ns = self.custom_copy(k,p)
-            ns.move_up(ns.piece_positions[k][self.piece_positions[k].index(p)])
-            part_possible_moves.append(ns)
-        if self.can_move_right(p,sbs):
-            #print "can move right " + k + ":" + str(p.ref_point) + " in board:"
-            #self.print_bs()
-            ns = self.custom_copy(k,p)
-            ns.move_right(ns.piece_positions[k][self.piece_positions[k].index(p)])
-            part_possible_moves.append(ns)
-        if self.can_move_down(p,sbs):
-            #print "can move down " + k + ":" + str(p.ref_point) + " in board:"
-            #self.print_bs()
-            ns = self.custom_copy(k,p)
-            ns.move_down(ns.piece_positions[k][self.piece_positions[k].index(p)])
-            part_possible_moves.append(ns)
-        if self.can_move_left(p,sbs):
-            #print "can move left " + k + ":" + str(p.ref_point) + " in board:"
-            #self.print_bs()
-            ns = self.custom_copy(k,p)
-            ns.move_left(ns.piece_positions[k][self.piece_positions[k].index(p)])
-            part_possible_moves.append(ns)
+        for i in range(4):
+            if self.can_move(p,i,self.dir_deltas[i]):
+                ns = self.custom_copy(k,p)
+                ns.move(ns.piece_positions[k][self.piece_positions[k].index(p)], i)
+                part_possible_moves.append(ns)
         return part_possible_moves
 
     def all_available_moves(self):
@@ -219,7 +146,7 @@ class GState:
         just_moves = []
         for k, m in possible_moves.iteritems():
             m.nmoves = self.nmoves + 1
-            m.prev_state = self
+            #m.prev_state = self # if want the actual solution
             just_moves.append(m)
         return just_moves
 

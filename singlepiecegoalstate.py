@@ -1,76 +1,11 @@
 import cProfile
 
-from BitVector import *
-from ngstate import *
+from gstate import *
 from astar import *
 from drawer import artist
 
-#
-#---
-#| |
-#---
-#
-tile_tuples = [(BitVector(bitstring = '1'), BitVector(bitstring = '1')),
-               (BitVector(bitstring = '1'), BitVector(bitstring = '1')),
-               (BitVector(bitstring = '1'), BitVector(bitstring = '1')),
-               (BitVector(bitstring = '1'), BitVector(bitstring = '1'))]
-
-#---
-#| |
-#---
-# backward-'L'
-bwl_tuples = [(BitVector(bitstring = '0110'), BitVector(bitstring = '0011')),
-              (BitVector(bitstring = '0101'), BitVector(bitstring = '0110')),
-              (BitVector(bitstring = '0011'), BitVector(bitstring = '0110')),
-              (BitVector(bitstring = '0110'), BitVector(bitstring = '0101'))]
-
-#---
-#| |
-#---
-# forward-'L'
-l_tuples = [(BitVector(bitstring = '1001'), BitVector(bitstring = '0011')), 
-            (BitVector(bitstring = '1001'), BitVector(bitstring = '1010')),
-            (BitVector(bitstring = '0011'), BitVector(bitstring = '1001')),
-            (BitVector(bitstring = '1010'), BitVector(bitstring = '1001'))]
-
-# inverted-(forward)-'L'
-ifl_tuples = [(BitVector(bitstring = '1100'), BitVector(bitstring = '0110')), 
-              (BitVector(bitstring = '0110'), BitVector(bitstring = '1010')),
-              (BitVector(bitstring = '0110'), BitVector(bitstring = '1100')),
-              (BitVector(bitstring = '1010'), BitVector(bitstring = '0110'))]
-
-#---
-#| |
-#---
-# 2x2 square block
-sqr_tuples = [(BitVector(bitstring = '1100'), BitVector(bitstring = '0011')),
-              (BitVector(bitstring = '0101'), BitVector(bitstring = '1010')),
-              (BitVector(bitstring = '0011'), BitVector(bitstring = '1100')),
-              (BitVector(bitstring = '1010'), BitVector(bitstring = '0101'))]
-
-#---
-#| |
-#---
-# vertical 2x1 block
-vline_tuples = [(BitVector(bitstring = '10'), BitVector(bitstring = '01')),
-                (BitVector(bitstring = '11'), BitVector(bitstring = '11')),
-                (BitVector(bitstring = '01'), BitVector(bitstring = '10')),
-                (BitVector(bitstring = '11'), BitVector(bitstring = '11'))]
-
-# horizontal 1x2 block
-hline_tuples = [(BitVector(bitstring = '11'), BitVector(bitstring = '11')),
-                (BitVector(bitstring = '01'), BitVector(bitstring = '10')),
-                (BitVector(bitstring = '11'), BitVector(bitstring = '11')),
-                (BitVector(bitstring = '10'), BitVector(bitstring = '01'))]
-
-# inverted-'T' 2x3 block
-ivt_tuples = [(BitVector(bitstring = '010101'), BitVector(bitstring = '000111')),
-              (BitVector(bitstring = '010001'), BitVector(bitstring = '010100')),
-              (BitVector(bitstring = '000111'), BitVector(bitstring = '010101')),
-              (BitVector(bitstring = '010100'), BitVector(bitstring = '010001'))]
 
 # declare the goal_state of the board
-global goal_state
 goal_state = {"gpc":[1]} # for Board 10, Variants 11 and 12
 #goal_state = {"gpc":[2]} # for Climb 12, Variant 1
 
@@ -162,16 +97,6 @@ v12_layout["2x1"] = [Piece(4, b2x1, (2,1), pid=6),
                      Piece(15, b2x1, (2,1), pid=7)]
 v12_layout["bwL"] = [Piece(6, bwL, (2,2), pid=8)]
 
-OLD_v12_layout = {"gpc": [Piece(17, sqr_tuples, (2,2), pid=0)],
-                  "ifL": [Piece(12, ifl_tuples, (2,2), pid=1)],
-                  "1x1": [Piece(9, tile_tuples, (1,1), pid=2),
-                          Piece(14, tile_tuples, (1,1), pid=3),
-                          Piece(20, tile_tuples, (1,1), pid=4),
-                          Piece(23, tile_tuples, (1,1), pid=5)],
-                  "2x1": [Piece(4, vline_tuples, (2,1), pid=6),
-                          Piece(15, vline_tuples, (2,1), pid=7)],
-                  "bwL": [Piece(6, bwl_tuples, (2,2), pid=8)]}
-
 climb12_layout = { # on a 6x5 board, with 0,1,3, and 4 blocked off in the first row
     "gpc": [Piece(21, ivT, (2,3), pid=0)],
     "ifL": [Piece(11, ifL, (2,2), pid=1)],
@@ -189,7 +114,7 @@ climb12_layout = { # on a 6x5 board, with 0,1,3, and 4 blocked off in the first 
 
 # DON'T FORGET TO CHANGE goal_state WHEN CHANGING PROBLEM
 
-bs = SinglePieceGoalState(OLD_v12_layout, space_positions=[1,2,5,6], board_width=4, board_height=6)
+bs = SinglePieceGoalState(v12_layout, space_positions=[1,2,5,6], board_width=4, board_height=6)
 #bs = SinglePieceGoalState(climb12_layout, space_positions=[2,6,7,8], board_width=5, board_height=6)
 #my_artist = artist(bs)
 #my_artist.draw_state(bs)
