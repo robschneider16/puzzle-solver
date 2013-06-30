@@ -2,16 +2,21 @@
 from BitVector import *
 import copy
 
+b1x1 = [([0],[0]),
+        ([0],[0]),
+        ([0],[0]),
+        ([0],[0])]
 
 # each tuple (for up, right, down and left, respectively) has a precondition for the space's location
 # relative to the direction of the intended move (i.e., where the space must be if this block moves)
 # and a post condition for where the space ends up (given the CURRENT ref_point of the block prior to move)
-global tile_tuples # for 1x1 blocks/tiles
+#global tile_tuples # for 1x1 blocks/tiles
+"""
 tile_tuples = [ ( BitVector(bitstring = '1'), BitVector(bitstring = '1') ),
                 ( BitVector(bitstring = '1'), BitVector(bitstring = '1') ),
                 ( BitVector(bitstring = '1'), BitVector(bitstring = '1') ),
                 ( BitVector(bitstring = '1'), BitVector(bitstring = '1') ) ]
-
+"""
 
 # A generic-state (gstate) supports the representation of puzzle boards
 # having pieces of arbitrary shape and the movement of those pieces.
@@ -27,12 +32,13 @@ class GState:
             layout = {}
             # default: N-by-N puzzle
             for i in range(1,self.bsz):
-                layout[str(i)] = [Piece(i, tile_tuples)]
+                layout[str(i)] = [Piece(i, b1x1)]
             self.piece_positions = layout
         else:
             self.piece_positions = positions
         self.spaces = space_positions
         self.nmoves = prior_moves
+        self.dir_deltas = [-board_width, 1, board_width, -1] # appropriate delta for each move directions starting with up and clockwise
 
     def get_g(self):
         return self.nmoves

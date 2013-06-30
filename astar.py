@@ -6,17 +6,22 @@ def astar_search(start):
     closed = {}
     open = []
     heappush(open, (start.get_f(), start))
-    while open:
+    dcount = 0
+    while open and dcount < 10:
+        dcount += 1
         # set current to best of open
         current_node = heappop(open)[1]
         # if previously considered and this doesn't look to be any better, skip to next on open
         if current_node.get_board() in closed:
+            print "board in closed, ... checking get_f()"
             if current_node.get_f() >= closed[current_node.get_board()].get_f():
+                print "continuing"
                 continue
         # otherwise, add current to closed
         closed[current_node.get_board()] = current_node
         #print current state
-        #current_node.print_bs()
+        print "Current:"
+        current_node.print_bs()
         # check if that was the goal and break if so
         if current_node.is_goal_state():
             print "Found the goal"
@@ -26,14 +31,15 @@ def astar_search(start):
             #print "astar: Expanding"
             # expand that node
             expansions = current_node.expand()
-            #print "astar: Found " + str(len(expansions)) + " child nodes"
-            #for s in expansions:
-            #    s.print_bs()
+            print "Expanded " + str(len(expansions)) + " child nodes"
+            for s in expansions:
+                s.print_bs()
             # add filtered expansions to open
             for expansion in expansions:
                 heappush(open, (expansion.get_f(), expansion))
             # continue looping
             #print "Closed has " + str(len(closed)) + " and Open has " + str(len(open))
+            print ""
     print "At end, Closed has " + str(len(closed)) + " and Open has " + str(len(open))
 
 def fringe_search(start):
