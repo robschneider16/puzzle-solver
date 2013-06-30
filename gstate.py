@@ -23,7 +23,8 @@ tile_tuples = [ ( BitVector(bitstring = '1'), BitVector(bitstring = '1') ),
 class GState:
 
     def __init__(self, positions=None, prior_moves=0, space_positions=[0],
-                 board_width=3, board_height=3):
+                 board_width=3, board_height=3,
+                 previous_state=None):
         #last_moved_piece = 
         self.bw = board_width
         self.bh = board_height
@@ -39,6 +40,7 @@ class GState:
         self.spaces = space_positions
         self.nmoves = prior_moves
         self.dir_deltas = [-board_width, 1, board_width, -1] # appropriate delta for each move directions starting with up and clockwise
+        self.prev_state = previous_state
 
     def get_g(self):
         return self.nmoves
@@ -217,6 +219,7 @@ class GState:
         just_moves = []
         for k, m in possible_moves.iteritems():
             m.nmoves = self.nmoves + 1
+            m.prev_state = self
             just_moves.append(m)
         return just_moves
 

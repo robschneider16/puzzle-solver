@@ -3,11 +3,15 @@ from gstate import *
 class NGState(GState):
 
     def can_move(self, p1, mov_tup_index, delta):
-        for s in map(lambda i: self.base_to_ref(i, delta, p1), p1.move_tups[mov_tup_index][0]):
-            if s not in self.spaces:
-                return False
-        #print "can_move: piece " + str(p1.id) + ", in dir " + str(delta)
-        return True
+        moved_rp = p1.ref_point + delta
+        if ((moved_rp >= 0) and (moved_rp < self.bsz) and
+            ((p1.ref_point/self.bw == moved_rp/self.bw) or (p1.ref_point%self.bw == moved_rp%self.bw))):
+            for s in map(lambda i: self.base_to_ref(i, delta, p1), p1.move_tups[mov_tup_index][0]):
+                if s not in self.spaces:
+                    return False
+            return True
+        else:
+            return False
 
     def move(self, p1, move_tup_index):
         self.swap(p1, self.dir_deltas[move_tup_index], p1.move_tups[move_tup_index])
