@@ -118,7 +118,7 @@ bs = SinglePieceGoalState(v12_layout, space_positions=[1,2,5,6], board_width=4, 
 
 #my_artist = artist(bs)
 #my_artist.draw_state(bs)
-#astar_search(bs)
-fringe_search(bs)
+astar_search(bs)
+#fringe_search(bs)
 #cProfile.run('fringe_search(bs)')
 

@@ -137,6 +137,7 @@ class GState:
                     filtered_moves = [m for m in next_bunch if m.get_board() not in possible_moves]
         # don't forget to make sure all possible moves have the right number of prior moves
         just_moves = []
+        del possible_moves[self.get_board()]
         for k, m in possible_moves.iteritems():
             m.nmoves = self.nmoves + 1
             #m.prev_state = self # if want the actual solution

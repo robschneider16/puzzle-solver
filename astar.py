@@ -10,17 +10,19 @@ def astar_search(start):
     path_state = None
     while open and dcount >= 0:
         dcount += 1
+        if dcount%1000 == 0:
+            print str(dcount) + " times through loop, open has " + str(len(open)) + " and closed " + str(len(closed))
         # set current to best of open
         current_node = heappop(open)[1]
         # if previously considered and this doesn't look to be any better, skip to next on open
         if current_node.get_board() in closed:
             #print "board in closed, ... checking get_f()"
             if current_node.get_g() >= closed[current_node.get_board()].get_g():
-                print "continuing: skiping state ..."
-                current_node.print_bs()
+                #print "continuing: skiping state ..."
+                #current_node.print_bs()
                 continue
         # otherwise, add current to closed
-        print "Depth " + str(dcount) + ": processing state: " + current_node.get_board()
+        #print "Depth " + str(dcount) + ": processing state: " + current_node.get_board()
         closed[current_node.get_board()] = current_node
         #print current state
         #print "Current:"
@@ -62,9 +64,13 @@ def fringe_search(start):
     while not goal_node and current_fringe != []:
         fringe_depth += 1
         print "Fringe " + str(fringe_depth) + ": holding " + str(len(current_fringe)) + " search nodes"
+        #print "Node nmoves: " + str(map(lambda n: n[1].nmoves, current_fringe.items()))
         next_fringe = {}
         for bs, node in current_fringe.iteritems():
             #print "Fringe " + str(fringe_depth) + ": processing state: " + node.get_board()
+            #node.print_bs()
+            if node.nmoves != fringe_depth - 1:
+                raise Exception("move count error")
             if node.is_goal_state():
                 goal_node = node
                 break
