@@ -22,15 +22,16 @@ def astar_search(start):
                 continue
         # otherwise, add current to closed
         closed[current_node.get_board()] = current_node
-        #print "Current:" + current_node.get_board()
+        print "Current:" + current_node.get_board()
         if current_node.is_goal_state():
             print "Found the goal"
             current_node.print_bs()
             path_state = current_node
             break
         else:
-            #print "astar: Expanding"
+            print "astar: Expanding"
             expansions = current_node.expand()
+            print "found " + str(len(expansions)) + " children"
             for expansion in expansions:
                 if expansion.get_board() not in closed:
                     heappush(open, (expansion.get_f(), expansion))

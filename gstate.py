@@ -38,6 +38,7 @@ class GState:
         self.dir_deltas = [-board_width, 1, board_width, -1] # appropriate delta for each move directions starting with up and clockwise
         self.prev_state = previous_state # for extracting sequence of moves for the solution
         GState.piece_types = sorted(self.piece_positions.keys()) # fixed and forever 
+        self.board_str = self.gen_board()
 
     def get_g(self):
         return self.nmoves
@@ -49,14 +50,29 @@ class GState:
         return self.get_g() + self.get_h()
 
     def get_board(self):
+        return self.board_str
+
+    def set_board(self):
+        self.board_str = self.gen_board()
+
+    def gen_board(self):
         """return a string representation of the board that is appropriate for a search algorithm
         to index states by board on closed and open lists"""
-        board = ""
+        board = "["
         for k in GState.piece_types:
             v = self.piece_positions[k]
-            board += "[" + k + ":"
-            board += str(sorted(map(lambda p: p.ref_point,v))) + "]"
-        board += "[spaces:" + str(sorted(self.spaces)) + "]"
+            board += k + ":"
+            piece_refs = sorted(map(lambda p: p.ref_point,v))
+            board += str(piece_refs[0])
+            for pr in piece_refs[1:]:
+                board += "," + str(pr)
+            board += ";"
+        board += "spcs:"
+        space_refs = sorted(self.spaces)
+        board += str(space_refs[0])
+        for sr in space_refs[1:]:
+            board += "," + str(sr)
+        board += "]"
         return board
 
     # determine if the piece about to be moved will still be on the board
@@ -112,6 +128,8 @@ class GState:
         new_positions[piece_type][new_positions[piece_type].index(piece)] = new_piece
         new_state.piece_positions = new_positions
         new_state.spaces = copy.copy(self.spaces)
+        new_state.set_board()
+        new_state.print_bs()
         return new_state
 
     def one_piece_one_step_moves(self,k,p):
@@ -127,11 +145,16 @@ class GState:
         possible_moves = {self.get_board():self} # key state.get_board() and value state
         # for all the piece types in the puzzle ...
         for k, v in self.piece_positions.iteritems():
-            #print "all_available_moves: processing piece type: " + k
+            print "all_available_moves: processing piece type: " + k
             # for each of the pieces of a particular type ...
             for p in v:
                 new_moves = self.one_piece_one_step_moves(k,p)
+                print "new moves:"
+                for nm in new_moves:
+                    print "get_board says: " + nm.get_board()
+                    print "gen_board says: " + nm.gen_board()
                 filtered_moves = [m for m in new_moves if m.get_board() not in possible_moves]
+                print "Have " + str(len(filtered_moves)) + " filtered moves"
                 while  filtered_moves != []:
                     next_bunch = []
                     for m in filtered_moves:
