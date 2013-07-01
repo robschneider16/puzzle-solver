@@ -15,11 +15,12 @@ def astar_search(start):
         # if previously considered and this doesn't look to be any better, skip to next on open
         if current_node.get_board() in closed:
             #print "board in closed, ... checking get_f()"
-            if current_node.get_f() >= closed[current_node.get_board()].get_f():
-                #print "continuing: skiping state ..."
-                #current_node.print_bs()
+            if current_node.get_g() >= closed[current_node.get_board()].get_g():
+                print "continuing: skiping state ..."
+                current_node.print_bs()
                 continue
         # otherwise, add current to closed
+        print "Depth " + str(dcount) + ": processing state: " + current_node.get_board()
         closed[current_node.get_board()] = current_node
         #print current state
         #print "Current:"
@@ -39,7 +40,8 @@ def astar_search(start):
             #    s.print_bs()
             # add filtered expansions to open
             for expansion in expansions:
-                heappush(open, (expansion.get_f(), expansion))
+                if expansion.get_board() not in closed:
+                    heappush(open, (expansion.get_f(), expansion))
             # continue looping
             #print "Closed has " + str(len(closed)) + " and Open has " + str(len(open))
             #print ""
@@ -54,22 +56,23 @@ def fringe_search(start):
     No sorting, expanding evenly across all states of a given number of prior moves
     """
     prev_fringe = {}
-    current_fringe = {hash(start.get_board()): start}
-    fringe_count = 0
+    current_fringe = {start.get_board(): start}
+    fringe_depth = 0
     goal_node = False
     while not goal_node and current_fringe != []:
-        fringe_count += 1
-        print "Fringe " + str(fringe_count) + ": holding " + str(len(current_fringe)) + " search nodes"
+        fringe_depth += 1
+        print "Fringe " + str(fringe_depth) + ": holding " + str(len(current_fringe)) + " search nodes"
         next_fringe = {}
-        for bshsh, node in current_fringe.iteritems():
+        for bs, node in current_fringe.iteritems():
+            #print "Fringe " + str(fringe_depth) + ": processing state: " + node.get_board()
             if node.is_goal_state():
                 goal_node = node
                 break
             children = node.expand()
             for child in children:
-                child_bshsh = hash(child.get_board())
-                if ((child_bshsh not in prev_fringe) and (child_bshsh not in current_fringe) and (child_bshsh not in next_fringe)):
-                    next_fringe[child_bshsh] = child
+                child_bs = child.get_board()
+                if ((child_bs not in prev_fringe) and (child_bs not in current_fringe) and (child_bs not in next_fringe)):
+                    next_fringe[child_bs] = child
         prev_fringe = current_fringe
         current_fringe = next_fringe
     if goal_node:

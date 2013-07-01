@@ -1,5 +1,5 @@
 # Using BitVector-3.3
-from BitVector import *
+#from BitVector import *
 import copy
 
 b1x1 = [([0],[0]),
@@ -11,16 +11,12 @@ b1x1 = [([0],[0]),
 # relative to the direction of the intended move (i.e., where the space must be if this block moves)
 # and a post condition for where the space ends up (given the CURRENT ref_point of the block prior to move)
 #global tile_tuples # for 1x1 blocks/tiles
-"""
-tile_tuples = [ ( BitVector(bitstring = '1'), BitVector(bitstring = '1') ),
-                ( BitVector(bitstring = '1'), BitVector(bitstring = '1') ),
-                ( BitVector(bitstring = '1'), BitVector(bitstring = '1') ),
-                ( BitVector(bitstring = '1'), BitVector(bitstring = '1') ) ]
-"""
 
 # A generic-state (gstate) supports the representation of puzzle boards
 # having pieces of arbitrary shape and the movement of those pieces.
 class GState:
+
+    piece_types = []
 
     def __init__(self, positions=None, prior_moves=0, space_positions=[0],
                  board_width=3, board_height=3,
@@ -41,6 +37,7 @@ class GState:
         self.nmoves = prior_moves
         self.dir_deltas = [-board_width, 1, board_width, -1] # appropriate delta for each move directions starting with up and clockwise
         self.prev_state = previous_state # for extracting sequence of moves for the solution
+        GState.piece_types = sorted(self.piece_positions.keys()) # fixed and forever 
 
     def get_g(self):
         return self.nmoves
@@ -55,15 +52,11 @@ class GState:
         """return a string representation of the board that is appropriate for a search algorithm
         to index states by board on closed and open lists"""
         board = ""
-        for k,v in self.piece_positions.iteritems():
+        for k in GState.piece_types:
+            v = self.piece_positions[k]
             board += "[" + k + ":"
-            for p in sorted(v, key=(lambda k: k.ref_point)):
-                board += " " + str(p.ref_point) 
-            board += "]"
-        board += "[spaces:"
-        for space in sorted(self.spaces):
-            board += " " + str(space)
-        board += "]"
+            board += str(sorted(map(lambda p: p.ref_point,v))) + "]"
+        board += "[spaces:" + str(sorted(self.spaces)) + "]"
         return board
 
     def can_move(self, p1, mov_tup_index, delta):
@@ -73,7 +66,8 @@ class GState:
         """
         moved_rp = p1.ref_point + delta
         if ((moved_rp >= 0) and (moved_rp < self.bsz) and
-            ((p1.ref_point/self.bw == moved_rp/self.bw) or (p1.ref_point%self.bw == moved_rp%self.bw))):
+            ( # moved_rp must have either the same column or same row as where started
+                (p1.ref_point/self.bw == moved_rp/self.bw) or (p1.ref_point%self.bw == moved_rp%self.bw))):
             for s in map(lambda i: self.base_to_ref(i, delta, p1), p1.move_tups[mov_tup_index][0]):
                 if s not in self.spaces:
                     return False
@@ -83,8 +77,7 @@ class GState:
 
     def move(self, p1, move_tup_index):
         self.swap(p1, self.dir_deltas[move_tup_index], p1.move_tups[move_tup_index])
-        self.nmoves += 1
-
+        #self.nmoves += 1
 
 
     # s is the space
@@ -125,7 +118,7 @@ class GState:
         return part_possible_moves
 
     def all_available_moves(self):
-        possible_moves = {} # key state.get_board() and value state
+        possible_moves = {self.get_board():self} # key state.get_board() and value state
         # for all the piece types in the puzzle ...
         for k, v in self.piece_positions.iteritems():
             #print "all_available_moves: processing piece type: " + k
