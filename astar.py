@@ -18,16 +18,11 @@ def astar_search(start):
         if current_node.get_board() in closed:
             #print "board in closed, ... checking get_f()"
             if current_node.get_g() >= closed[current_node.get_board()].get_g():
-                #print "continuing: skiping state ..."
-                #current_node.print_bs()
+                #print "continuing: skiping state " + current_node.get_board()
                 continue
         # otherwise, add current to closed
-        #print "Depth " + str(dcount) + ": processing state: " + current_node.get_board()
         closed[current_node.get_board()] = current_node
-        #print current state
-        #print "Current:"
-        #current_node.print_bs()
-        # check if that was the goal and break if so
+        #print "Current:" + current_node.get_board()
         if current_node.is_goal_state():
             print "Found the goal"
             current_node.print_bs()
@@ -35,18 +30,11 @@ def astar_search(start):
             break
         else:
             #print "astar: Expanding"
-            # expand that node
             expansions = current_node.expand()
-            #print "Expanded " + str(len(expansions)) + " child nodes"
-            #for s in expansions:
-            #    s.print_bs()
-            # add filtered expansions to open
             for expansion in expansions:
                 if expansion.get_board() not in closed:
                     heappush(open, (expansion.get_f(), expansion))
-            # continue looping
             #print "Closed has " + str(len(closed)) + " and Open has " + str(len(open))
-            #print ""
     print "At end, Closed has " + str(len(closed)) + " and Open has " + str(len(open))
     while path_state != None:
         path_state.print_bs()
@@ -68,7 +56,6 @@ def fringe_search(start):
         next_fringe = {}
         for bs, node in current_fringe.iteritems():
             #print "Fringe " + str(fringe_depth) + ": processing state: " + node.get_board()
-            #node.print_bs()
             if node.nmoves != fringe_depth - 1:
                 raise Exception("move count error")
             if node.is_goal_state():

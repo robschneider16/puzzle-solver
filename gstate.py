@@ -59,15 +59,23 @@ class GState:
         board += "[spaces:" + str(sorted(self.spaces)) + "]"
         return board
 
+    # determine if the piece about to be moved will still be on the board
+    def p_on_board(self, pref, prow, pcol, delta):
+        moved_rp = pref + delta
+        plr = pref+(pcol-1)+((prow-1)*self.bw) # lower-right corner of piece convex-hull 
+        moved_plr = plr + (moved_rp-pref)
+        return ((moved_rp >= 0) and (moved_plr < self.bsz)
+                # moved_rp and moved_plr must have either the same column or same row as where started
+                and (((pref/self.bw == moved_rp/self.bw) and (plr/self.bw == moved_plr/self.bw))
+                     or
+                     ((pref%self.bw == moved_rp%self.bw) and (plr%self.bw == moved_plr%self.bw))))
+
     def can_move(self, p1, mov_tup_index, delta):
         """
         Determine if the given piece, p1, can move in the direction given by mov_tup_index,
         with 0 meaning 'up' and working clockwise as with the move tuples.
         """
-        moved_rp = p1.ref_point + delta
-        if ((moved_rp >= 0) and (moved_rp < self.bsz) and
-            ( # moved_rp must have either the same column or same row as where started
-                (p1.ref_point/self.bw == moved_rp/self.bw) or (p1.ref_point%self.bw == moved_rp%self.bw))):
+        if self.p_on_board(p1.ref_point, p1.nrows(), p1.ncols(), delta):
             for s in map(lambda i: self.base_to_ref(i, delta, p1), p1.move_tups[mov_tup_index][0]):
                 if s not in self.spaces:
                     return False
@@ -77,8 +85,6 @@ class GState:
 
     def move(self, p1, move_tup_index):
         self.swap(p1, self.dir_deltas[move_tup_index], p1.move_tups[move_tup_index])
-        #self.nmoves += 1
-
 
     # s is the space
     # p is a piece
