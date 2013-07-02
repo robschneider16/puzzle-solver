@@ -10,7 +10,7 @@ def astar_search(start):
     path_state = None
     while open and dcount >= 0:
         dcount += 1
-        if dcount%1000 == 0:
+        if dcount%10000 == 0:
             print str(dcount) + " times through loop, open has " + str(len(open)) + " and closed " + str(len(closed))
         # set current to best of open
         current_node = heappop(open)[1]
