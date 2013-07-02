@@ -101,6 +101,7 @@ class GState:
 
     def move(self, p1, move_tup_index):
         self.swap(p1, self.dir_deltas[move_tup_index], p1.move_tups[move_tup_index])
+        self.set_board()
 
     # s is the space
     # p is a piece
@@ -128,8 +129,6 @@ class GState:
         new_positions[piece_type][new_positions[piece_type].index(piece)] = new_piece
         new_state.piece_positions = new_positions
         new_state.spaces = copy.copy(self.spaces)
-        new_state.set_board()
-        new_state.print_bs()
         return new_state
 
     def one_piece_one_step_moves(self,k,p):
@@ -145,16 +144,12 @@ class GState:
         possible_moves = {self.get_board():self} # key state.get_board() and value state
         # for all the piece types in the puzzle ...
         for k, v in self.piece_positions.iteritems():
-            print "all_available_moves: processing piece type: " + k
+            #print "all_available_moves: processing piece type: " + k
             # for each of the pieces of a particular type ...
             for p in v:
                 new_moves = self.one_piece_one_step_moves(k,p)
-                print "new moves:"
-                for nm in new_moves:
-                    print "get_board says: " + nm.get_board()
-                    print "gen_board says: " + nm.gen_board()
                 filtered_moves = [m for m in new_moves if m.get_board() not in possible_moves]
-                print "Have " + str(len(filtered_moves)) + " filtered moves"
+                #print "Have " + str(len(filtered_moves)) + " filtered moves"
                 while  filtered_moves != []:
                     next_bunch = []
                     for m in filtered_moves:
