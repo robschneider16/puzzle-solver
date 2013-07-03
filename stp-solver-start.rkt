@@ -151,23 +151,37 @@
           (set-subtract current-cell-set cell-set-to)
           (translate-cell (cdr tile) trans))))
 
-;; expand-piece: tile-spec position -> (listof position)
+;; one-piece-one-step: tile-spec position (setof position) -> (setof (list tile-spec position))
+;; for a given piece in a given position, generate all next-positions obtained by moving one-step (only)
+;; but for each next-position, return a tile-spec/position pair for the tile-spec of the piece just moved
+(define (one-piece-one-step tile-to-move position prior-pos)
+  (let ((mv-schema empty))
+    (for/set ([dir-trans *prim-move-translations*]
+              #:when (begin (set! mv-schema (basic-move-schema tile-to-move dir-trans))
+                            (valid-move? tile-to-move dir-trans (spaces position) mv-schema)))
+             (list
+              (cons (first tile-to-move) (fifth mv-schema))      ; tile-spec of the moved tile that gives rise to this position
+              (for/hash ([(tile-type tile-type-cells) position]) ; build the new position
+                (values
+                 tile-type
+                 (cond [(= tile-type (first tile-to-move))
+                        (set-add (set-remove tile-type-cells (cdr tile-to-move))
+                                 (fifth mv-schema))]
+                       [(= tile-type -1) (translate-spaces tile-type-cells mv-schema)]
+                       [else tile-type-cells])))))))
+
+;; expand-piece: tile-spec position -> (setof position)
 ;; for a given tile-spec (piece), return the list of new positions resulting from moving the given piece in the given position
-;; **** NEED TO COME BACK AND TAKE CARE OF MULTI-STEP MOVES OF A SINGLE PIECE
 (define (expand-piece tile-to-move position)
-  (filter (lambda (x) x)
-          (for/list ([dir-trans *prim-move-translations*])
-            (let* ((mv-schema (basic-move-schema tile-to-move dir-trans)))
-              (if (valid-move? tile-to-move dir-trans (spaces position) mv-schema)
-                  (for/hash ([(tile-type tile-type-cells) position]) ; build the new position
-                    (values
-                     tile-type
-                     (cond [(= tile-type (first tile-to-move))
-                            (set-union (set-subtract tile-type-cells (set (cdr tile-to-move)))
-                                       (set (fifth mv-schema)))]
-                           [(= tile-type -1) (translate-spaces tile-type-cells mv-schema)]
-                           [else tile-type-cells])))
-                  #f)))))
+  (do ([return-positions (set position) 
+                         (set-union return-positions (for/set ([ts-pos new-positions]) (second ts-pos)))]
+       [new-positions (one-piece-one-step tile-to-move position (set))
+                      (for/fold ([new-add (set)])
+                        ([ts-pos new-positions]
+                         #:unless (set-member? return-positions (second ts-pos)))
+                        (set-union new-add (one-piece-one-step (first ts-pos) (second ts-pos) return-positions)))])
+    ((set-empty? new-positions) (set-remove return-positions position))))
+
 
 ;; valid-move?: tile-spec trans-spec (setof cell) (list (listof cell) (listof cell) (setof cell) (setof cell)) -> boolean
 ;; determine if the proposed move is on the board and has the spaces in the right position
@@ -186,16 +200,19 @@
 
 
 (block10-init)
+;(climb12-init)
 
-;; expand: position -> (listof state)
+;; expand: position -> (setof state)
 ;; generate next states from this one
 (define (expand s)
-  (apply append
-         (for/list ([(piece-type cells) s]
-                    #:unless (= piece-type -1))
-           (apply append
-                  (set-map cells (lambda (pcell) (expand-piece (cons piece-type pcell) s))
-                           )))))
+  (for/fold ([all-moves (set)])
+    ([(piece-type cells) s]
+     #:unless (= piece-type -1))
+    (set-union all-moves
+               (for/fold ([new-moves (set)])
+                 ([pcell cells])
+                 (set-union new-moves
+                            (expand-piece (cons piece-type pcell) s))))))
 
 
 ;;------------------------------------------------------------------------------------
@@ -211,7 +228,7 @@
               #:when (is-goal? pos))
     pos))
 
-(define *max-depth* 10)(set! *max-depth* 40)
+(define *max-depth* 10)(set! *max-depth* 32)
 ;; fringe-search: (setof position) (setof position) int -> ...
 ;; perform a fringe BFS starting at the given state until depth is 0
 (define (fringe-search prev-fringe current-fringe depth)
@@ -222,8 +239,9 @@
                   (print "found goal")
                   maybe-goal]
                  [else (let ((new-fringe
-                              (for/set ([p (apply append ;; '((1 2)(3 4)) -> '(1 2 3 4)
-                                                  (set-map current-fringe expand))]
+                              (for/set ([p (for/fold ([expansions (set)])
+                                             ([p current-fringe])
+                                             (set-union expansions (expand p)))]
                                         #:unless (or (set-member? prev-fringe p)
                                                      (set-member? current-fringe p)))
                                        p)))
