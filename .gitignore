@@ -11,6 +11,7 @@
 *.o
 *.so
 *.py[cod]
+compiled
 
 # Packages #
 ############
