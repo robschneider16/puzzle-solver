@@ -123,6 +123,7 @@
 
 ;; expand-piece: tile-spec position -> (listof position)
 ;; for a given tile-spec (piece), return the list of new positions resulting from moving the given piece in the given position
+;; **** NEED TO COME BACK AND TAKE CARE OF MULTI-STEP MOVES OF A SINGLE PIECE
 (define (expand-piece tile-to-move position)
   (filter (lambda (x) x)
           (for/list ([dir-trans *prim-move-translations*])
@@ -161,45 +162,32 @@
               (drop-right s 1))))
 
 
-;; ******************** BELOW NOT INTEGRATED YET ************************
 
-;; check-move: state movement -> state OR #f
-;; make a new state from the movement-specification (if possible)
-(define (check-move s m)
-  (let ((new-space (list 0
-                         (+ (first m) (second (vector-ref s 0)))
-                         (+ (second m) (third (vector-ref s 0))))))
-    (if (and (< -1 (second new-space) 3)
-             (< -1 (third new-space) 3))
-        (swap-locations (vector->list s) new-space (vector-copy s))
-        #f)))
+;;------------------------------------------------------------------------------------
 
-;; swap-locations: (listof tile-spec) tile-spec state -> state
-;; given the tile-spec for the new location of the space, find the tile there and put it where
-;; the space currently is found
-(define (swap-locations s ts v [i 0])
-  (cond [(empty? s) (error 'swap-locations "ran off the end")]
-        [(equal? (cdr (car s)) (cdr ts))
-         (vector-set! v i (cons (car (car s)) (cdr (vector-ref v 0))))
-         (vector-set! v 0 ts)
-         v]
-        [else (swap-locations (cdr s) ts v (add1 i))]))
-                                    
+;; goal-in-fringe?: (listof position) -> (listof p)
+(define (goal-in-fringe? f)
+  (filter (lambda (p)
+            (andmap (lambda (tile-spec) (member tile-spec p)) *target*))
+          f))
 
-
+(define *max-depth* 10)(set! *max-depth* 20)
 ;; fringe-search: (listof state) int -> ...
 ;; perform a fringe BFS starting at the given state until depth is 0
 (define (fringe-search prev-fringe current-fringe depth)
-  (cond [(or (empty? current-fringe) (zero? depth)) #f]
-        [(member *target* current-fringe)
-         (print current-fringe)(newline)
-         #t]
-        [else (let ((new-fringe
-                     (apply append ;; '((1 2)(3 4)) -> '(1 2 3 4)
-                            (map expand current-fringe))))
-                (print current-fringe)(newline)
-                (fringe-search current-fringe
-                               (filter (lambda (s) (and (not (member s prev-fringe))
-                                                        (not (member s current-fringe))))
-                                       new-fringe)
-                               (sub1 depth)))]))
+  (cond [(or (empty? current-fringe) (> depth *max-depth*)) #f]
+        [else
+         (let ((maybe-goal (goal-in-fringe? current-fringe)))
+           (cond [(cons? maybe-goal)
+                  (print "found goal")
+                  (first maybe-goal)]
+                 [else (let ((new-fringe
+                              (apply append ;; '((1 2)(3 4)) -> '(1 2 3 4)
+                                     (map expand current-fringe))))
+                         (printf "At depth ~a fringe has ~a positions~%" depth (length current-fringe))
+                         (fringe-search current-fringe
+                                        (filter (lambda (s) (and (not (member s prev-fringe))
+                                                                 (not (member s current-fringe))))
+                                                new-fringe)
+                                        (add1 depth)))]))]))
+
