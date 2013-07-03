@@ -205,29 +205,30 @@
   (andmap (lambda (tile-spec) (set-member? (hash-ref p (first tile-spec)) (cdr tile-spec)))
           *target*))
   
-;; goal-in-fringe?: (listof position) -> position OR #f
+;; goal-in-fringe?: (setof position) -> position OR #f
 (define (goal-in-fringe? f)
   (for/first ([pos f]
               #:when (is-goal? pos))
     pos))
 
-(define *max-depth* 10)(set! *max-depth* 20)
-;; fringe-search: (listof state) int -> ...
+(define *max-depth* 10)(set! *max-depth* 40)
+;; fringe-search: (setof position) (setof position) int -> ...
 ;; perform a fringe BFS starting at the given state until depth is 0
 (define (fringe-search prev-fringe current-fringe depth)
-  (cond [(or (empty? current-fringe) (> depth *max-depth*)) #f]
+  (cond [(or (set-empty? current-fringe) (> depth *max-depth*)) #f]
         [else
          (let ((maybe-goal (goal-in-fringe? current-fringe)))
-           (cond [(cons? maybe-goal)
+           (cond [maybe-goal
                   (print "found goal")
-                  (first maybe-goal)]
+                  maybe-goal]
                  [else (let ((new-fringe
-                              (apply append ;; '((1 2)(3 4)) -> '(1 2 3 4)
-                                     (map expand current-fringe))))
-                         (printf "At depth ~a fringe has ~a positions~%" depth (length current-fringe))
+                              (for/set ([p (apply append ;; '((1 2)(3 4)) -> '(1 2 3 4)
+                                                  (set-map current-fringe expand))]
+                                        #:unless (or (set-member? prev-fringe p)
+                                                     (set-member? current-fringe p)))
+                                       p)))
+                         (printf "At depth ~a fringe has ~a positions~%" depth (set-count current-fringe))
                          (fringe-search current-fringe
-                                        (filter (lambda (s) (and (not (member s prev-fringe))
-                                                                 (not (member s current-fringe))))
-                                                new-fringe)
+                                        new-fringe
                                         (add1 depth)))]))]))
 
