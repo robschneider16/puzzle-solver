@@ -4,7 +4,7 @@
 (require "stp-solve-base.rkt")
 
 
-
+(define *max-depth* 10)(set! *max-depth* 8)
 
 ;; fringe-search: (setof position) (setof position) int -> ...
 ;; perform a fringe BFS starting at the given state until depth is 0
@@ -23,6 +23,9 @@
                                                      (set-member? current-fringe p)))
                                        p)))
                          (printf "At depth ~a fringe has ~a positions~%" depth (set-count current-fringe))
+                         (when (= depth 6)
+                           (for ([p current-fringe])
+                             (printf "~a~%" p)))
                          (fringe-search current-fringe
                                         new-fringe
                                         (add1 depth)))]))]))
