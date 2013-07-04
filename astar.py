@@ -53,7 +53,7 @@ def fringe_search(start):
     while not goal_node and current_fringe != [] and fringe_depth < 8:
         fringe_depth += 1
         print "Fringe " + str(fringe_depth) + ": holding " + str(len(current_fringe)) + " search nodes"
-        if fringe_depth == 6:
+        if fringe_depth in [5, 6]:
             for bs in sorted(current_fringe.keys()):
                 print bs
         #print "Node nmoves: " + str(map(lambda n: n[1].nmoves, current_fringe.items()))

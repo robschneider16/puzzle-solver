@@ -45,7 +45,7 @@
     (values (first pspec)
             (for/set ([cell (cdr pspec)])
                      cell))))
-                 
+
 
 ;; BLOCK-10 PUZZLE INIT (variant 12)
 (define *block10-piece-types*
@@ -71,8 +71,21 @@
 (define *block10-target* '((0 0 1)))
 
 (define (block10-init)
-  (set-em! *block10-piece-types* *block10-start* *block10-target* 5 4))
-           
+  (set-em! *block10-piece-types* *block10-start* *block10-target* 6 4))
+
+(define (block10-stringify position)
+  (let ((names (vector "spcs" "gpc" "ifL" "bwL" "2x1" "1x1")))
+    (for/fold ([res ""])
+      ([i '(5 4 3 1 2 0)])
+      (string-append res 
+                     (vector-ref names i) ":"
+                     (apply string-append
+                            (map (lambda (n) (string-append "," (number->string n)))
+                                 (sort (for/list ([c (hash-ref position (sub1 i))])
+                                         (cell-to-loc c))
+                                       <)))
+                     ";"))))
+
 
 ;; CLIMB-12 PUZZLE INIT
 ;; piece-type is implicit in position within list, each pair specifies the cells of the piece
@@ -121,6 +134,12 @@
 ;; a pre-position is a (append (listof tile-spec) (listof cell))
 
 ;; a position is a (hash [tile-type : (listof cell)])
+
+
+;; cell-to-loc: cell -> int
+;; convert ordered pair to row-major-order rank location
+(define (cell-to-loc pair)
+  (+ (* (first pair) *bw*) (second pair)))
 
 ;; spaces: position -> (listof cell)
 ;; return the list of space cells
