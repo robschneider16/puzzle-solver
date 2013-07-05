@@ -9,7 +9,7 @@
 
 (provide (all-defined-out))
 
-(define *n-processors* 7)
+(define *n-processors* 32)
 
 ;; Cluster/multi-process specific code for the sliding-tile puzzle solver
 ;; Currently assumes all in memory
@@ -40,7 +40,8 @@
     #|(printf "Finished the work packet generating a set of ~a positions~%" (set-count res))
     (for ([p res])
       (printf "pos: ~a~%~a~%" (stringify p) p))|#
-    (serialize res)))
+    res ;; (serialize res)
+    ))
 
 (define (expand-fringe-portion2 list-of-pos)
   (let ((res (for/set ([p (for/fold ([expansions (set)])
@@ -57,13 +58,18 @@
   (let* ((current-fringe-vec  (vectorize-fringe current-fringe)))
     (vector-sort! compare-positions current-fringe-vec)
     (for/set ([p (for/fold ([expansions (set)])
-                   ([partial-new-fringe (for/work ([range-pair (make-vector-ranges (vector-length current-fringe-vec))])
-                                                  ;;(expand-fringe-portion range-pair prev-fringe current-fringe-vec)
-                                                  (expand-fringe-portion2 (for/list ([i (in-range (first range-pair) (second range-pair))])
-                                                                            (vector-ref current-fringe-vec i)))
-                                                  )])
+                   ([partial-new-fringe (if (< (vector-length current-fringe-vec) 1000)
+                                            ;; do it myself
+                                            (list (expand-fringe-portion (list 0 (vector-length current-fringe-vec)) prev-fringe current-fringe-vec))
+                                            ;; else farm out to workers with (de)serialization overhead
+                                            (map deserialize
+                                                 (for/work ([range-pair (make-vector-ranges (vector-length current-fringe-vec))])
+                                                           ;;(expand-fringe-portion range-pair prev-fringe current-fringe-vec)
+                                                           (expand-fringe-portion2 (for/list ([i (in-range (first range-pair) (second range-pair))])
+                                                                                     (vector-ref current-fringe-vec i)))
+                                                           )))])
                    (set-union expansions 
-                              (deserialize partial-new-fringe)))]
+                              partial-new-fringe))]
               #:unless (or (set-member? prev-fringe p)
                            (set-member? current-fringe p)))
              p)))
@@ -80,7 +86,7 @@
 ;; make-vector-ranges: int -> (listof (list int int)
 ;; create the streams that will give rise to the 
 (define (make-vector-ranges vlength)
-  (if (< vlength 50)
+  (if (< vlength 1000)
       (list (list 0 vlength))
       (let ((start-list (build-list *n-processors* (lambda (i) (floor (* i (/ vlength *n-processors*)))))))
         (foldr (lambda (x r) (cons (list x (first (first r))) r)) 
@@ -107,6 +113,6 @@
 ;(climb12-init)
 
 (module+ main
-  (connect-to-riot-server! "localhost")
+  (connect-to-riot-server! "wcp")
   (define search-result (time (cluster-fringe-search (set) (set *start*) 1)))
   (print search-result))
