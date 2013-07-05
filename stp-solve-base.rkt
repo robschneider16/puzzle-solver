@@ -1,6 +1,6 @@
 #lang racket
 
-(require srfi/25) ;; multi-dimensional arrays
+;(require srfi/25) ;; multi-dimensional arrays
 
 (provide (all-defined-out))
 
@@ -221,9 +221,6 @@
        (< -1 (second c) *bw*)))
 
 
-(block10-init)
-;(climb12-init)
-
 ;; expand: position -> (setof state)
 ;; generate next states from this one
 (define (expand s)
@@ -250,4 +247,17 @@
               #:when (is-goal? pos))
     pos))
 
-
+;; stringify: position -> string
+;; general make-string from position
+(define (stringify position)
+  (let ((sorted-keys (sort (hash-keys position) <)))
+    (for/fold ([res ""])
+      ([i sorted-keys])
+      (string-append res 
+                     (number->string i) ":"
+                     (apply string-append
+                            (map (lambda (n) (string-append "," (number->string n)))
+                                 (sort (for/list ([c (hash-ref position i)])
+                                         (cell-to-loc c))
+                                       <)))
+                     ";"))))

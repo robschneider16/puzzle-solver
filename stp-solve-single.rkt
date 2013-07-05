@@ -1,6 +1,6 @@
 #lang racket
 
-(require srfi/25) ;; multi-dimensional arrays
+;(require srfi/25) ;; multi-dimensional arrays
 (require "stp-solve-base.rkt")
 
 
@@ -33,3 +33,7 @@
                                         new-fringe
                                         (add1 depth)))]))]))
 
+(block10-init)
+;(climb12-init)
+
+(time (fringe-search (set) (set *start*) 1))
