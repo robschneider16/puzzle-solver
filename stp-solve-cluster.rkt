@@ -55,24 +55,14 @@
 ;; Given a current fringe to expand, and the immediately previous fringe, 
 ;; return the new fringe by breaking it up into ranges
 (define (expand-fringe prev-fringe current-fringe)
-  (let* ((current-fringe-vec  (vectorize-fringe current-fringe)))
-    (vector-sort! compare-positions current-fringe-vec)
-    (for/set ([p (for/fold ([expansions (set)])
-                   ([partial-new-fringe (if (< (vector-length current-fringe-vec) 1000)
-                                            ;; do it myself
-                                            (list (expand-fringe-portion (list 0 (vector-length current-fringe-vec)) prev-fringe current-fringe-vec))
-                                            ;; else farm out to workers with (de)serialization overhead
-                                            (map deserialize
-                                                 (for/work ([range-pair (make-vector-ranges (vector-length current-fringe-vec))])
-                                                           ;;(expand-fringe-portion range-pair prev-fringe current-fringe-vec)
-                                                           (expand-fringe-portion2 (for/list ([i (in-range (first range-pair) (second range-pair))])
-                                                                                     (vector-ref current-fringe-vec i)))
-                                                           )))])
-                   (set-union expansions 
-                              partial-new-fringe))]
-              #:unless (or (set-member? prev-fringe p)
-                           (set-member? current-fringe p)))
-             p)))
+  (let* ([current-fringe-vec  (vectorize-fringe current-fringe)]
+         [ignore (vector-sort! compare-positions current-fringe-vec)]
+         [new-fringe (for/set ([p (expand-fringe-portion (list 0 (vector-length current-fringe-vec)) prev-fringe current-fringe-vec)]
+                               #:unless (or (set-member? prev-fringe p)
+                                            (set-member? current-fringe p)))
+                              p)])
+    ;;write-to-disk-here!!
+    ))
 
 ;; vectorize-fringe: (setof position) -> (vectorof position)
 ;; convert a set of positions into a vector for easy/efficient partitioning
@@ -100,11 +90,13 @@
 (define (cluster-fringe-search prev-fringe current-fringe depth)
   (cond [(or (set-empty? current-fringe) (> depth *max-depth*)) #f]
         [else
-         (let ((maybe-goal (goal-in-fringe? current-fringe)))
+         (let ([maybe-goal (goal-in-fringe? current-fringe)])
            (cond [maybe-goal
                   (print "found goal")
                   maybe-goal]
-                 [else (let ((new-fringe (expand-fringe prev-fringe current-fringe)))
+                 [else (expand-fringe prev-fringe current-fringe) 
+                  (let ([new-fringe ;;read from file!!
+                         ])
                          (printf "At depth ~a fringe has ~a positions~%" depth (set-count current-fringe))
                          (cluster-fringe-search current-fringe new-fringe (add1 depth)))]))]))
 

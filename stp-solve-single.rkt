@@ -6,6 +6,10 @@
 
 (define *max-depth* 10)(set! *max-depth* 32)
 
+;; write-to-disk: fringe -> file
+;; write-to-disk takes a fringe and creates a file on disk with that fringe
+(define out (open-output-file "fringe"))
+
 ;; fringe-search: (setof position) (setof position) int -> ...
 ;; perform a fringe BFS starting at the given state until depth is 0
 (define (fringe-search prev-fringe current-fringe depth)
@@ -32,6 +36,8 @@
                          (fringe-search current-fringe
                                         new-fringe
                                         (add1 depth)))]))]))
+
+
 
 (block10-init)
 ;(climb12-init)
