@@ -22,6 +22,7 @@ class GState:
                  board_width=3, board_height=3,
                  previous_state=None):
         #last_moved_piece = 
+        self.just_moved = None
         self.bw = board_width
         self.bh = board_height
         self.bsz = board_width*board_height
@@ -101,6 +102,7 @@ class GState:
 
     def move(self, p1, move_tup_index):
         self.swap(p1, self.dir_deltas[move_tup_index], p1.move_tups[move_tup_index])
+        self.just_moved = move_tup_index
         self.set_board()
 
     # s is the space
@@ -134,7 +136,9 @@ class GState:
     def one_piece_one_step_moves(self,k,p):
         part_possible_moves = []
         for i in range(4):
-            if self.can_move(p,i,self.dir_deltas[i]):
+            #print "just moved: " + str(self.just_moved)
+            # ( not self.just_moved or (self.just_moved != (i+2)%4 ) ) and 
+            if (self.can_move(p,i,self.dir_deltas[i])):
                 ns = self.custom_copy(k,p)
                 ns.move(ns.piece_positions[k][self.piece_positions[k].index(p)], i)
                 part_possible_moves.append(ns)

@@ -50,11 +50,13 @@ def fringe_search(start):
     current_fringe = {start.get_board(): start}
     fringe_depth = 0
     goal_node = False
+    count = 0
     while not goal_node and current_fringe != []:
         fringe_depth += 1
-        print "Fringe " + str(fringe_depth) + ": holding " + str(len(current_fringe)) + " search nodes"
+        print "Fringe " + str(fringe_depth) + ": holding " + str(len(current_fringe)) + " search nodes and " + str(count) + " duplicate nodes"
         #print "Node nmoves: " + str(map(lambda n: n[1].nmoves, current_fringe.items()))
         next_fringe = {}
+        count = 0
         for bs, node in current_fringe.iteritems():
             #print "Fringe " + str(fringe_depth) + ": processing state: " + node.get_board()
             if node.nmoves != fringe_depth - 1:
@@ -65,8 +67,12 @@ def fringe_search(start):
             children = node.expand()
             for child in children:
                 child_bs = child.get_board()
-                if ((child_bs not in prev_fringe) and (child_bs not in current_fringe) and (child_bs not in next_fringe)):
+                if ((child_bs not in prev_fringe)
+                    and (child_bs not in current_fringe)
+                    and (child_bs not in next_fringe)):
                     next_fringe[child_bs] = child
+                else:
+                    count += 1
         prev_fringe = current_fringe
         current_fringe = next_fringe
     if goal_node:

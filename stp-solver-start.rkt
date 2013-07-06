@@ -1,4 +1,5 @@
 #lang racket
+(require 2htdp/batch-io)
 
 ;; a tile-spec is a triple, (list a b c), where a is the tile-type and b and c are row and col
 
@@ -75,3 +76,8 @@
                                                         (not (member s current-fringe))))
                                        new-fringe)
                                (sub1 depth)))]))
+
+;; save-to-disk: (listof state) -> ...
+;; saves a fringe to disk
+(define (save-to-disk fringe)
+  (...))
