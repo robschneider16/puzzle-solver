@@ -6,6 +6,9 @@
 
 ;(require srfi/25) ;; multi-dimensional arrays
 (require "stp-solve-base.rkt")
+;(require profile)
+;(instrumenting-enabled #t)
+;(profiling-enabled #t)
 
 (provide (all-defined-out))
 
@@ -21,7 +24,7 @@
   (let ((mid (floor (/ (+ low high) 2)))) 
     (cond [(>= low high) #f]
           [(equal? p (vector-ref v mid)) (vector-ref v mid)]
-          [(compare-positions p (vector-ref v mid)) (vec-member? v low mid)]
+          [(compare-positions p (vector-ref v mid)) (vec-member? v p low mid)]
           [else (vec-member? v p (add1 mid) high)])))
 
 ;; expand-fringe-portion: (list int int) (setof position) (vectorof position) -> (setof position)
@@ -58,7 +61,7 @@
   (let* ((current-fringe-vec  (vectorize-fringe current-fringe)))
     (vector-sort! compare-positions current-fringe-vec)
     (for/set ([p (for/fold ([expansions (set)])
-                   ([partial-new-fringe (if (< (vector-length current-fringe-vec) 1000)
+                   ([partial-new-fringe (if (< (vector-length current-fringe-vec) 10000000)
                                             ;; do it myself
                                             (list (expand-fringe-portion (list 0 (vector-length current-fringe-vec)) prev-fringe current-fringe-vec))
                                             ;; else farm out to workers with (de)serialization overhead
@@ -112,7 +115,10 @@
 (block10-init)
 ;(climb12-init)
 
+#|
 (module+ main
   (connect-to-riot-server! "wcp")
   (define search-result (time (cluster-fringe-search (set) (set *start*) 1)))
   (print search-result))
+|#
+(time (cluster-fringe-search (set) (set *start*) 1))

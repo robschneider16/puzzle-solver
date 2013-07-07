@@ -129,17 +129,28 @@
 
 ;; a cell is a pair, (list r c), for row and column r and c
 
+;; a location (loc for short) is an int, representing the row-major rank of a cell
+
 ;; a tile-spec is a triple, (cons a c), where a is the tile-type and c is the cell of the piece-type's origin
 
 ;; a pre-position is a (append (listof tile-spec) (listof cell))
 
 ;; a position is a (hash [tile-type : (listof cell)])
+;; ******************************************************************************
+;; a NEW-position is (or will be) a (vectorof (vectorof int))
+;; where the index of the top-level vectors reflect the piece-type as given in the init,
+;; and the ints in the secondary vectors are the SORTED locations of the pieces of that type
+;; ******************************************************************************
 
 
 ;; cell-to-loc: cell -> int
 ;; convert ordered pair to row-major-order rank location
 (define (cell-to-loc pair)
   (+ (* (first pair) *bw*) (second pair)))
+
+;; loc-to-cell: int -> cell
+(define (loc-to-cell i)
+  (list (floor (/ i *bw*)) (modulo i *bw*)))
 
 ;; spaces: position -> (listof cell)
 ;; return the list of space cells
