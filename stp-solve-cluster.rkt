@@ -62,7 +62,8 @@
                                             (set-member? current-fringe p)))
                               p)])
     (open-output-file "frontier-fringe" #:mode 'binary #:exists 'can-update current-fringe-vec)
-    (write (open-output-file "frontier-fringe" #:mode 'binary #:exists 'replace new-fringe))))
+    (write (open-output-file "frontier-fringe" #:mode 'binary #:exists 'replace new-fringe))
+    (close-output-port "frontier-fringe")))
 
 ;; vectorize-fringe: (setof position) -> (vectorof position)
 ;; convert a set of positions into a vector for easy/efficient partitioning
@@ -95,7 +96,7 @@
                   (print "found goal")
                   maybe-goal]
                  [else (expand-fringe prev-fringe current-fringe) 
-                  (let ([new-fringe (open-input-file "frontier-fringe")])
+                  (let ([new-fringe (file->lines "frontier-fringe")])
                     (printf "At depth ~a fringe has ~a positions~%" depth (set-count current-fringe))
                     (cluster-fringe-search current-fringe new-fringe (add1 depth)))]))]))
 
