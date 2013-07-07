@@ -44,11 +44,11 @@
     ))
 
 (define (expand-fringe-portion2 list-of-pos)
-  (let ((res (for/set ([p (for/fold ([expansions (set)])
+  (let ([res (for/set ([p (for/fold ([expansions (set)])
                             ([p list-of-pos])
                             (set-union expansions
                                        (expand p)))])
-                      p)))
+                      p)])
     (serialize res)))
 
 ;; expand-fringe: (setof position) (setof position) -> (setof position)
@@ -61,8 +61,8 @@
                                #:unless (or (set-member? prev-fringe p)
                                             (set-member? current-fringe p)))
                               p)])
-    ;;write-to-disk-here!!
-    ))
+    (open-output-file "frontier-fringe" #:mode 'binary #:exists 'can-update current-fringe-vec)
+    (write (open-output-file "frontier-fringe" #:mode 'binary #:exists 'replace new-fringe))))
 
 ;; vectorize-fringe: (setof position) -> (vectorof position)
 ;; convert a set of positions into a vector for easy/efficient partitioning
@@ -95,10 +95,9 @@
                   (print "found goal")
                   maybe-goal]
                  [else (expand-fringe prev-fringe current-fringe) 
-                  (let ([new-fringe ;;read from file!!
-                         ])
-                         (printf "At depth ~a fringe has ~a positions~%" depth (set-count current-fringe))
-                         (cluster-fringe-search current-fringe new-fringe (add1 depth)))]))]))
+                  (let ([new-fringe (open-input-file "frontier-fringe")])
+                    (printf "At depth ~a fringe has ~a positions~%" depth (set-count current-fringe))
+                    (cluster-fringe-search current-fringe new-fringe (add1 depth)))]))]))
 
 
 (block10-init)
