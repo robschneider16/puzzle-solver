@@ -15,16 +15,14 @@
 ;; Currently assumes all in memory
 
 
-(define (my-vec-member? v p)
-  (do ([found #f]
-       [low 0]
-       [high (vector-length v)]
-       [mid (floor (/ (vector-length v) 2)) (floor (/ (+ low high) 2))])
-    ((or found (>= low high)) found)
-    (cond [(equal? p (vector-ref v mid)) (set! found #t)]
-          [(compare-positions p (vector-ref v mid)) (set! high mid)]
-          [else (set! low (add1 mid))])))
-
+;; vec-member?: (vectorof position) position -> boolean
+;; determine if the given position appears in the SORTED vector of positions
+(define (vec-member? v p [low 0] [high (vector-length v)])
+  (let ((mid (floor (/ (+ low high) 2)))) 
+    (cond [(>= low high) #f]
+          [(equal? p (vector-ref v mid)) (vector-ref v mid)]
+          [(compare-positions p (vector-ref v mid)) (vec-member? v low mid)]
+          [else (vec-member? v p (add1 mid) high)])))
 
 ;; expand-fringe-portion: (list int int) (setof position) (vectorof position) -> (setof position)
 ;; expand just the specified in the given range.  
@@ -35,7 +33,7 @@
                  (set-union expansions
                             (expand (vector-ref current-fringe-vec i))))]
                        #:unless (or (set-member? prev-fringe-set p)
-                                    (my-vec-member? current-fringe-vec p)))
+                                    (vec-member? current-fringe-vec p)))
                       p)))
     #|(printf "Finished the work packet generating a set of ~a positions~%" (set-count res))
     (for ([p res])
@@ -43,7 +41,9 @@
     res ;; (serialize res)
     ))
 
-(define (expand-fringe-portion2 list-of-pos)
+;; remote-expand-part-fringe: (listof position) -> (setof position)
+;; expand the given positions, ignoring duplicates other than in the new fringe being constructed
+(define (remote-expand-part-fringe list-of-pos)
   (let ((res (for/set ([p (for/fold ([expansions (set)])
                             ([p list-of-pos])
                             (set-union expansions
@@ -65,8 +65,8 @@
                                             (map deserialize
                                                  (for/work ([range-pair (make-vector-ranges (vector-length current-fringe-vec))])
                                                            ;;(expand-fringe-portion range-pair prev-fringe current-fringe-vec)
-                                                           (expand-fringe-portion2 (for/list ([i (in-range (first range-pair) (second range-pair))])
-                                                                                     (vector-ref current-fringe-vec i)))
+                                                           (remote-expand-part-fringe (for/list ([i (in-range (first range-pair) (second range-pair))])
+                                                                                        (vector-ref current-fringe-vec i)))
                                                            )))])
                    (set-union expansions 
                               partial-new-fringe))]
