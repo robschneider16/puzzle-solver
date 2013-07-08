@@ -18,26 +18,18 @@
 ;; Currently assumes all in memory
 
 
-;; vec-member?: (vectorof position) position -> boolean
-;; determine if the given position appears in the SORTED vector of positions
-(define (vec-member? v p [low 0] [high (vector-length v)])
-  (let ((mid (floor (/ (+ low high) 2)))) 
-    (cond [(>= low high) #f]
-          [(equal? p (vector-ref v mid)) (vector-ref v mid)]
-          [(compare-positions p (vector-ref v mid)) (vec-member? v p low mid)]
-          [else (vec-member? v p (add1 mid) high)])))
 
 ;; expand-fringe-portion: (list int int) (setof position) (vectorof position) -> (setof position)
 ;; expand just the specified in the given range.  
 ;; ASSUME: current-fringe-vec is sorted
 (define (expand-fringe-portion range-pair prev-fringe-set current-fringe-vec)
   (let ((res (for/set ([p (for/fold ([expansions (set)])
-                 ([i (in-range (first range-pair) (second range-pair))])
-                 (set-union expansions
-                            (expand (vector-ref current-fringe-vec i))))]
+                            ([i (in-range (first range-pair) (second range-pair))])
+                            (set-union expansions
+                                       (expand (vector-ref current-fringe-vec i))))]
                        #:unless (or (set-member? prev-fringe-set p)
-                                    (vec-member? current-fringe-vec p)))
-                      p)))
+                                    (position-in-vec? current-fringe-vec p)))
+               p)))
     #|(printf "Finished the work packet generating a set of ~a positions~%" (set-count res))
     (for ([p res])
       (printf "pos: ~a~%~a~%" (stringify p) p))|#
@@ -59,7 +51,7 @@
 ;; return the new fringe by breaking it up into ranges
 (define (expand-fringe prev-fringe current-fringe)
   (let* ((current-fringe-vec  (vectorize-fringe current-fringe)))
-    (vector-sort! compare-positions current-fringe-vec)
+    (vector-sort! position<? current-fringe-vec)
     (for/set ([p (for/fold ([expansions (set)])
                    ([partial-new-fringe (if (< (vector-length current-fringe-vec) 10000000)
                                             ;; do it myself
@@ -82,10 +74,6 @@
 (define (vectorize-fringe f)
   (for/vector #:length (set-count f) ([p f]) p))
 
-;; compare-positions: position position -> boolean
-(define (compare-positions p1 p2)
-  (string<? (stringify p1) (stringify p2)))
-
 ;; make-vector-ranges: int -> (listof (list int int)
 ;; create the streams that will give rise to the 
 (define (make-vector-ranges vlength)
@@ -96,7 +84,7 @@
                (list (list (last start-list) vlength)) 
                (drop-right start-list 1)))))
 
-(define *max-depth* 10)(set! *max-depth* 32)
+(define *max-depth* 10)(set! *max-depth* 31)
 
 ;; cluster-fringe-search: (setof position) (setof position) int -> ...
 ;; perform a fringe BFS starting at the given state until depth is 0
@@ -109,6 +97,7 @@
                   maybe-goal]
                  [else (let ((new-fringe (expand-fringe prev-fringe current-fringe)))
                          (printf "At depth ~a fringe has ~a positions~%" depth (set-count current-fringe))
+                         ;;(for ([p current-fringe]) (displayln p))
                          (cluster-fringe-search current-fringe new-fringe (add1 depth)))]))]))
 
 
