@@ -1,6 +1,6 @@
 #lang racket
 
-;(require srfi/25) ;; multi-dimensional arrays
+(require "stp-init.rkt")
 (require "stp-solve-base.rkt")
 
 
@@ -35,5 +35,6 @@
 
 (block10-init)
 ;(climb12-init)
+(compile-ms-array! *piece-types* *bh* *bw*)
 
 (time (fringe-search (set) (set *start*) 1))

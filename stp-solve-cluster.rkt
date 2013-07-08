@@ -2,9 +2,7 @@
 
 (require (planet gcr/riot))
 (require rnrs/sorting-6)
-(require racket/serialize)
 
-;(require srfi/25) ;; multi-dimensional arrays
 (require "stp-init.rkt")
 (require "stp-solve-base.rkt")
 ;(require profile)
@@ -13,7 +11,7 @@
 
 (provide (all-defined-out))
 
-(define *n-processors* 32)
+(define *n-processors* 7)
 
 ;; Cluster/multi-process specific code for the sliding-tile puzzle solver
 ;; Currently assumes all in memory
@@ -24,28 +22,29 @@
 ;; expand just the specified in the given range.  
 ;; ASSUME: current-fringe-vec is sorted
 (define (expand-fringe-portion range-pair prev-fringe-set current-fringe-vec)
-  (let ((res (for/set ([p (for/fold ([expansions (set)])
-                            ([i (in-range (first range-pair) (second range-pair))])
-                            (set-union expansions
-                                       (expand (vector-ref current-fringe-vec i))))]
-                       #:unless (or (set-member? prev-fringe-set p)
-                                    (position-in-vec? current-fringe-vec p)))
+  (let ((res (for/vector ([p (for/fold ([expansions (set)])
+                               ([i (in-range (first range-pair) (second range-pair))])
+                               (set-union expansions
+                                          (expand (vector-ref current-fringe-vec i))))]
+                          #:unless (or (set-member? prev-fringe-set p)
+                                       (position-in-vec? current-fringe-vec p)))
                p)))
     #|(printf "Finished the work packet generating a set of ~a positions~%" (set-count res))
     (for ([p res])
       (printf "pos: ~a~%~a~%" (stringify p) p))|#
-    res ;; (serialize res)
-    ))
+    (vector-sort! position<? res)
+    res))
 
 ;; remote-expand-part-fringe: (listof position) -> (setof position)
 ;; expand the given positions, ignoring duplicates other than in the new fringe being constructed
 (define (remote-expand-part-fringe list-of-pos)
-  (let ((res (for/set ([p (for/fold ([expansions (set)])
-                            ([p list-of-pos])
-                            (set-union expansions
-                                       (expand p)))])
-                      p)))
-    (serialize res)))
+  (let ((res (for/vector ([p (for/fold ([expansions (set)])
+                               ([p list-of-pos])
+                               (set-union expansions
+                                          (expand p)))])
+               p)))
+    (vector-sort! position<? res)
+    res))
 
 ;; expand-fringe: (setof position) (setof position) -> (setof position)
 ;; Given a current fringe to expand, and the immediately previous fringe, 
@@ -53,19 +52,18 @@
 (define (expand-fringe prev-fringe current-fringe)
   (let* ((current-fringe-vec  (vectorize-fringe current-fringe)))
     (vector-sort! position<? current-fringe-vec)
-    (for/set ([p (for/fold ([expansions (set)])
-                   ([partial-new-fringe (if (< (vector-length current-fringe-vec) 10000000)
+    (for/set ([p (for/fold ([expansions '()])
+                   ([partial-new-fringe (if (< (vector-length current-fringe-vec) 1000)
                                             ;; do it myself
                                             (list (expand-fringe-portion (list 0 (vector-length current-fringe-vec)) prev-fringe current-fringe-vec))
                                             ;; else farm out to workers with (de)serialization overhead
-                                            (map deserialize
-                                                 (for/work ([range-pair (make-vector-ranges (vector-length current-fringe-vec))])
-                                                           ;;(expand-fringe-portion range-pair prev-fringe current-fringe-vec)
-                                                           (remote-expand-part-fringe (for/list ([i (in-range (first range-pair) (second range-pair))])
-                                                                                        (vector-ref current-fringe-vec i)))
-                                                           )))])
-                   (set-union expansions 
-                              partial-new-fringe))]
+                                            (for/work ([range-pair (make-vector-ranges (vector-length current-fringe-vec))])
+                                                      ;;(expand-fringe-portion range-pair prev-fringe current-fringe-vec)
+                                                      (remote-expand-part-fringe (for/list ([i (in-range (first range-pair) (second range-pair))])
+                                                                                   (vector-ref current-fringe-vec i)))
+                                                      ))])
+                   (fringe-merge expansions 
+                                 (vector->list partial-new-fringe)))]
               #:unless (or (set-member? prev-fringe p)
                            (set-member? current-fringe p)))
              p)))
@@ -74,6 +72,15 @@
 ;; convert a set of positions into a vector for easy/efficient partitioning
 (define (vectorize-fringe f)
   (for/vector #:length (set-count f) ([p f]) p))
+
+;; fringe-merge: (listof position) (listof position) -> (listof X)
+;; ASSUMES both lists are sorted and creates a new list with duplicates removed
+(define (fringe-merge l1 l2)
+  (cond [(empty? l1) l2]
+        [(empty? l2) l1]
+        [(position<? (first l1) (first l2)) (cons (first l1) (fringe-merge (rest l1) l2))]
+        [(equal? (first l1) (first l2)) (fringe-merge l1 (rest l2))]
+        [else (cons (first l2) (fringe-merge l1 (rest l2)))]))
 
 ;; make-vector-ranges: int -> (listof (list int int)
 ;; create the streams that will give rise to the 
@@ -106,10 +113,10 @@
 ;(climb12-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
-#|
+;;#|
 (module+ main
-  (connect-to-riot-server! "wcp")
+  (connect-to-riot-server! "localhost")
   (define search-result (time (cluster-fringe-search (set) (set *start*) 1)))
   (print search-result))
-|#
-(time (cluster-fringe-search (set) (set *start*) 1))
+;;|#
+;;(time (cluster-fringe-search (set) (set *start*) 1))

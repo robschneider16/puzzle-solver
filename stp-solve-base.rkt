@@ -4,8 +4,6 @@
 (require "stp-init.rkt")
 
 (provide (all-defined-out))
-;;********************************************** ACK ***************************************************
-
 
 
 ;; INITIALIZE STUFF FOR SLIDING-TILE-SOLVER
@@ -17,12 +15,9 @@
 (define *ms-array* #f)(set! *ms-array* *ms-array*)
 
 
-
-;;-------------------------------------------------------------------------------
-;; COMMON UTILITIES TO BOTH GENERIC FRINGE-SEARCH AND CLUSTER-FRINGE-SEARCH
-
-
 ;; ******************************************************************************
+;; DATA DEFINITIONS
+
 ;; a cell is a pair, (list r c), for row and column r and c
 
 ;; a location (loc for short) is an int, representing the row-major rank of a cell
@@ -36,6 +31,8 @@
 ;; and the ints in the secondary vectors are the SORTED locations of the pieces of that type
 ;; ******************************************************************************
 
+;;-------------------------------------------------------------------------------
+;; COMMON UTILITIES TO BOTH GENERIC FRINGE-SEARCH AND CLUSTER-FRINGE-SEARCH
 
 ;; list-union: (listof X) (listof X) (X X -> boolean) -> (listof X)
 ;; ASSUME lists are sorted
@@ -48,7 +45,6 @@
                                              (list-union (rest l1) l2 comp?))]
         [else (cons (first l2) (list-union l1 (rest l2) comp?))]))
 
-        
 ;; list-subtract: (listof X) (listof X) (X X -> boolean) -> (listof X)
 ;; ASSUME lists are sorted
 (define (list-subtract l1 l2 comp?)
@@ -108,11 +104,12 @@
 ;; 2. list of precondition locs for spaces,
 ;; 3. list of post-condition locs for spaces after move, and
 ;; 4. the translated loc (origin) of the piece
+;; This is only called by compile-ms-array! once before a solution of a particular puzzle so time here is less important
 (define (basic-move-schema tile trans)
-  (let* ((current-cell-list (sort (translate-piece (vector-ref *piece-types* (first tile)) (cdr tile)) cell<?))
-         (current-loc-list (map cell-to-loc current-cell-list))
-         (cell-list-to (sort (translate-piece current-cell-list trans) cell<?))
-         (loc-list-to (map cell-to-loc cell-list-to)))
+  (let* ((current-cell-list (translate-piece (vector-ref *piece-types* (first tile)) (cdr tile)))
+         (current-loc-list (sort (map cell-to-loc current-cell-list) <))
+         (cell-list-to (translate-piece current-cell-list trans))
+         (loc-list-to (sort (map cell-to-loc cell-list-to) <)))
     (list current-loc-list
           loc-list-to
           (list-subtract loc-list-to  current-loc-list <)
@@ -122,14 +119,7 @@
 
 ;; position<?: position position -> boolean
 (define (position<? p1 p2)
-  ;;(string<? (stringify p1) (stringify p2))
-  ;;(string<? (format "~a" p1) (format "~a" p2))
-  (< (equal-hash-code p1) (equal-hash-code p2))
-  )
-
-;; cell<?: cell cell -> boolean
-(define (cell<? c1 c2)
-  (< (cell-to-loc c1) (cell-to-loc c2)))
+  (< (equal-hash-code p1) (equal-hash-code p2)))
 
 ;; position-in-vec?: (vectorof position) position -> boolean
 ;; determine if given position is in vector of positions
@@ -223,16 +213,4 @@
   (for/first ([pos f]
               #:when (is-goal? pos))
     pos))
-
-;; stringify: position -> string
-;; general make-string from position
-(define (stringify position)
-  (for/fold ([res ""])
-    ([i (in-range *num-piece-types*)])
-    (string-append res 
-                   (number->string i) ":"
-                   (apply string-append
-                          (map (lambda (n) (string-append "," (number->string n)))
-                               (vector-ref position i))) ;; SORTING THIS SHOULD NOT BE NECESSARY ANYMORE SINCE KEEPING LOCATIONS SORTED
-                   ";")))
 
