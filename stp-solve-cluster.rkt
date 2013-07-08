@@ -85,7 +85,7 @@
                (list (list (last start-list) vlength)) 
                (drop-right start-list 1)))))
 
-(define *max-depth* 10)(set! *max-depth* 31)
+(define *max-depth* 10)(set! *max-depth* 61)
 
 ;; cluster-fringe-search: (setof position) (setof position) int -> ...
 ;; perform a fringe BFS starting at the given state until depth is 0
@@ -104,6 +104,7 @@
 
 (block10-init)
 ;(climb12-init)
+(compile-ms-array! *piece-types* *bh* *bw*)
 
 #|
 (module+ main
