@@ -5,6 +5,7 @@
 (require racket/serialize)
 
 ;(require srfi/25) ;; multi-dimensional arrays
+(require "stp-init.rkt")
 (require "stp-solve-base.rkt")
 ;(require profile)
 ;(instrumenting-enabled #t)
