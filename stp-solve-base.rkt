@@ -1,19 +1,14 @@
 #lang racket
 
 (require srfi/25) ;; multi-dimensional arrays
+(require "stp-init.rkt")
 
 (provide (all-defined-out))
+;;********************************************** ACK ***************************************************
+
 
 
 ;; INITIALIZE STUFF FOR SLIDING-TILE-SOLVER
-
-(define *num-piece-types* 0)
-(define *piece-types* empty)
-(define *start* empty)
-(define *target* empty)
-(define *bw* 0)
-(define *bh* 0)
-(define *bsz* 0)
 
 ;; move trans for up, right, down and left respectively
 (define *prim-move-translations* '((-1 0) (0 1) (1 0) (0 -1)))
@@ -21,32 +16,6 @@
 ;; move-schema-array for compiling move requirements
 (define *ms-array* #f)(set! *ms-array* *ms-array*)
 
-;; set-em!: piece-type-vector pre-position-list target int int -> void
-;; generic setter for use by puzzle-specific initialization functions
-(define (set-em! ptv s t nrow ncol)
-  (set! *bh* nrow)
-  (set! *bw* ncol)
-  (set! *bsz* (* nrow ncol))
-  (set! *num-piece-types* (vector-length ptv)) ;; must come before positionify/(pre-compress)
-  (set! *piece-types* (for/vector ([cell-specs ptv])
-                                  (list->set cell-specs)));****
-  (set! *start* (positionify s))
-  (set! *target* t)
-  )
-
-;; pre-spaces: pre-position -> (listof cell)
-;; extract the spaces *** expected to be at the end of the initialization lists ***
-(define (pre-spaces p)
-  (last p))
-
-;; pre-compress: pre-position -> (listof (cons tile-id (listof cell)))
-;; collapse pieces of the same type and give spaces their unique id of -1
-(define (pre-compress p)
-  (cons (cons 0 (pre-spaces p))
-        (for/list ([i (in-range 1 *num-piece-types*)])
-          (cons i
-                (map cdr
-                     (filter (lambda (a-piece) (= i (first a-piece))) (drop-right p 1)))))))
 
 
 ;;-------------------------------------------------------------------------------
@@ -66,24 +35,6 @@
 ;; where the index of the top-level vectors reflect the piece-type as given in the init,
 ;; and the ints in the secondary vectors are the SORTED locations of the pieces of that type
 ;; ******************************************************************************
-
-
-;; positionify: pre-position -> position
-;; create a 'position' representation of a board state based on the given start-list pre-position format
-(define (positionify pre-position)
-  (for/vector ([pspec (sort (pre-compress pre-position) < #:key first)]
-               [i (in-range *num-piece-types*)])
-    (unless (= i (first pspec)) (error 'positionify "mis-matched piece-type in vector representation of position"))
-    (sort (map cell-to-loc (cdr pspec)) <)))
-
-;; cell-to-loc: cell -> int
-;; convert ordered pair to row-major-order rank location
-(define (cell-to-loc pair)
-  (+ (* (first pair) *bw*) (second pair)))
-
-;; loc-to-cell: int -> cell
-(define (loc-to-cell i)
-  (list (floor (/ i *bw*)) (modulo i *bw*)))
 
 
 ;; list-union: (listof X) (listof X) (X X -> boolean) -> (listof X)
@@ -141,34 +92,40 @@
   (for/list ([cell cell-list])
     (translate-cell cell trans)))
 
-;; translate-spaces: (listof loc) move-schema -> (listof cell)
+;; translate-spaces: (listof loc) move-schema -> (listof loc)
 ;; for a move-in-progress, create the new list of space cells for the given piece move
 (define (translate-spaces spaces ms)
-  (list-union (list-subtract spaces
-                             (map cell-to-loc (third ms)) <)
-              (map cell-to-loc (fourth ms))
-              <))
+  (append (list-subtract spaces (third ms) <)
+          (fourth ms)))
 
-;; basic-move-schema: tile-spec trans-spec -> (list (setof cell) (setof cell) (setof cell) (setof cell) cell)
+;***  move-schema has cells -- where used?
+
+
+;; basic-move-schema: tile-spec trans-spec -> (list (listof loc) (listof loc) (listof loc) (listof loc) loc)
 ;; the resulting schema specifies:
-;; 0. listof current cells occupied by piece
-;; 1. list of cells occupied by piece after the translation in question
-;; 2. list of precondition cells for spaces,
-;; 3. list of post-condition cells for spaces after move, and
-;; 4. the translated cell (origin) of the piece
+;; 0. listof current locs occupied by piece
+;; 1. list of locs occupied by piece after the translation in question
+;; 2. list of precondition locs for spaces,
+;; 3. list of post-condition locs for spaces after move, and
+;; 4. the translated loc (origin) of the piece
 (define (basic-move-schema tile trans)
   (let* ((current-cell-list (sort (translate-piece (vector-ref *piece-types* (first tile)) (cdr tile)) cell<?))
-         (cell-list-to (sort (translate-piece current-cell-list trans) cell<?)))
-    (list current-cell-list
-          cell-list-to
-          (list-subtract cell-list-to current-cell-list cell<?)
-          (list-subtract current-cell-list cell-list-to cell<?)
-          (translate-cell (cdr tile) trans))))
+         (current-loc-list (map cell-to-loc current-cell-list))
+         (cell-list-to (sort (translate-piece current-cell-list trans) cell<?))
+         (loc-list-to (map cell-to-loc cell-list-to)))
+    (list current-loc-list
+          loc-list-to
+          (list-subtract loc-list-to  current-loc-list <)
+          (list-subtract current-loc-list loc-list-to <)
+          (cell-to-loc (translate-cell (cdr tile) trans)))))
 
 
 ;; position<?: position position -> boolean
 (define (position<? p1 p2)
-  (string<? (stringify p1) (stringify p2)))
+  ;;(string<? (stringify p1) (stringify p2))
+  ;;(string<? (format "~a" p1) (format "~a" p2))
+  (< (equal-hash-code p1) (equal-hash-code p2))
+  )
 
 ;; cell<?: cell cell -> boolean
 (define (cell<? c1 c2)
@@ -203,16 +160,16 @@
               [dir-i (in-range (length *prim-move-translations*))]
               #:when (begin (set! mv-schema (array-ref *ms-array* (first tile-to-move) tile-to-move-loc dir-i))
                             (and mv-schema
-                                 (valid-move? tile-to-move dir-trans (spaces position) mv-schema))))
+                                 (valid-move? (spaces position) (third mv-schema)))))
              (list
-              (cons (first tile-to-move) (fifth mv-schema))      ; tile-spec of the moved tile that gives rise to this position
-              (for/vector ([tile-type (in-range *num-piece-types*)] ; build the new position
-                           [tile-type-locs position]) 
-                (cond [(= tile-type (first tile-to-move))
-                       (sort (cons (cell-to-loc (fifth mv-schema))
-                                   (remove tile-to-move-loc tile-type-locs)) <)]
-                      [(= tile-type 0) (translate-spaces tile-type-locs mv-schema)]
-                      [else tile-type-locs]))))))
+              (cons (first tile-to-move) (loc-to-cell (fifth mv-schema)))      ; tile-spec of the moved tile that gives rise to this position
+              (let ((new-vec (vector-copy position)))                          ; build the new position
+                (vector-set! 
+                 new-vec (first tile-to-move)
+                 (sort (cons (fifth mv-schema) (remove tile-to-move-loc (vector-ref new-vec (first tile-to-move))))
+                       <))
+                (vector-set! new-vec 0 (sort (translate-spaces (vector-ref new-vec 0) mv-schema) <))
+                new-vec)))))
 
 ;; expand-piece: tile-spec position -> (setof position)
 ;; for a given tile-spec (piece), return the list of new positions resulting from moving the given piece in the given position
@@ -227,20 +184,20 @@
     ((set-empty? new-positions) (set-remove return-positions position))))
 
 
-;; valid-move?: tile-spec trans-spec (listof loc) move-schema -> boolean
-;; determine if the proposed move is on the board and has the spaces in the right position
-(define (valid-move? tile ts space-locs ms)
-  (let ((current-cells (first ms))
-        (moved-cells (second ms)))
-    (and (for/and ([mv-cell moved-cells])
-           (onboard? mv-cell)) 
-         (for/and ([needed-space (third ms)])
-           (member (cell-to-loc needed-space) space-locs)))))
+;; valid-move?: (listof loc) (listof loc) -> boolean
+;; determine if the proposed move has the current-spaces in the right position
+;; as required by the move-schema (INDEPENDENT OF if on the board)
+(define (valid-move? current-space-locs prerequisite-spaces)
+  (for/and ([needed-space prerequisite-spaces])
+    (member needed-space current-space-locs)))
   
 ;; onboard?: cell -> boolean
 (define (onboard? c)
   (and (< -1 (first c) *bh*)
        (< -1 (second c) *bw*)))
+;; loc-onboard?: loc -> boolean
+(define (loc-onboard? loc)
+  (< -1 loc *bsz*))
 
 ;; expand: position -> (setof position)
 ;; generate next states from this one
