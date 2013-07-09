@@ -22,7 +22,7 @@
 
 
 ;; expand-fringe-portion: (list int int) (setof position) (vectorof position) -> (setof position)
-;; expand just the specified in the given range.  
+;; expand just the portion of the sorted-fringe-vector specified by the indices in the given range-pair.  
 ;; ASSUME: current-fringe-vec is sorted
 (define (expand-fringe-portion range-pair prev-fringe-set current-fringe-vec)
   (let ((res (for/vector ([p (for/fold ([expansions (set)])
@@ -88,6 +88,7 @@
                                   (position-in-vec? (car lops) prev-fringe-vec)
                                   (position-in-vec? (car lops) current-fringe-vec))
                               (unless (empty? (cdr lops)) (heap-add! heap-o-position-lists (cdr lops)))))
+       (unless (empty? (cdr lops)) (heap-add! heap-o-position-lists (cdr lops)))
        (car lops)))))
     
 
@@ -115,7 +116,7 @@
                              (for/list ([processor (in-range 1 *n-processors*)])
                                (make-one-merge-range (/ total-num-samples *n-processors*) (car (heap-min heap-o-position-lists)) heap-o-position-lists))
                              (list (list (car (heap-min heap-o-position-lists)) (add1 overall-max))))])
-    (printf "make-merge-ranges-from-expansions: returning ~a~%" made-merge-ranges)
+    ;;(printf "make-merge-ranges-from-expansions: returning ~a~%" made-merge-ranges)
     made-merge-ranges))
                             
 
@@ -136,7 +137,7 @@
     ;; distribute merging work
     (apply append ;; GAK! -- do something else here
            (let ([expansion-parts (for/list #|work|# ([merge-range (make-merge-ranges-from-expansions sampling-stats)])
-                                    (printf "remote-expand-fringe: merge-range = ~a~%" merge-range)
+                                    ;;(printf "remote-expand-fringe: merge-range = ~a~%" merge-range)
                                     (merge-expansions merge-range just-expansions prev-fringe-vec current-fringe-vec))])
              (printf "remote-expand-fringe: lengths = ~a~%" (map length expansion-parts))
              (sort expansion-parts
