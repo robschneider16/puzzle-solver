@@ -53,6 +53,11 @@
         [(comp? (first l1) (first l2)) (cons (first l1) (list-subtract (rest l1) l2 comp?))]
         [else (list-subtract l1 (rest l2) comp?)]))
 
+;; sorted-remove-dups: (listof X) -> (listof X)
+(define (sorted-remove-dups lox)
+  (cond [(or (empty? lox) (empty? (rest lox))) lox]
+        [(equal? (first lox) (second lox)) (sorted-remove-dups (rest lox))]
+        [else (cons (first lox) (sorted-remove-dups (cdr lox)))]))
 
 ;;------------------------------------------------------------------------------------------------------
 ;; Compiling move-schemas
@@ -125,6 +130,16 @@
 ;; determine if given position is in vector of positions
 (define (position-in-vec? v p)
   (vec-member? v p position<?))
+
+;; find-pos-index: int (vectorof position) -> int
+;; find the index of the position (if present) or of the first position greater than where it would be
+(define (find-pos-index pos-hashcode vop (low 0) (high (vector-length vop)))
+  (let* ([mid (floor (/ (+ low high) 2))]
+         [mid-hashcode (and (< mid (vector-length vop)) (equal-hash-code (vector-ref vop mid)))])
+    (cond [(>= low high) low]
+          [(= pos-hashcode mid-hashcode) mid]
+          [(< pos-hashcode mid-hashcode) (find-pos-index pos-hashcode vop low mid)]
+          [else (find-pos-index pos-hashcode vop (add1 mid) high)])))
 
 ;; vec-member?: (vectorof X) X (X X -> boolean) [int] [int] -> boolean
 ;; determine if the given item appears in the SORTED vector of positions
