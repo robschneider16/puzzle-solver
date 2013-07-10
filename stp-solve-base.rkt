@@ -132,12 +132,15 @@
   (vec-member? v p position<?))
 
 ;; find-pos-index: int (vectorof position) -> int
-;; find the index of the position (if present) or of the first position greater than where it would be
+;; find the index of the *FIRST* position (if present) or of the first position greater than where it would be
 (define (find-pos-index pos-hashcode vop (low 0) (high (vector-length vop)))
   (let* ([mid (floor (/ (+ low high) 2))]
          [mid-hashcode (and (< mid (vector-length vop)) (equal-hash-code (vector-ref vop mid)))])
     (cond [(>= low high) low]
-          [(= pos-hashcode mid-hashcode) mid]
+          [(= pos-hashcode mid-hashcode) (or (for/last ([index (in-range mid -1 -1)]
+                                                        #:when (= (equal-hash-code (vector-ref vop index)) mid-hashcode))
+                                               index)
+                                             0)]
           [(< pos-hashcode mid-hashcode) (find-pos-index pos-hashcode vop low mid)]
           [else (find-pos-index pos-hashcode vop (add1 mid) high)])))
 

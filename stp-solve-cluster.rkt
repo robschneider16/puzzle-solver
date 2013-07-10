@@ -76,27 +76,30 @@
                             (vector-set! sample-stats 3 (cons (equal-hash-code p) (vector-ref sample-stats 3))))
                           p)))
     (vector-sort! position<? res)
+    (vector-set! sample-stats 3 (sort (vector-ref sample-stats 3) <))
     (printf "remote-expand-part-fringe: starting w/ ~a positions, expansion has ~a/~a positions and sampled ~a hashcodes~%"
             (length list-of-pos) (vector-ref sample-stats 0) (vector-length res) (length (vector-ref sample-stats 3)))
     (list sample-stats res)))
 
-;; MERGING RESULTS .....
+;; MERGING .....
 
 ;; merge-expansions: (list int int) (listof (vectorof position)) (vectorof position) (vectorof position) -> (listof position)
 ;; given a collection of (partial) fringe expansions and a specification of a range of positions to consider
 ;; go through all of them and merge the positions (removing duplicates) in that range into a single collection
-(define (merge-expansions my-range lovo-positions prev-fringe-vec current-fringe-vec)
+(define (remote-merge-expansions my-range lovo-positions prev-fringe-vec current-fringe-vec)
   (let* ([fastforwarded-lolops 
           (filter-not empty?
-                      (map (lambda (vop) 
+                      (map (lambda (vop)
+                             (printf "remote-merge-expansions: fastforwarding vec of ~a positions from indices [~a-~a]~%" 
+                                     (vector-length vop) (find-pos-index (first my-range) vop) (find-pos-index (second my-range) vop))
                              (for/list ([i (in-range (find-pos-index (first my-range) vop)
-                                                     (min (find-pos-index (second my-range) vop) (vector-length vop)))])
+                                                     (find-pos-index (second my-range) vop))])
                                (vector-ref vop i)))
                            lovo-positions))]
          [heap-o-position-lists (let ([lheap (make-heap (lambda (l1 l2) (position<? (car l1) (car l2))))])
                                   (heap-add-all! lheap fastforwarded-lolops)
                                   lheap)])
-    (printf "merge-expansions: fw-lolop-lengths=~a~%" (map length fastforwarded-lolops))
+    (printf "remote-merge-expansions: fw-lolop-lengths=~a~%" (map length fastforwarded-lolops))
     (sorted-remove-dups
      (for/list ([lops (in-heap/consume! heap-o-position-lists)]
                 #:break (>= (equal-hash-code (car lops)) (second my-range))
@@ -120,18 +123,19 @@
 
 ;; make-merge-ranges-from-expansions: (listof sampling-stats) -> (list merge-ranges)
 ;; decide how to partition the space of positions as distributed over the expansions reflected in the sampling-stats
+;;***** consider and compare this to simply dividing the hash-code range by *n-processors*
 (define (make-merge-ranges-from-expansions lo-sample-stat)
-  (let* ([total-num-positions (foldl (lambda (ss sum) (+ (vector-ref ss 0) sum)) 0 lo-sample-stat)]
+  (let* (;;[total-num-positions (foldl (lambda (ss sum) (+ (vector-ref ss 0) sum)) 0 lo-sample-stat)]
          ;;[overall-min (argmin (lambda (ss) (vector-ref ss 1)) lo-sample-stat)]
          [overall-max (vector-ref (argmax (lambda (ss) (vector-ref ss 2)) lo-sample-stat) 2)]
          [total-num-samples (foldl (lambda (ss sum) (+ (length (vector-ref ss 3)) sum)) 0 lo-sample-stat)]
-         [heap-o-position-lists (let ([lheap (make-heap (lambda (l1 l2) (< (first l1) (first l2))))])
-                                  (heap-add-all! lheap (map (lambda (ss) (sort (vector-ref ss 3) <)) lo-sample-stat))
-                                  lheap)]
+         [heap-o-sample-hash-lists (let ([lheap (make-heap (lambda (l1 l2) (< (first l1) (first l2))))])
+                                     (heap-add-all! lheap (map (lambda (ss) (sort (vector-ref ss 3) <)) lo-sample-stat))
+                                     lheap)]
          [made-merge-ranges (append 
                              (for/list ([processor (in-range 1 *n-processors*)])
-                               (make-one-merge-range (/ total-num-samples *n-processors*) (car (heap-min heap-o-position-lists)) heap-o-position-lists))
-                             (list (list (car (heap-min heap-o-position-lists)) (add1 overall-max))))])
+                               (make-one-merge-range (/ total-num-samples *n-processors*) (car (heap-min heap-o-sample-hash-lists)) heap-o-sample-hash-lists))
+                             (list (list (car (heap-min heap-o-sample-hash-lists)) (add1 overall-max))))])
     ;;(printf "make-merge-ranges-from-expansions: returning ~a~%" made-merge-ranges)
     made-merge-ranges))
                             
@@ -151,12 +155,20 @@
          (just-expansions (map second stats+expansions)))
     ;; distribute merging work
     (apply append ;; GAK! -- do something else here
-           (let ([expansion-parts (for/list #|work|# ([merge-range (make-merge-ranges-from-expansions sampling-stats)])
-                                    ;;(printf "remote-expand-fringe: merge-range = ~a~%" merge-range)
-                                    (merge-expansions merge-range just-expansions prev-fringe-vec current-fringe-vec))])
-             (printf "remote-expand-fringe: lengths = ~a~%" (map length expansion-parts))
-             (sort expansion-parts
-                   < #:key (lambda (x) (equal-hash-code (car x))))))
+           (let ([sorted-expansion-parts
+                  (let ([expansion-parts (for/list #|work|# ([merge-range (make-merge-ranges-from-expansions sampling-stats)])
+                                           ;;(printf "remote-expand-fringe: merge-range = ~a~%" merge-range)
+                                           (remote-merge-expansions merge-range just-expansions prev-fringe-vec current-fringe-vec))])
+                    (printf "remote-expand-fringe: lengths = ~a~%" (map length expansion-parts))
+                    (sort expansion-parts
+                          < #:key (lambda (x) (equal-hash-code (car x)))))])
+             (for/first ([i (in-range (length sorted-expansion-parts))]
+                         #:when (or (not (apply < (map equal-hash-code (list-ref sorted-expansion-parts i))))
+                                    (and (< i (sub1 (length sorted-expansion-parts)))
+                                         (> (equal-hash-code (last (list-ref sorted-expansion-parts i)))
+                                            (equal-hash-code (first (list-ref sorted-expansion-parts (add1 i))))))))
+               (error 'remote-expand-fringe "mucked-up expansion parts"))
+             sorted-expansion-parts))
     ))
 ;;----------------------------------------------------------------------------------------
 
