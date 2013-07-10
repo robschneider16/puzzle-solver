@@ -26,7 +26,7 @@
                             (vector-set! bl 1 (current-milliseconds))
                             bl)))
            (t3 (current-milliseconds)))
-      (printf "Trial ~a: ~a msec build set, ~a convert to list, ~a send to worker, ~a conv to set, ~a conv back to list, ~a to get the result back~%"
+      (printf "Trial ~a: ~a msec build vec, ~a (unused), ~a send to worker, ~a (unused), ~a (unused), ~a to get the result back~%"
               i 
               (- t1 t0); time to build
               0;(- t2 t1); time to convert
@@ -56,8 +56,8 @@
                             ;(set-mcdr! bl (current-milliseconds))
                             (list ot1 (current-milliseconds) (last biglist-file-read))))] 
            [t3 (current-milliseconds)])
-      (printf "~a ~%" res)
-      (printf "Trial ~a: ~a msec build set, ~a convert to list, ~a send to worker, ~a conv to set, ~a conv back to list, ~a to get the result back~%"
+      ;;(printf "~a ~%" res)
+      (printf "Trial ~a: ~a msec build list, ~a write list to disk, ~a send to worker, ~a read list from disk, ~a (unused), ~a to get the result back~%"
               i 
               (- t1 t0); time to build
               (- t2 t1); time to write to disk
@@ -75,6 +75,6 @@
 
 (module+ main
 	 (connect-to-riot-server! "localhost")
-	 (displayln (test-write-run 5))
+	 (displayln (test-run 5))
 	 (displayln "Complete"))
 
