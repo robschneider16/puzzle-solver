@@ -5,7 +5,7 @@
 (require data/heap)
 (require srfi/1)
 (require racket/fixnum)
-
+(require racket/set)
 
 (require "stp-init.rkt")
 (require "stp-solve-base.rkt")
@@ -15,7 +15,8 @@
 
 (provide (all-defined-out))
 
-(define *n-processors* 4)
+(define *n-processors* 5)
+
 (define *most-positive-fixnum* (fx+ (expt 2 61) (fx- (expt 2 61) 1)))  ;; ****** only on 64-bit architectures *****
 (define *most-negative-fixnum* (fx+ (fx* -1 (expt 2 61)) (fx* -1 (expt 2 61))));; ***** likewise *****
 
@@ -24,7 +25,7 @@
 
 
 
-;; expand-fringe-portion: (list int int) (setof position) (vectorof position) -> (setof position)
+;; expand-fringe-portion: (list int int) (setof position) (vectorof position) -> (vectorof position)
 ;; expand just the portion of the sorted-fringe-vector specified by the indices in the given range-pair.  
 ;; ASSUME: current-fringe-vec is sorted
 (define (expand-fringe-portion range-pair prev-fringe-set current-fringe-vec)
@@ -99,25 +100,32 @@
   (let* ([fastforwarded-lolops 
           (filter-not empty?
                       (map (lambda (vop)
-                             (printf "remote-merge-expansions: fastforwarding vec of ~a positions from indices [~a-~a]~%" 
-                                     (vector-length vop) (find-pos-index (first my-range) vop) (find-pos-index (second my-range) vop))
+                             (printf "remote-merge-expansions: fastforwarding vec of ~a positions to ~a positions (indices [~a-~a])~%" 
+                                     (vector-length vop) (- (find-pos-index (second my-range) vop) (find-pos-index (first my-range) vop)) 
+                                     (find-pos-index (first my-range) vop) (find-pos-index (second my-range) vop))
                              (for/list ([i (in-range (find-pos-index (first my-range) vop)
                                                      (find-pos-index (second my-range) vop))])
                                (vector-ref vop i)))
                            lovo-positions))]
          [heap-o-position-lists (let ([lheap (make-heap (lambda (l1 l2) (position<? (car l1) (car l2))))])
                                   (heap-add-all! lheap fastforwarded-lolops)
-                                  lheap)])
+                                  lheap)]
+         [sorted-merged-expansions
+          (sorted-remove-dups
+           (for/list ([lops (in-heap/consume! heap-o-position-lists)]
+                      #:break (>= (equal-hash-code (car lops)) (second my-range))
+                      #:unless (and (or ;;(equal? (car lops) (car (heap-min heap-o-position-lists)))
+                                     (position-in-vec? (car lops) prev-fringe-vec)
+                                     (position-in-vec? (car lops) current-fringe-vec))
+                                    (unless (empty? (cdr lops)) (heap-add! heap-o-position-lists (cdr lops)))));;******???????
+             (unless (empty? (cdr lops)) (heap-add! heap-o-position-lists (cdr lops)))
+             (car lops)))])
     (printf "remote-merge-expansions: fw-lolop-lengths=~a~%" (map length fastforwarded-lolops))
-    (sorted-remove-dups
-     (for/list ([lops (in-heap/consume! heap-o-position-lists)]
-                #:break (>= (equal-hash-code (car lops)) (second my-range))
-                #:unless (and (or ;;(equal? (car lops) (car (heap-min heap-o-position-lists)))
-                               (position-in-vec? (car lops) prev-fringe-vec)
-                               (position-in-vec? (car lops) current-fringe-vec))
-                              (unless (empty? (cdr lops)) (heap-add! heap-o-position-lists (cdr lops)))))
-       (unless (empty? (cdr lops)) (heap-add! heap-o-position-lists (cdr lops)))
-       (car lops)))))
+    (printf "remote-merge-expansions: merged-expns-length=~a~%" (length sorted-merged-expansions))
+    (unless (= (length sorted-merged-expansions) (set-count (list->set sorted-merged-expansions))) 
+      (error 'remote-merge-expansions "list-merging vs. set mis-match"))
+    sorted-merged-expansions
+    ))
 
 
 ;; make-one-merge-range: int int (heapof (listof number)) -> (list int int)
@@ -153,10 +161,10 @@
     made-merge-ranges))
 
 
-;; remote-expand-fringe: (vectorof position) (vectorof position) -> (vectorof position)
+;; distributed-expand-fringe: (vectorof position) (vectorof position) -> (vectorof position)
 ;; Distributed version of expand-fringe
 ;; convert prev-fringe set to vector to pass riot-net
-(define (remote-expand-fringe prev-fringe-vec current-fringe-vec)
+(define (distributed-expand-fringe prev-fringe-vec current-fringe-vec)
   ;; distribute expansion work
   (let* ((samp-freq (floor (/ (vector-length current-fringe-vec) (* 100 *n-processors*))))
          (stats+expansions (for/list #|work|# ([range-pair (make-vector-ranges (vector-length current-fringe-vec))])
@@ -167,15 +175,17 @@
     (apply append ;; GAK! -- do something else here
            (let* ([merge-ranges (make-merge-ranges-from-expansions sampling-stats)]
                   [sorted-expansion-parts
-                   (let ([expansion-parts (for/list #|work|# ([merge-range merge-ranges])
+                   (let ([merged-expansion-parts (for/list #|work|# ([merge-range merge-ranges])
                                             ;;(printf "remote-expand-fringe: merge-range = ~a~%" merge-range)
                                             (remote-merge-expansions merge-range just-expansions prev-fringe-vec current-fringe-vec))])
-                     (printf "remote-expand-fringe: lengths = ~a~%" (map length expansion-parts))
-                     (sort expansion-parts
+                     (printf "remote-expand-fringe: lengths = ~a~%" (map length merged-expansion-parts))
+                     (sort merged-expansion-parts
                            fx< #:key (lambda (x) (equal-hash-code (car x)))))])
              ;;***error-check
              (for/first ([i (in-range (length sorted-expansion-parts))]
-                         #:when (or (not (apply < (map equal-hash-code (list-ref sorted-expansion-parts i))))
+                         #:when (or (for/or ([h1 (map equal-hash-code (list-ref sorted-expansion-parts i))]
+                                             [h2 (rest (map equal-hash-code (list-ref sorted-expansion-parts i)))])
+                                      (fx>= h1 h2))
                                     (and (< i (sub1 (length sorted-expansion-parts)))
                                          (> (equal-hash-code (last (list-ref sorted-expansion-parts i)))
                                             (equal-hash-code (first (list-ref sorted-expansion-parts (add1 i))))))))
@@ -188,21 +198,22 @@
 ;; Given a current fringe to expand, and the immediately previous fringe, 
 ;; return the new fringe by breaking it up into ranges
 (define (expand-fringe prev-fringe current-fringe)
-  (let* ((current-fringe-vec  (vectorize-fringe current-fringe)))
+  (let* ((current-fringe-vec  (vectorize-set current-fringe)))
     (vector-sort! position<? current-fringe-vec)
+    (unless (= (vector-length current-fringe-vec) (set-count current-fringe)) (error 'expand-fringe "vectorization screw-up"))
     (for/set ([p (if (< (vector-length current-fringe-vec) 1000)
                      ;; do it myself
                      (expand-fringe-portion (list 0 (vector-length current-fringe-vec)) prev-fringe current-fringe-vec)
                      ;; else call remote-expand, which will farm out to workers
-                     (remote-expand-fringe (let ((prev-vec (vectorize-fringe prev-fringe)))
-                                             (vector-sort! position<? prev-vec)
-                                             prev-vec)
-                                           current-fringe-vec))])
+                     (distributed-expand-fringe (let ((prev-vec (vectorize-set prev-fringe)))
+                                                  (vector-sort! position<? prev-vec)
+                                                  prev-vec)
+                                                current-fringe-vec))])
              p)))
 
-;; vectorize-fringe: (setof position) -> (vectorof position)
+;; vectorize-set: (setof position) -> (vectorof position)
 ;; convert a set of positions into a vector for easy/efficient partitioning
-(define (vectorize-fringe f)
+(define (vectorize-set f)
   (for/vector #:length (set-count f) ([p f]) p))
 
 ;; fringe-merge: (listof position) (listof position) -> (listof X)

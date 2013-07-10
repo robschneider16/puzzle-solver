@@ -3,6 +3,7 @@
 (require srfi/25) ;; multi-dimensional arrays
 (require "stp-init.rkt")
 (require racket/fixnum)
+(require racket/set)
 
 (provide (all-defined-out))
 
