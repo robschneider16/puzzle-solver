@@ -4,6 +4,7 @@
 (require rnrs/sorting-6)
 (require data/heap)
 (require srfi/1)
+(require racket/fixnum)
 
 
 (require "stp-init.rkt")
@@ -14,7 +15,9 @@
 
 (provide (all-defined-out))
 
-(define *n-processors* 3)
+(define *n-processors* 4)
+(define *most-positive-fixnum* (fx+ (expt 2 61) (fx- (expt 2 61) 1)))  ;; ****** only on 64-bit architectures *****
+(define *most-negative-fixnum* (fx+ (fx* -1 (expt 2 61)) (fx* -1 (expt 2 61))));; ***** likewise *****
 
 ;; Cluster/multi-process specific code for the sliding-tile puzzle solver
 ;; Currently assumes all in memory
@@ -43,10 +46,10 @@
 
 ;; a sampling-stat is a (vector int int int (vectorof int)
 ;; where the elements are:s
-;; 1. total number of positions in the corresponding expansion
-;; 2. minimum hash value of the positions
-;; 3. maximum hash value of the positions
-;; 4. vector of bin-counts for the range min-to-max divided into *n-processors* ranges
+;; 0. total number of positions in the corresponding expansion
+;; 1. minimum hash value of the positions
+;; 2. maximum hash value of the positions
+;; 3. vector of bin-counts for the range min-to-max divided into *n-processors* ranges
 
 ;; EXPANSION .....
 
@@ -60,26 +63,32 @@
                (list (list (last start-list) vlength)) 
                (drop-right start-list 1)))))
 
-;; remote-expand-part-fringe: (listof position) int -> (list sampling-stat (vectorof position))
-;; expand the given positions, ignoring duplicates other than in the new fringe being constructed.
-;; Return a pair containing the stats from this expansion
-(define (remote-expand-part-fringe list-of-pos sample-freq)
-  (let* ((sample-stats (vector 0 +inf.0 -inf.0 empty))
-         (res (for/vector ([p (for/fold ([expansions (set)])
-                                ([p list-of-pos])
-                                (set-union expansions
-                                           (expand p)))])
-                          (vector-set! sample-stats 0 (add1 (vector-ref sample-stats 0)))
-                          (vector-set! sample-stats 1 (min (vector-ref sample-stats 1) (equal-hash-code p)))
-                          (vector-set! sample-stats 2 (max (vector-ref sample-stats 2) (equal-hash-code p)))
-                          (when (zero? (modulo (vector-ref sample-stats 0) sample-freq))
-                            (vector-set! sample-stats 3 (cons (equal-hash-code p) (vector-ref sample-stats 3))))
-                          p)))
-    (vector-sort! position<? res)
-    (vector-set! sample-stats 3 (sort (vector-ref sample-stats 3) <))
+;; remote-expand-part-fringe: (vectorof position) (list int int) int -> (list sampling-stat (vectorof position))
+;; given a vector containing the current fringe, a pair of indices into that vector, and a samping frequency,
+;; expand the positions in the indices range, ignoring duplicates other than within the new fringe being constructed.
+;; While building the expansion, maintain stats on hash-code values and a list of sampled hash-code values.
+;; Return a pair containing the stats from this expansion and the expansion itself.
+(define (remote-expand-part-fringe current-fringe ipair sample-freq)
+  (let* ([start (first ipair)]
+         [end (second ipair)]
+         [sample-stats (vector 0 *most-positive-fixnum* *most-negative-fixnum* empty)]
+         [resv (for/vector ([p (for*/fold ([expansions (set)])
+                                 ([i (in-range start end)]
+                                  [p (expand (vector-ref current-fringe i))])
+                                 (set-union expansions
+                                            (expand p)))])
+                           (vector-set! sample-stats 0 (add1 (vector-ref sample-stats 0)))
+                           (vector-set! sample-stats 1 (fxmin (vector-ref sample-stats 1) (equal-hash-code p)))
+                           (vector-set! sample-stats 2 (fxmax (vector-ref sample-stats 2) (equal-hash-code p)))
+                           (when (zero? (modulo (vector-ref sample-stats 0) sample-freq))
+                             (vector-set! sample-stats 3 (cons (equal-hash-code p) (vector-ref sample-stats 3))))
+                           p)]
+         )
+    (vector-sort! position<? resv)
+    (vector-set! sample-stats 3 (sort (vector-ref sample-stats 3) fx<))
     (printf "remote-expand-part-fringe: starting w/ ~a positions, expansion has ~a/~a positions and sampled ~a hashcodes~%"
-            (length list-of-pos) (vector-ref sample-stats 0) (vector-length res) (length (vector-ref sample-stats 3)))
-    (list sample-stats res)))
+            (- end start) (vector-ref sample-stats 0) (vector-length resv) (length (vector-ref sample-stats 3)))
+    (list sample-stats resv)))
 
 ;; MERGING .....
 
@@ -104,12 +113,12 @@
      (for/list ([lops (in-heap/consume! heap-o-position-lists)]
                 #:break (>= (equal-hash-code (car lops)) (second my-range))
                 #:unless (and (or ;;(equal? (car lops) (car (heap-min heap-o-position-lists)))
-                                  (position-in-vec? (car lops) prev-fringe-vec)
-                                  (position-in-vec? (car lops) current-fringe-vec))
+                               (position-in-vec? (car lops) prev-fringe-vec)
+                               (position-in-vec? (car lops) current-fringe-vec))
                               (unless (empty? (cdr lops)) (heap-add! heap-o-position-lists (cdr lops)))))
        (unless (empty? (cdr lops)) (heap-add! heap-o-position-lists (cdr lops)))
        (car lops)))))
-    
+
 
 ;; make-one-merge-range: int int (heapof (listof number)) -> (list int int)
 ;; consume the elements from the sorted lists in the heap until the target-num is reach, returning the range pair
@@ -126,19 +135,23 @@
 ;;***** consider and compare this to simply dividing the hash-code range by *n-processors*
 (define (make-merge-ranges-from-expansions lo-sample-stat)
   (let* (;;[total-num-positions (foldl (lambda (ss sum) (+ (vector-ref ss 0) sum)) 0 lo-sample-stat)]
-         ;;[overall-min (argmin (lambda (ss) (vector-ref ss 1)) lo-sample-stat)]
-         [overall-max (vector-ref (argmax (lambda (ss) (vector-ref ss 2)) lo-sample-stat) 2)]
+         [overall-min (foldl (lambda (ss tmin) (fxmin (vector-ref ss 1) tmin)) *most-positive-fixnum* lo-sample-stat)]
+         [overall-max (foldl (lambda (ss tmax) (fxmax (vector-ref ss 2) tmax)) *most-negative-fixnum* lo-sample-stat)]
          [total-num-samples (foldl (lambda (ss sum) (+ (length (vector-ref ss 3)) sum)) 0 lo-sample-stat)]
-         [heap-o-sample-hash-lists (let ([lheap (make-heap (lambda (l1 l2) (< (first l1) (first l2))))])
-                                     (heap-add-all! lheap (map (lambda (ss) (sort (vector-ref ss 3) <)) lo-sample-stat))
+         [heap-o-sample-hash-lists (let ([lheap (make-heap (lambda (l1 l2) (fx< (first l1) (first l2))))])
+                                     (heap-add-all! lheap (map (lambda (ss) (sort (vector-ref ss 3) fx<)) lo-sample-stat))
+                                     (heap-add! lheap (list overall-min))
                                      lheap)]
          [made-merge-ranges (append 
                              (for/list ([processor (in-range 1 *n-processors*)])
                                (make-one-merge-range (/ total-num-samples *n-processors*) (car (heap-min heap-o-sample-hash-lists)) heap-o-sample-hash-lists))
                              (list (list (car (heap-min heap-o-sample-hash-lists)) (add1 overall-max))))])
-    ;;(printf "make-merge-ranges-from-expansions: returning ~a~%" made-merge-ranges)
+    (printf "make-merge-ranges-from-expansions: returning ~a~%" made-merge-ranges)
+    ;;***error-check
+    (when (for/or ([ss lo-sample-stat]) (fx< overall-max (first (first made-merge-ranges))))
+      (error 'make-merge-ranges-from-exp "mucked-up"))
     made-merge-ranges))
-                            
+
 
 ;; remote-expand-fringe: (vectorof position) (vectorof position) -> (vectorof position)
 ;; Distributed version of expand-fringe
@@ -147,21 +160,20 @@
   ;; distribute expansion work
   (let* ((samp-freq (floor (/ (vector-length current-fringe-vec) (* 100 *n-processors*))))
          (stats+expansions (for/list #|work|# ([range-pair (make-vector-ranges (vector-length current-fringe-vec))])
-                                     (remote-expand-part-fringe (for/list ([i (in-range (first range-pair) (second range-pair))])
-                                                                  (vector-ref current-fringe-vec i))
-                                                                samp-freq)
-                                     ))
+                             (remote-expand-part-fringe current-fringe-vec range-pair samp-freq)))
          (sampling-stats (map first stats+expansions))
          (just-expansions (map second stats+expansions)))
     ;; distribute merging work
     (apply append ;; GAK! -- do something else here
-           (let ([sorted-expansion-parts
-                  (let ([expansion-parts (for/list #|work|# ([merge-range (make-merge-ranges-from-expansions sampling-stats)])
-                                           ;;(printf "remote-expand-fringe: merge-range = ~a~%" merge-range)
-                                           (remote-merge-expansions merge-range just-expansions prev-fringe-vec current-fringe-vec))])
-                    (printf "remote-expand-fringe: lengths = ~a~%" (map length expansion-parts))
-                    (sort expansion-parts
-                          < #:key (lambda (x) (equal-hash-code (car x)))))])
+           (let* ([merge-ranges (make-merge-ranges-from-expansions sampling-stats)]
+                  [sorted-expansion-parts
+                   (let ([expansion-parts (for/list #|work|# ([merge-range merge-ranges])
+                                            ;;(printf "remote-expand-fringe: merge-range = ~a~%" merge-range)
+                                            (remote-merge-expansions merge-range just-expansions prev-fringe-vec current-fringe-vec))])
+                     (printf "remote-expand-fringe: lengths = ~a~%" (map length expansion-parts))
+                     (sort expansion-parts
+                           fx< #:key (lambda (x) (equal-hash-code (car x)))))])
+             ;;***error-check
              (for/first ([i (in-range (length sorted-expansion-parts))]
                          #:when (or (not (apply < (map equal-hash-code (list-ref sorted-expansion-parts i))))
                                     (and (< i (sub1 (length sorted-expansion-parts)))

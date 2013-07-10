@@ -2,6 +2,7 @@
 
 (require srfi/25) ;; multi-dimensional arrays
 (require "stp-init.rkt")
+(require racket/fixnum)
 
 (provide (all-defined-out))
 
@@ -124,7 +125,7 @@
 
 ;; position<?: position position -> boolean
 (define (position<? p1 p2)
-  (< (equal-hash-code p1) (equal-hash-code p2)))
+  (fx< (equal-hash-code p1) (equal-hash-code p2)))
 
 ;; position-in-vec?: (vectorof position) position -> boolean
 ;; determine if given position is in vector of positions
@@ -137,11 +138,11 @@
   (let* ([mid (floor (/ (+ low high) 2))]
          [mid-hashcode (and (< mid (vector-length vop)) (equal-hash-code (vector-ref vop mid)))])
     (cond [(>= low high) low]
-          [(= pos-hashcode mid-hashcode) (or (for/last ([index (in-range mid -1 -1)]
-                                                        #:when (= (equal-hash-code (vector-ref vop index)) mid-hashcode))
-                                               index)
-                                             0)]
-          [(< pos-hashcode mid-hashcode) (find-pos-index pos-hashcode vop low mid)]
+          [(fx= pos-hashcode mid-hashcode) (or (for/last ([index (in-range mid -1 -1)]
+                                                          #:when (fx= (equal-hash-code (vector-ref vop index)) mid-hashcode))
+                                                 index)
+                                               0)]
+          [(fx< pos-hashcode mid-hashcode) (find-pos-index pos-hashcode vop low mid)]
           [else (find-pos-index pos-hashcode vop (add1 mid) high)])))
 
 ;; vec-member?: (vectorof X) X (X X -> boolean) [int] [int] -> boolean
