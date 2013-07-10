@@ -14,7 +14,7 @@
 
 (provide (all-defined-out))
 
-(define *n-processors* 4)
+(define *n-processors* 3)
 
 ;; Cluster/multi-process specific code for the sliding-tile puzzle solver
 ;; Currently assumes all in memory
@@ -48,11 +48,23 @@
 ;; 3. maximum hash value of the positions
 ;; 4. vector of bin-counts for the range min-to-max divided into *n-processors* ranges
 
+;; EXPANSION .....
+
+;; make-vector-ranges: int -> (listof (list int int)
+;; create the pairs of indices into the current-fringe-vector that will specify the part of the fringe each worker tackles
+(define (make-vector-ranges vlength)
+  (if (< vlength 0) ;1000
+      (list (list 0 vlength))
+      (let ((start-list (build-list *n-processors* (lambda (i) (floor (* i (/ vlength *n-processors*)))))))
+        (foldr (lambda (x r) (cons (list x (first (first r))) r)) 
+               (list (list (last start-list) vlength)) 
+               (drop-right start-list 1)))))
+
 ;; remote-expand-part-fringe: (listof position) int -> (list sampling-stat (vectorof position))
 ;; expand the given positions, ignoring duplicates other than in the new fringe being constructed.
 ;; Return a pair containing the stats from this expansion
 (define (remote-expand-part-fringe list-of-pos sample-freq)
-  (let* ((sample-stats (vector 0 +inf.0 -1 empty))
+  (let* ((sample-stats (vector 0 +inf.0 -inf.0 empty))
          (res (for/vector ([p (for/fold ([expansions (set)])
                                 ([p list-of-pos])
                                 (set-union expansions
@@ -64,7 +76,11 @@
                             (vector-set! sample-stats 3 (cons (equal-hash-code p) (vector-ref sample-stats 3))))
                           p)))
     (vector-sort! position<? res)
+    (printf "remote-expand-part-fringe: starting w/ ~a positions, expansion has ~a/~a positions and sampled ~a hashcodes~%"
+            (length list-of-pos) (vector-ref sample-stats 0) (vector-length res) (length (vector-ref sample-stats 3)))
     (list sample-stats res)))
+
+;; MERGING RESULTS .....
 
 ;; merge-expansions: (list int int) (listof (vectorof position)) (vectorof position) (vectorof position) -> (listof position)
 ;; given a collection of (partial) fringe expansions and a specification of a range of positions to consider
@@ -127,7 +143,6 @@
   ;; distribute expansion work
   (let* ((samp-freq (floor (/ (vector-length current-fringe-vec) (* 100 *n-processors*))))
          (stats+expansions (for/list #|work|# ([range-pair (make-vector-ranges (vector-length current-fringe-vec))])
-                                     ;;(expand-fringe-portion range-pair prev-fringe current-fringe-vec)
                                      (remote-expand-part-fringe (for/list ([i (in-range (first range-pair) (second range-pair))])
                                                                   (vector-ref current-fringe-vec i))
                                                                 samp-freq)
@@ -175,15 +190,6 @@
         [(equal? (first l1) (first l2)) (fringe-merge l1 (rest l2))]
         [else (cons (first l2) (fringe-merge l1 (rest l2)))]))
 
-;; make-vector-ranges: int -> (listof (list int int)
-;; create the streams that will give rise to the 
-(define (make-vector-ranges vlength)
-  (if (< vlength 1000)
-      (list (list 0 vlength))
-      (let ((start-list (build-list *n-processors* (lambda (i) (floor (* i (/ vlength *n-processors*)))))))
-        (foldr (lambda (x r) (cons (list x (first (first r))) r)) 
-               (list (list (last start-list) vlength)) 
-               (drop-right start-list 1)))))
 
 (define *max-depth* 10)(set! *max-depth* 31)
 
@@ -197,7 +203,8 @@
                   (print "found goal")
                   maybe-goal]
                  [else (let ((new-fringe (expand-fringe prev-fringe current-fringe)))
-                         (printf "At depth ~a fringe has ~a positions~%" depth (set-count current-fringe))
+                         (printf "At depth ~a current-fringe has ~a positions (and new-fringe ~a)~%" 
+                                 depth (set-count current-fringe) (set-count new-fringe))
                          ;;(for ([p current-fringe]) (displayln p))
                          (cluster-fringe-search current-fringe new-fringe (add1 depth)))]))]))
 
@@ -206,10 +213,10 @@
 ;(climb12-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
-;;#|
+#|
 (module+ main
   (connect-to-riot-server! "localhost")
   (define search-result (time (cluster-fringe-search (set) (set *start*) 1)))
   (print search-result))
-;;|#
-;;(time (cluster-fringe-search (set) (set *start*) 1))
+|#
+(time (cluster-fringe-search (set) (set *start*) 1))
