@@ -15,7 +15,7 @@
 
 (provide (all-defined-out))
 
-(define *n-processors* 5)
+(define *n-processors* 1)
 
 (define *most-positive-fixnum* (fx+ (expt 2 61) (fx- (expt 2 61) 1)))  ;; ****** only on 64-bit architectures *****
 (define *most-negative-fixnum* (fx+ (fx* -1 (expt 2 61)) (fx* -1 (expt 2 61))));; ***** likewise *****
@@ -113,7 +113,7 @@
          [sorted-merged-expansions
           (sorted-remove-dups
            (for/list ([lops (in-heap/consume! heap-o-position-lists)]
-                      #:break (>= (equal-hash-code (car lops)) (second my-range))
+                      #:break (fx>= (equal-hash-code (car lops)) (second my-range))
                       #:unless (and (or ;;(equal? (car lops) (car (heap-min heap-o-position-lists)))
                                      (position-in-vec? (car lops) prev-fringe-vec)
                                      (position-in-vec? (car lops) current-fringe-vec))
@@ -122,6 +122,7 @@
              (car lops)))])
     (printf "remote-merge-expansions: fw-lolop-lengths=~a~%" (map length fastforwarded-lolops))
     (printf "remote-merge-expansions: merged-expns-length=~a~%" (length sorted-merged-expansions))
+    ;;***error-check
     (unless (= (length sorted-merged-expansions) (set-count (list->set sorted-merged-expansions))) 
       (error 'remote-merge-expansions "list-merging vs. set mis-match"))
     sorted-merged-expansions
@@ -164,7 +165,7 @@
 ;; convert prev-fringe set to vector to pass riot-net
 (define (distributed-expand-fringe prev-fringe-vec current-fringe-vec)
   (printf "distributed-expand-fringe: ~a nodes in prev and ~a in current fringes~%" (vector-length prev-fringe-vec) (vector-length current-fringe-vec))
-  (let* ([samp-freq (floor (/ (vector-length current-fringe-vec) (* 100 *n-processors*)))]
+  (let* ([samp-freq (floor (/ (vector-length current-fringe-vec) (* 10 *n-processors*)))]
          ;; Distribute the expansion work
          [stats+expansions (for/list #|work|# ([range-pair (make-vector-ranges (vector-length current-fringe-vec))])
                              (remote-expand-part-fringe current-fringe-vec range-pair samp-freq))]
@@ -201,10 +202,10 @@
     (vector-sort! position<? current-fringe-vec)
     ;;***error-check
     (unless (= (vector-length current-fringe-vec) (set-count current-fringe)) (error 'expand-fringe "vectorization screw-up"))
-    (for/set ([p (if (< (vector-length current-fringe-vec) 1000)
+    (for/set ([p (if (< (vector-length current-fringe-vec) 100)
                      ;; do it myself
                      (expand-fringe-portion (list 0 (vector-length current-fringe-vec)) prev-fringe current-fringe-vec)
-                     ;; else call remote-expand, which will farm out to workers
+                     ;; else call distributed-expand, which will farm out to workers
                      (begin (printf "calling distributed-exp... with ~a and ~a positions in prev and current fringes, respectively~%"
                                     (set-count prev-fringe) (vector-length current-fringe-vec))
                             (distributed-expand-fringe (let ((prev-vec (vectorize-set prev-fringe)))
