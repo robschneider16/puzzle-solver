@@ -1,196 +1,185 @@
 #lang racket
 
-;(require srfi/25) ;; multi-dimensional arrays
+(require srfi/25) ;; multi-dimensional arrays
+(require "stp-init.rkt")
+(require racket/fixnum)
+(require racket/set)
 
 (provide (all-defined-out))
 
 
-(define *num-pieces* 0)
-(define *piece-types* empty)
-(define *start* empty)
-(define *target* empty)
-(define *bw* 0)
-(define *bh* 0)
-(define *bsz* 0)
-
-
-(define (set-em! ptv s t nrow ncol)
-  (set! *num-pieces* (vector-length ptv)) ;; must come before hashify/(pre-compress)
-  (set! *piece-types* (for/vector ([cell-specs ptv])
-                                  (list->set cell-specs)))
-  (set! *start* (positionify s))
-  (set! *target* t)
-  (set! *bh* nrow)
-  (set! *bw* ncol)
-  (set! *bsz* (* nrow ncol)))
-
-;; pre-spaces: pre-position -> (listof cell)
-;; extract the spaces *** expected to be at the end of the initialization lists ***
-(define (pre-spaces p)
-  (last p))
-
-;; pre-compress: pre-position -> (listof (cons tile-id (listof cell)))
-;; collapse pieces of the same type and give spaces their unique id of -1
-(define (pre-compress p)
-  (cons (cons -1 (pre-spaces p))
-        (for/list ([i (in-range *num-pieces*)])
-          (cons i
-                (map cdr
-                     (filter (lambda (a-piece) (= i (first a-piece))) (drop-right p 1)))))))
-
-;; positionify: pre-position -> position
-;; create a hash-of-set representation for positions from start-list pre-position format
-(define (positionify position)
-  (for/hash ([pspec (pre-compress position)])
-    (values (first pspec)
-            (for/set ([cell (cdr pspec)])
-                     cell))))
-
-
-;; BLOCK-10 PUZZLE INIT (variant 12)
-(define *block10-piece-types*
-  '#(((0 0)(0 1)(1 0)(1 1))  ; 0 2x2
-     ((0 0)(0 1)(1 0))       ; 1  Upper Left pointing L
-     ((0 0)(1 -1)(1 0))      ; 2  Lower Right pointing L
-     ((0 0)(1 0))            ; 3  2x1 vertical rectangle
-     ((0 0))))               ; 4  1x1 unit square
-
-(define *block10-start* ; variant 12
-  '((0 4 1)
-    (1 3 0)
-    (2 1 3)
-    (3 1 0)
-    (3 3 3)
-    (4 2 1)
-    (4 3 2)
-    (4 5 0)
-    (4 5 3)
-    ((0 1) (0 2) (1 1) (1 2)) ; spaces
-    ))
-
-(define *block10-target* '((0 0 1)))
-
-(define (block10-init)
-  (set-em! *block10-piece-types* *block10-start* *block10-target* 6 4))
-
-(define (block10-stringify position)
-  (let ((names (vector "spcs" "gpc" "ifL" "bwL" "2x1" "1x1")))
-    (for/fold ([res ""])
-      ([i '(5 4 3 1 2 0)])
-      (string-append res 
-                     (vector-ref names i) ":"
-                     (apply string-append
-                            (map (lambda (n) (string-append "," (number->string n)))
-                                 (sort (for/list ([c (hash-ref position (sub1 i))])
-                                         (cell-to-loc c))
-                                       <)))
-                     ";"))))
-
-
-;; CLIMB-12 PUZZLE INIT
-;; piece-type is implicit in position within list, each pair specifies the cells of the piece
-;; and their location relative to the (arbitrary) origin of that piece, (0 0).
-(define *climb12-piece-types*
-  '#(((0 0)(1 -1)(1 0)(1 1))             ; 0  4 square T (stem up)
-     ((0 0)(0 1)(1 0))                   ; 1  Upper Left pointing L
-     ((0 0)(1 -1)(1 0))                  ; 2  Lower Right pointing L
-     ((0 0)(1 0))                        ; 3  2x1 vertical rectangle
-     ((0 0)(0 1))                        ; 4  1x2 horizontal rectangle
-     ((0 0))))                           ; 5  1x1 unit square
-
-;; specify board-state by triples: piece-type, board-row, board-col
-(define *climb12-start*
-  '((0 4 2)
-    (1 2 1)
-    (2 2 3)
-    (3 1 0)
-    (3 1 4)
-    (4 4 0)
-    (4 4 3)
-    (5 3 0)
-    (5 3 4)
-    (5 5 0)
-    (5 5 4)
-    ((0 2) (1 1) (1 2) (1 3))  ; spaces
-    ))
-
-;; specify target as triple: piece-type, board-row, board-col
-(define *climb12-target* '((0 0 2)))
-
-(define (climb12-init)
-  (set-em! *climb12-piece-types* *climb12-start* *climb12-target* 6 5))
-
-;;-----------------
-
+;; INITIALIZE STUFF FOR SLIDING-TILE-SOLVER
 
 ;; move trans for up, right, down and left respectively
 (define *prim-move-translations* '((-1 0) (0 1) (1 0) (0 -1)))
 
+;; move-schema-array for compiling move requirements
+(define *ms-array* #f)(set! *ms-array* *ms-array*)
+
+
+;; ******************************************************************************
+;; DATA DEFINITIONS
 
 ;; a cell is a pair, (list r c), for row and column r and c
+
+;; a location (loc for short) is an int, representing the row-major rank of a cell
 
 ;; a tile-spec is a triple, (cons a c), where a is the tile-type and c is the cell of the piece-type's origin
 
 ;; a pre-position is a (append (listof tile-spec) (listof cell))
 
-;; a position is a (hash [tile-type : (listof cell)])
+;; a position is a (vectorof (listof int))
+;; where the index of the top-level vectors reflect the piece-type as given in the init,
+;; and the ints in the secondary vectors are the SORTED locations of the pieces of that type
+;; ******************************************************************************
 
+;;-------------------------------------------------------------------------------
+;; COMMON UTILITIES TO BOTH GENERIC FRINGE-SEARCH AND CLUSTER-FRINGE-SEARCH
 
-;; cell-to-loc: cell -> int
-;; convert ordered pair to row-major-order rank location
-(define (cell-to-loc pair)
-  (+ (* (first pair) *bw*) (second pair)))
+;; list-union: (listof X) (listof X) (X X -> boolean) -> (listof X)
+;; ASSUME lists are sorted
+(define (list-union l1 l2 comp?)
+  (cond [(empty? l1) l2]
+        [(empty? l2) l1]
+        [(and (not (empty? (rest l1))) (equal? (first l1) (second l1))) (list-union (rest l1) (rest l2) comp?)]
+        [(equal? (first l1) (first l2)) (list-union l1 (rest l2) comp?)]
+        [(comp? (first l1) (first l2)) (cons (first l1)
+                                             (list-union (rest l1) l2 comp?))]
+        [else (cons (first l2) (list-union l1 (rest l2) comp?))]))
 
-;; spaces: position -> (listof cell)
-;; return the list of space cells
-(define (spaces p)
-  (hash-ref p -1))
+;; list-subtract: (listof X) (listof X) (X X -> boolean) -> (listof X)
+;; ASSUME lists are sorted
+(define (list-subtract l1 l2 comp?)
+  (cond [(or (empty? l1) (empty? l2)) l1]
+        [(equal? (first l1) (first l2)) (list-subtract (rest l1) l2 comp?)]
+        [(comp? (first l1) (first l2)) (cons (first l1) (list-subtract (rest l1) l2 comp?))]
+        [else (list-subtract l1 (rest l2) comp?)]))
+
+;; sorted-remove-dups: (listof X) -> (listof X)
+(define (sorted-remove-dups lox)
+  (cond [(or (empty? lox) (empty? (rest lox))) lox]
+        [(equal? (first lox) (second lox)) (sorted-remove-dups (rest lox))]
+        [else (cons (first lox) (sorted-remove-dups (cdr lox)))]))
+
+;;------------------------------------------------------------------------------------------------------
+;; Compiling move-schemas
+
+;; a ms-array is an array indexed by piece-type, location, move-direction (0-3 starting with up)
+;; where each location contains a move-schema produced by basic-move-schema
+
+;; compile-ms-array!: (vectorof (setof cell)) int int -> void
+;; where the vector is the piece-type specification, *piece-types*, and the ints are the width and height
+(define (compile-ms-array! piece-type-specs bh bw)
+  (when (or (zero? bh) (zero? bw)) (error 'compile-ms-array "must be called after an appropriate initialization call"))
+  (let ((a (make-array (shape 1 (vector-length piece-type-specs) 0 (* bh bw) 0 4))))
+    (for ([piece-type-spec (vector-drop piece-type-specs 1)]
+          [pti (in-range 1 (vector-length piece-type-specs))])
+      (for ([loc (in-range (* bh bw))])
+        (for ([dir (in-range (length *prim-move-translations*))])
+          (array-set! a pti loc dir
+                      (if (andmap onboard? (translate-piece piece-type-spec (translate-cell (list-ref *prim-move-translations* dir) (loc-to-cell loc))))
+                          (basic-move-schema (cons pti (loc-to-cell loc)) (list-ref *prim-move-translations* dir))
+                          #f)))))
+    (set! *ms-array* a)))
+
+;; translate-loc: loc trans-spec -> loc
+(define (translate-loc l trans)
+  (cell-to-loc (translate-cell (loc-to-cell l) trans)))
 
 ;; translate-cell: cell trans-spec -> cell
 (define (translate-cell c trans) 
   (list (+ (first c) (first trans)) (+ (second c) (second trans))))
 
-;; translate-piece: (setof cells) trans-spec -> (setof cells)
-(define (translate-piece cell-set trans)
-  (for/set ([cell cell-set])
-           (translate-cell cell trans)))
+;; translate-piece: (listof cells) trans-spec -> (listof cells)
+(define (translate-piece cell-list trans)
+  (for/list ([cell cell-list])
+    (translate-cell cell trans)))
 
-;; translate-spaces: (setof cell) move-schema -> (setof cell)
-;; for a move-in-progress, create the new set of space cells for the given piece move
+;; translate-spaces: (listof loc) move-schema -> (listof loc)
+;; for a move-in-progress, create the new list of space cells for the given piece move
 (define (translate-spaces spaces ms)
-  (set-union (set-subtract spaces
-                           (third ms))
-             (fourth ms)))
+  (append (list-subtract spaces (third ms) <)
+          (fourth ms)))
 
-;; basic-move-schema: tile-spec trans-spec -> (list (setof cell) (setof cell) (setof cell) (setof cell) cell)
-;; the resulting schema specifies the translation in question, the precondition spaces, and the post-condition spaces
+;***  move-schema has cells -- where used?
+
+
+;; basic-move-schema: tile-spec trans-spec -> (list (listof loc) (listof loc) (listof loc) (listof loc) loc)
+;; the resulting schema specifies:
+;; 0. listof current locs occupied by piece
+;; 1. list of locs occupied by piece after the translation in question
+;; 2. list of precondition locs for spaces,
+;; 3. list of post-condition locs for spaces after move, and
+;; 4. the translated loc (origin) of the piece
+;; This is only called by compile-ms-array! once before a solution of a particular puzzle so time here is less important
 (define (basic-move-schema tile trans)
-  (let* ((current-cell-set (translate-piece (vector-ref *piece-types* (first tile)) (cdr tile)))
-         (cell-set-to (translate-piece current-cell-set trans)))
-    (list current-cell-set
-          cell-set-to
-          (set-subtract cell-set-to current-cell-set)
-          (set-subtract current-cell-set cell-set-to)
-          (translate-cell (cdr tile) trans))))
+  (let* ((current-cell-list (translate-piece (vector-ref *piece-types* (first tile)) (cdr tile)))
+         (current-loc-list (sort (map cell-to-loc current-cell-list) <))
+         (cell-list-to (translate-piece current-cell-list trans))
+         (loc-list-to (sort (map cell-to-loc cell-list-to) <)))
+    (list current-loc-list
+          loc-list-to
+          (list-subtract loc-list-to  current-loc-list <)
+          (list-subtract current-loc-list loc-list-to <)
+          (cell-to-loc (translate-cell (cdr tile) trans)))))
+
+
+;; position<?: position position -> boolean
+(define (position<? p1 p2)
+  (fx< (equal-hash-code p1) (equal-hash-code p2)))
+
+;; position-in-vec?: (vectorof position) position -> boolean
+;; determine if given position is in vector of positions
+(define (position-in-vec? v p)
+  (vec-member? v p position<?))
+
+;; find-pos-index: int (vectorof position) -> int
+;; find the index of the *FIRST* position (if present) or of the first position greater than where it would be
+(define (find-pos-index pos-hashcode vop (low 0) (high (vector-length vop)))
+  (let* ([mid (floor (/ (+ low high) 2))]
+         [mid-hashcode (and (< mid (vector-length vop)) (equal-hash-code (vector-ref vop mid)))])
+    (cond [(>= low high) low]
+          [(fx= pos-hashcode mid-hashcode) (or (for/last ([index (in-range mid -1 -1)]
+                                                          #:when (fx= (equal-hash-code (vector-ref vop index)) mid-hashcode))
+                                                 index)
+                                               0)]
+          [(fx< pos-hashcode mid-hashcode) (find-pos-index pos-hashcode vop low mid)]
+          [else (find-pos-index pos-hashcode vop (add1 mid) high)])))
+
+;; vec-member?: (vectorof X) X (X X -> boolean) [int] [int] -> boolean
+;; determine if the given item appears in the SORTED vector of positions
+(define (vec-member? v x compare? [low 0] [high (vector-length v)])
+  (let ((mid (floor (/ (+ low high) 2)))) 
+    (cond [(>= low high) #f]
+          [(equal? x (vector-ref v mid)) (vector-ref v mid)]
+          [(compare? x (vector-ref v mid)) (vec-member? v x compare? low mid)]
+          [else (vec-member? v x compare? (add1 mid) high)])))
+
+;; spaces: position -> (listof cell)
+;; return the list of space cells
+(define (spaces p)
+  (vector-ref p 0))
 
 ;; one-piece-one-step: tile-spec position (setof position) -> (setof (list tile-spec position))
 ;; for a given piece in a given position, generate all next-positions obtained by moving one-step (only)
 ;; but for each next-position, return a tile-spec/position pair for the tile-spec of the piece just moved
 (define (one-piece-one-step tile-to-move position prior-pos)
-  (let ((mv-schema empty))
+  (let ((mv-schema empty)
+        (tile-to-move-loc (cell-to-loc (cdr tile-to-move))))
     (for/set ([dir-trans *prim-move-translations*]
-              #:when (begin (set! mv-schema (basic-move-schema tile-to-move dir-trans))
-                            (valid-move? tile-to-move dir-trans (spaces position) mv-schema)))
+              [dir-i (in-range (length *prim-move-translations*))]
+              #:when (begin (set! mv-schema (array-ref *ms-array* (first tile-to-move) tile-to-move-loc dir-i))
+                            (and mv-schema
+                                 (valid-move? (spaces position) (third mv-schema)))))
              (list
-              (cons (first tile-to-move) (fifth mv-schema))      ; tile-spec of the moved tile that gives rise to this position
-              (for/hash ([(tile-type tile-type-cells) position]) ; build the new position
-                (values
-                 tile-type
-                 (cond [(= tile-type (first tile-to-move))
-                        (set-add (set-remove tile-type-cells (cdr tile-to-move))
-                                 (fifth mv-schema))]
-                       [(= tile-type -1) (translate-spaces tile-type-cells mv-schema)]
-                       [else tile-type-cells])))))))
+              (cons (first tile-to-move) (loc-to-cell (fifth mv-schema)))      ; tile-spec of the moved tile that gives rise to this position
+              (let ((new-vec (vector-copy position)))                          ; build the new position
+                (vector-set! 
+                 new-vec (first tile-to-move)
+                 (sort (cons (fifth mv-schema) (remove tile-to-move-loc (vector-ref new-vec (first tile-to-move))))
+                       <))
+                (vector-set! new-vec 0 (sort (translate-spaces (vector-ref new-vec 0) mv-schema) <))
+                new-vec)))))
 
 ;; expand-piece: tile-spec position -> (setof position)
 ;; for a given tile-spec (piece), return the list of new positions resulting from moving the given piece in the given position
@@ -205,59 +194,43 @@
     ((set-empty? new-positions) (set-remove return-positions position))))
 
 
-;; valid-move?: tile-spec trans-spec (setof cell) (list (listof cell) (listof cell) (setof cell) (setof cell)) -> boolean
-;; determine if the proposed move is on the board and has the spaces in the right position
-(define (valid-move? tile ts spaces ms)
-  (let ((current-cells (first ms))
-        (moved-cells (second ms)))
-    (and (for/and ([mv-cell moved-cells])
-           (onboard? mv-cell)) 
-         (for/and ([needed-space (third ms)])
-           (set-member? spaces needed-space)))))
+;; valid-move?: (listof loc) (listof loc) -> boolean
+;; determine if the proposed move has the current-spaces in the right position
+;; as required by the move-schema (INDEPENDENT OF if on the board)
+(define (valid-move? current-space-locs prerequisite-spaces)
+  (for/and ([needed-space prerequisite-spaces])
+    (member needed-space current-space-locs)))
   
 ;; onboard?: cell -> boolean
 (define (onboard? c)
   (and (< -1 (first c) *bh*)
        (< -1 (second c) *bw*)))
+;; loc-onboard?: loc -> boolean
+(define (loc-onboard? loc)
+  (< -1 loc *bsz*))
 
-
-;; expand: position -> (setof state)
+;; expand: position -> (setof position)
 ;; generate next states from this one
 (define (expand s)
   (for/fold ([all-moves (set)])
-    ([(piece-type cells) s]
-     #:unless (= piece-type -1))
+    ([piece-type (in-range 1 *num-piece-types*)])
     (set-union all-moves
                (for/fold ([new-moves (set)])
-                 ([pcell cells])
+                 ([ploc (vector-ref s piece-type)])
                  (set-union new-moves
-                            (expand-piece (cons piece-type pcell) s))))))
+                            (expand-piece (cons piece-type (loc-to-cell ploc)) s))))))
 
 
 ;;------------------------------------------------------------------------------------
 
 ;; is-goal?: position -> boolean
 (define (is-goal? p)
-  (andmap (lambda (tile-spec) (set-member? (hash-ref p (first tile-spec)) (cdr tile-spec)))
+  (andmap (lambda (tile-spec) (member (cell-to-loc (cdr tile-spec)) (vector-ref p (first tile-spec))))
           *target*))
-  
+
 ;; goal-in-fringe?: (setof position) -> position OR #f
 (define (goal-in-fringe? f)
   (for/first ([pos f]
               #:when (is-goal? pos))
     pos))
 
-;; stringify: position -> string
-;; general make-string from position
-(define (stringify position)
-  (let ((sorted-keys (sort (hash-keys position) <)))
-    (for/fold ([res ""])
-      ([i sorted-keys])
-      (string-append res 
-                     (number->string i) ":"
-                     (apply string-append
-                            (map (lambda (n) (string-append "," (number->string n)))
-                                 (sort (for/list ([c (hash-ref position i)])
-                                         (cell-to-loc c))
-                                       <)))
-                     ";"))))
