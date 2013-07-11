@@ -57,7 +57,7 @@
 ;; make-vector-ranges: int -> (listof (list int int)
 ;; create the pairs of indices into the current-fringe-vector that will specify the part of the fringe each worker tackles
 (define (make-vector-ranges vlength)
-  (if (< vlength 0) ;1000
+  (if (< vlength 1000)
       (list (list 0 vlength))
       (let ((start-list (build-list *n-processors* (lambda (i) (floor (* i (/ vlength *n-processors*)))))))
         (foldr (lambda (x r) (cons (list x (first (first r))) r)) 
@@ -75,9 +75,8 @@
          [sample-stats (vector 0 *most-positive-fixnum* *most-negative-fixnum* empty)]
          [resv (for/vector ([p (for*/fold ([expansions (set)])
                                  ([i (in-range start end)]
-                                  [p (expand (vector-ref current-fringe i))])
-                                 (set-union expansions
-                                            (expand p)))])
+                                  [next-position (expand (vector-ref current-fringe i))])
+                                 (set-add expansions next-position))])
                            (vector-set! sample-stats 0 (add1 (vector-ref sample-stats 0)))
                            (vector-set! sample-stats 1 (fxmin (vector-ref sample-stats 1) (equal-hash-code p)))
                            (vector-set! sample-stats 2 (fxmax (vector-ref sample-stats 2) (equal-hash-code p)))
@@ -141,6 +140,7 @@
 ;; make-merge-ranges-from-expansions: (listof sampling-stats) -> (list merge-ranges)
 ;; decide how to partition the space of positions as distributed over the expansions reflected in the sampling-stats
 ;;***** consider and compare this to simply dividing the hash-code range by *n-processors*
+;;***** compare such an approach in terms of the uniformity of the distribution of positions assigned to each bin
 (define (make-merge-ranges-from-expansions lo-sample-stat)
   (let* (;;[total-num-positions (foldl (lambda (ss sum) (+ (vector-ref ss 0) sum)) 0 lo-sample-stat)]
          [overall-min (foldl (lambda (ss tmin) (fxmin (vector-ref ss 1) tmin)) *most-positive-fixnum* lo-sample-stat)]
@@ -154,10 +154,7 @@
                              (for/list ([processor (in-range 1 *n-processors*)])
                                (make-one-merge-range (/ total-num-samples *n-processors*) (car (heap-min heap-o-sample-hash-lists)) heap-o-sample-hash-lists))
                              (list (list (car (heap-min heap-o-sample-hash-lists)) (add1 overall-max))))])
-    (printf "make-merge-ranges-from-expansions: returning ~a~%" made-merge-ranges)
-    ;;***error-check
-    (when (for/or ([ss lo-sample-stat]) (fx< overall-max (first (first made-merge-ranges))))
-      (error 'make-merge-ranges-from-exp "mucked-up"))
+    ;;(printf "make-merge-ranges-from-expansions: returning ~a~%" made-merge-ranges)
     made-merge-ranges))
 
 
