@@ -26,7 +26,7 @@
                             (vector-set! bl 1 (current-milliseconds))
                             bl)))
            (t3 (current-milliseconds)))
-      (printf "Trial ~a: ~a msec build set, ~a convert to list, ~a send to worker, ~a conv to set, ~a conv back to list, ~a to get the result back~%"
+      (printf "Trial ~a: ~a msec build vec, ~a (unused), ~a send to worker, ~a (unused), ~a (unused), ~a to get the result back~%"
               i 
               (- t1 t0); time to build
               0;(- t2 t1); time to convert
