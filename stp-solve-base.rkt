@@ -4,6 +4,7 @@
 (require "stp-init.rkt")
 (require racket/fixnum)
 (require racket/set)
+(require mzlib/string)
 
 (provide (all-defined-out))
 
@@ -40,18 +41,20 @@
 ;; writes the given fringe into a file on disk having the given file-name
 (define (write-fringe-to-disk fringe file-name)
   (let ([my-output (open-output-file file-name #:exists 'replace)])
-    (fprintf my-output "(~%")
     (for ([position fringe])
       (fprintf my-output "~a~%" position))
-    (fprintf my-output ")~%")
     (close-output-port my-output)))
 
 ;; read-fringe-from-disk: file -> fringe
 ;; reads a file from a file path (if you are in the current directory just simply the file-name)
 ;; and returns the fringe that was in that file.
 (define (read-fringe-from-disk file-path)
-  (with-input-from-file file-path read))
+  (with-input-from-file file-path port->list))
 
+;; position-count-in-file: string -> number
+;; reports the number of positions in the given fringe file assuming the file was written with write-fringe-to-disk
+(define (position-count-in-file f)
+  (read-from-string (with-output-to-string (lambda () (system (string-append "wc -l " f))))))
 
 ;; list-union: (listof X) (listof X) (X X -> boolean) -> (listof X)
 ;; ASSUME lists are sorted
