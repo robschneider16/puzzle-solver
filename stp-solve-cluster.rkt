@@ -21,21 +21,7 @@
 (define *most-negative-fixnum* (fx+ (fx* -1 (expt 2 61)) (fx* -1 (expt 2 61))));; ***** likewise *****
 
 ;; Cluster/multi-process specific code for the sliding-tile puzzle solver
-;; Currently assumes all in memory 
-;; UPDATE: Adding write/read to/from disk functionality
 
-;; write-to-disk: (listof position) string -> file(listof position)
-;; write-to-disk takes a fringe and creates a file on disk with that fringe
-(define (write-to-disk fringe file-name)
-  (let ([my-output (open-output-file file-name #:exists 'replace)])
-    (write fringe my-output)
-    (close-output-port my-output)))
-
-;; read-from-disk: file -> fringe
-;; reads a file from a file path (if you are in the current directory just simply the file-name)
-;; and returns the fringe that was in that file.
-(define (read-from-disk file-path)
-  (with-input-from-file file-path read))
 
 ;;----------------------------------------------------------------------------------------
 
@@ -189,8 +175,8 @@
 ;; convert prev-fringe set to vector to pass riot-net
 (define (distributed-expand-fringe)
   ;;(printf "distributed-expand-fringe: ~a nodes in prev and ~a in current fringes~%" (vector-length prev-fringe-vec) (vector-length current-fringe-vec))
-  (let* ([current-fringe-vec (read-from-disk "current-fringe")]
-         [prev-fringe-vec (read-from-disk "prev-fringe")]
+  (let* ([current-fringe-vec (read-fringe-from-disk "current-fringe")]
+         [prev-fringe-vec (read-fringe-from-disk "prev-fringe")]
          [samp-freq (floor (/ (vector-length current-fringe-vec) (* 100 *n-processors*)))]
          ;; Distribute the expansion work
          [stats+expansions (for/list #|work|# ([range-pair (make-vector-ranges (vector-length current-fringe-vec))])
@@ -282,8 +268,8 @@
 ;; cluster-fringe-search: (setof position) (setof position) int -> ...
 ;; perform a fringe BFS starting at the given state until depth is 0
 (define (cluster-fringe-search depth)
-  (let ([prev-fringe (list->set (read-from-disk "prev-fringe"))]
-        [current-fringe (list->set (read-from-disk "current-fringe"))])
+  (let ([prev-fringe (list->set (read-fringe-from-disk "prev-fringe"))]
+        [current-fringe (list->set (read-fringe-from-disk "current-fringe"))])
     (cond [(or (set-empty? current-fringe) (> depth *max-depth*)) #f]
           [else
            (let ([maybe-goal (goal-in-fringe? current-fringe)])
@@ -308,7 +294,7 @@
   (print search-result))
 |#
 ;; initialization of empty fringe files
-(write-to-disk empty "prev-fringe")
-(write-to-disk (list *start*) "current-fringe")
+(write-fringe-to-disk empty "prev-fringe")
+(write-fringe-to-disk (list *start*) "current-fringe")
 
 (time (cluster-fringe-search 1))

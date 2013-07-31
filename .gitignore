@@ -1,3 +1,7 @@
+# Sliding-Tile Puzzle Files
+current-fringe*
+prev-fringe*
+
 # Emacs or Racket backup files
 *~
 \#*\#

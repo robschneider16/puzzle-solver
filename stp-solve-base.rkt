@@ -36,6 +36,23 @@
 ;;-------------------------------------------------------------------------------
 ;; COMMON UTILITIES TO BOTH GENERIC FRINGE-SEARCH AND CLUSTER-FRINGE-SEARCH
 
+;; write-fringe-to-disk: (listof position) string -> void
+;; writes the given fringe into a file on disk having the given file-name
+(define (write-fringe-to-disk fringe file-name)
+  (let ([my-output (open-output-file file-name #:exists 'replace)])
+    (fprintf my-output "(~%")
+    (for ([position fringe])
+      (fprintf my-output "~a~%" position))
+    (fprintf my-output ")~%")
+    (close-output-port my-output)))
+
+;; read-fringe-from-disk: file -> fringe
+;; reads a file from a file path (if you are in the current directory just simply the file-name)
+;; and returns the fringe that was in that file.
+(define (read-fringe-from-disk file-path)
+  (with-input-from-file file-path read))
+
+
 ;; list-union: (listof X) (listof X) (X X -> boolean) -> (listof X)
 ;; ASSUME lists are sorted
 (define (list-union l1 l2 comp?)
