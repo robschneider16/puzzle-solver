@@ -6,6 +6,7 @@
 (require srfi/1)
 (require racket/fixnum)
 (require racket/set)
+(require mzlib/string) ;; supposedly depricated but seems to need the require for 5.3.5
 
 (require "stp-init.rkt")
 (require "stp-solve-base.rkt")
@@ -175,23 +176,28 @@
 ;; convert prev-fringe set to vector to pass riot-net
 (define (distributed-expand-fringe)
   ;;(printf "distributed-expand-fringe: ~a nodes in prev and ~a in current fringes~%" (vector-length prev-fringe-vec) (vector-length current-fringe-vec))
-  (let* ([current-fringe-vec (read-fringe-from-disk "current-fringe")]
-         [prev-fringe-vec (read-fringe-from-disk "prev-fringe")]
-         [samp-freq (floor (/ (vector-length current-fringe-vec) (* 100 *n-processors*)))]
-         ;; Distribute the expansion work
-         [stats+expansions (for/list #|work|# ([range-pair (make-vector-ranges (vector-length current-fringe-vec))])
-                             ;; bind current-fringe-vec to read-fringe-from-disk
-                             ;; bind local-expansion to ...
-                             (remote-expand-part-fringe current-fringe-vec range-pair samp-freq)
-                             ;; write local-expansion to disk *** need naming convention 
-                             ;; return the sampling-stats
-                             )]
-         [sampling-stats (map first stats+expansions)] ;; this is all that will be returned by workers so no need to map first
-         [just-expansions (map second stats+expansions)]
+  (let* (;; Distribute the expansion work
+         [sampling-stats (for/work ([range-pair (make-vector-ranges (read-from-string (with-output-to-string (lambda () (system "wc -l current-fringe")))))])
+                                   (let* (;; bind current-fringe-vec to read-fringe-from-disk
+                                          [cfv (list->vector (read-fringe-from-disk "current-fringe"))]
+                                          [samp-freq (floor (/ (vector-length cfv) (* 100 *n-processors*)))]
+                                          ;; bind local-expansion to ...
+                                          [local-stats+expand (remote-expand-part-fringe cfv range-pair samp-freq)])
+                                     ;; write local-expansion to disk *** need naming convention 
+                                     (write-fringe-to-disk
+                                      (second local-stats+expand)
+                                      (string-append "partial-expansion" (number->string (first range-pair))))
+                                     ;; return the sampling-stats
+                                     (first local-stats+expand)))]
          ;; Distribute the merging work
          [merge-ranges (make-merge-ranges-from-expansions sampling-stats)]
          [sorted-expansion-parts
-          (let* ([merged-expansion-parts (for/list #|work|# ([merge-range merge-ranges])
+          (let* ([merged-expansion-parts (for/list #|work|# ([merge-range merge-ranges]) ;; merged results should(**!?**) come back in order of merge-ranges assignments
+                                           (let* ([current-fringe-vec (read-fringe-from-disk "current-fringe")]
+                                                  [prev-fringe-vec (read-fringe-from-disk "prev-fringe")]
+                                                  [just-expansions (for/list ([f (string-split (with-output-to-string (lambda () (system "ls partial-expansion*"))))])
+                                                                     (read-fringe-from-disk f))]
+                                                  )
                                            ;; bind prev-fringe-vec to read-fringe-from-disk
                                            ;; bind current-fringe-vec to read-fringe-from-disk
                                            ;;(printf "remote-expand-fringe: merge-range = ~a~%" merge-range)
@@ -199,7 +205,7 @@
                                            ;; ...  containing the partial expansions
                                            (remote-merge-expansions merge-range just-expansions prev-fringe-vec current-fringe-vec)
                                            ;; return the responsibility-range with the worker host name
-                                           )]
+                                           ))]
                  [expan-lengths (map length merged-expansion-parts)]
                  [min-expan (argmin identity expan-lengths)]
                  [max-expan (argmax identity expan-lengths)]
