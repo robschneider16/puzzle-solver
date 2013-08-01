@@ -16,8 +16,8 @@
 
 (provide (all-defined-out))
 
-(define *n-processors* 32)
-;(define *n-processors* 4)
+;(define *n-processors* 32)
+(define *n-processors* 4)
 
 (define *most-positive-fixnum* 0)
 (define *most-negative-fixnum* 0)
@@ -120,10 +120,10 @@
           (filter-not empty?
                       (map (lambda (vop)
                              #|(printf "remote-merge-expansions: fastforwarding vec of ~a positions to ~a positions (indices [~a-~a])~%" 
-                                     (vector-length vop) (- (find-pos-index (second my-range) 0 vop) (find-pos-index (first my-range) 0 vop)) 
-                                     (find-pos-index (first my-range) 0 vop) (find-pos-index (second my-range) 0 vop))|#
-                             (for/list ([i (in-range (find-pos-index (first my-range) 0 vop)
-                                                     (find-pos-index (second my-range) 0 vop))])
+                                     (vector-length vop) (- (find-pos-index (second my-range) vop) (find-pos-index (first my-range) vop)) 
+                                     (find-pos-index (first my-range) vop) (find-pos-index (second my-range)  vop))|#
+                             (for/list ([i (in-range (find-pos-index (first my-range) vop)
+                                                     (find-pos-index (second my-range) vop))])
                                (vector-ref vop i)))
                            lovo-positions))]
          ;; this will become a heap of file-handles
@@ -304,8 +304,8 @@
 ;;#|
 (module+ main
   ;; Switch between these according to if using the cluster or testing on multi-core single machine
-  (connect-to-riot-server! "wcp")
-  ;;(connect-to-riot-server! "localhost")
+  ;;(connect-to-riot-server! "wcp")
+  (connect-to-riot-server! "localhost")
   (define search-result (time (start-cluster-fringe-search *start*)))
   (print search-result))
 ;;|#

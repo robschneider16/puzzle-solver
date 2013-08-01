@@ -167,21 +167,20 @@
 (define (position-in-vec? v p)
   (vec-member? v p position<?))
 
-;; find-pos-index: fixnum fixnum (vectorof position) -> int
+;; find-pos-index: fixnum (vectorof position) -> int
 ;; find the index of the *FIRST* position (if present) or of the first position greater than where it would be
-(define (find-pos-index pos-hashcode pos-hashcode2 vop (low 0) (high (vector-length vop)))
+;; *** THIS IS NOT _EXACTLY_ CORRECT: assumes only used to pick responsibility-ranges
+(define (find-pos-index pos-hashcode vop (low 0) (high (vector-length vop)))
   (let* ([mid (floor (/ (+ low high) 2))]
-         [mid-hashcode (and (< mid (vector-length vop)) (equal-hash-code (vector-ref vop mid)))]
-         [mid-hashcode2 (and mid-hashcode (equal-secondary-hash-code (vector-ref vop mid)))])
+         [mid-hashcode (and (< mid (vector-length vop)) (equal-hash-code (vector-ref vop mid)))])
     (cond [(>= low high) low]
-          [(and (fx= pos-hashcode mid-hashcode) (fx= pos-hashcode2 mid-hashcode2))
+          [(fx= pos-hashcode mid-hashcode)
            (or (for/last ([index (in-range mid -1 -1)]
                           #:when (fx= (equal-hash-code (vector-ref vop index)) mid-hashcode))
                  index)
                0)]
-          [(and (fx<= pos-hashcode mid-hashcode) (fx< pos-hashcode2 mid-hashcode2))
-           (find-pos-index pos-hashcode pos-hashcode2 vop low mid)]
-          [else (find-pos-index pos-hashcode pos-hashcode2 vop (add1 mid) high)])))
+          [(fx< pos-hashcode mid-hashcode) (find-pos-index pos-hashcode vop low mid)]
+          [else (find-pos-index pos-hashcode vop (add1 mid) high)])))
 
 ;; vec-member?: (vectorof X) X (X X -> boolean) [int] [int] -> boolean
 ;; determine if the given item appears in the SORTED vector of positions
