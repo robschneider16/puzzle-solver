@@ -37,8 +37,8 @@
 ;;-------------------------------------------------------------------------------
 ;; COMMON UTILITIES TO BOTH GENERIC FRINGE-SEARCH AND CLUSTER-FRINGE-SEARCH
 
-;; write-fringe-to-disk: (listof position) string -> void
-;; writes the given fringe into a file on disk having the given file-name
+;; write-fringe-to-disk: (listof or vectorof position) string -> void
+;; writes the positions from the given fringe (whether list or vector) into a file with given file-name
 (define (write-fringe-to-disk fringe file-name)
   (let ([my-output (open-output-file file-name #:exists 'replace)])
     (for ([position fringe])
