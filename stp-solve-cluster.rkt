@@ -16,7 +16,8 @@
 
 (provide (all-defined-out))
 
-(define *n-processors* 3)
+(define *n-processors* 32)
+;(define *n-processors* 4)
 
 (define *most-positive-fixnum* 0)
 (define *most-negative-fixnum* 0)
@@ -190,7 +191,7 @@
   (let* (;; Distribute the expansion work
          [sampling-stats (for/work ([range-pair (make-vector-ranges (position-count-in-file "current-fringe"))])
                                    (let* ([cfv (list->vector (read-fringe-from-disk "current-fringe"))]  ;; bind current-fringe-vec to read-fringe-from-disk
-                                          [samp-freq (floor (/ (vector-length cfv) (* 100 *n-processors*)))]
+                                          [samp-freq (max (floor (/ (vector-length cfv) (* 100 *n-processors*))) 1)]
                                           [local-stats+expand (remote-expand-part-fringe cfv range-pair samp-freq)])
                                      ;; write local-expansion to disk w/ naming convention "partial-expansion" + beginning of expansion range
                                      (write-fringe-to-disk
@@ -296,7 +297,9 @@
 
 ;;#|
 (module+ main
-  (connect-to-riot-server! "localhost")
+  ;; Switch between these according to if using the cluster or testing on multi-core single machine
+  (connect-to-riot-server! "wcp")
+  ;;(connect-to-riot-server! "localhost")
   (define search-result (time (start-cluster-fringe-search *start*)))
   (print search-result))
 ;;|#
