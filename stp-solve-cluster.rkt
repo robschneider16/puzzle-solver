@@ -16,8 +16,8 @@
 
 (provide (all-defined-out))
 
-;(define *n-processors* 32)
-(define *n-processors* 4)
+(define *n-processors* 32)
+;(define *n-processors* 4)
 
 (define *most-positive-fixnum* 0)
 (define *most-negative-fixnum* 0)
@@ -304,8 +304,8 @@
 ;;#|
 (module+ main
   ;; Switch between these according to if using the cluster or testing on multi-core single machine
-  ;;(connect-to-riot-server! "wcp")
-  (connect-to-riot-server! "localhost")
+  (connect-to-riot-server! "wcp")
+  ;;(connect-to-riot-server! "localhost")
   (define search-result (time (start-cluster-fringe-search *start*)))
   (print search-result))
 ;;|#
