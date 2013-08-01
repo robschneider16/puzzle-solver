@@ -189,32 +189,38 @@
 (define (distributed-expand-fringe)
   ;;(printf "distributed-expand-fringe: ~a nodes in prev and ~a in current fringes~%" (vector-length prev-fringe-vec) (vector-length current-fringe-vec))
   (let* (;; Distribute the expansion work
-         [sampling-stats (for/work ([range-pair (make-vector-ranges (position-count-in-file "current-fringe"))])
+         [ranges (make-vector-ranges (position-count-in-file "current-fringe"))]
+         [sampling-stats (for/work ([range-pair ranges]
+                                    [i (in-range (length ranges))])
                                    (let* ([cfv (list->vector (read-fringe-from-disk "current-fringe"))]  ;; bind current-fringe-vec to read-fringe-from-disk
                                           [samp-freq (max (floor (/ (vector-length cfv) (* 100 *n-processors*))) 1)]
                                           [local-stats+expand (remote-expand-part-fringe cfv range-pair samp-freq)])
                                      ;; write local-expansion to disk w/ naming convention "partial-expansion" + beginning of expansion range
                                      (write-fringe-to-disk
                                       (second local-stats+expand) ;; this is already sorted in remote-expand-part-fringe
-                                      (format "partial-expansion~a" (first range-pair)))
+                                      (format "partial-expansion~a" (~a i #:left-pad-string "0" #:width 2 #:align 'right)))
                                      ;; return the sampling-stats
                                      (first local-stats+expand)))]
          ;; Distribute the merging work
          [merge-ranges (make-merge-ranges-from-expansions sampling-stats)]
          [sorted-expansion-files
           (let* ([merged-expansion-files 
-                  (for/work ([merge-range merge-ranges]) ;; merged results should come back in order of merge-ranges assignments
+                  (for/work ([merge-range merge-ranges] ;; merged results should come back in order of merge-ranges assignments
+                             [i (in-range (length merge-ranges))])
                             (let* ([prev-fringe-vec (list->vector (read-fringe-from-disk "prev-fringe"))] ;; bind prev-fringe-vec to read-fringe-from-disk
                                    [current-fringe-vec (list->vector (read-fringe-from-disk "current-fringe"))] ;; bind current-fringe-vec to read-fringe-from-disk
                                    [just-expansions (for/list ([f (string-split (with-output-to-string (lambda () (system "ls partial-expansion*"))))])
                                                       (list->vector (read-fringe-from-disk f)))]
                                    [merged-responsibility-range (remote-merge-expansions merge-range just-expansions prev-fringe-vec current-fringe-vec)]
-                                   [ofile-name (format "partial-merge~a" (first merge-range))] ;; merged file name uniquely identified by first of responsibility range
+                                   [ofile-name (format "partial-merge~a" (~a i #:left-pad-string "0" #:width 2 #:align 'right))] ;; merged file name uniquely identified by first of responsibility range
                                    )
                               ;;(printf "remote-expand-fringe: merge-range = ~a~%" merge-range)
                               (write-fringe-to-disk merged-responsibility-range ofile-name)
                               ofile-name))]
                  [expan-lengths (for/list ([f merged-expansion-files])
+                                  #|(do ([present #f])
+                                    (present)
+                                    (set! present (file-exists? f)))|#
                                   (position-count-in-file f))]
                  [min-expan (argmin identity expan-lengths)]
                  [max-expan (argmax identity expan-lengths)]
@@ -223,7 +229,7 @@
                     expan-lengths (- max-expan min-expan) variation-percent)|#
             merged-expansion-files
             )])
-    (system "mv current-fringe prev-fringe")
+    (rename-file-or-directory "current-fringe" "prev-fringe" #t) ;;(system "mv current-fringe prev-fringe")
     (for ([f sorted-expansion-files])
       (system (format "cat ~a >> current-fringe" f)))
     (system "rm partial-expansion* partial-merge*")
@@ -279,8 +285,8 @@
                     (print "found goal")
                     maybe-goal]
                    [else (expand-fringe prev-fringe current-fringe)
-                         (printf "At depth ~a (file: ~a) current-fringe has ~a positions (and new-fringe ~a)~%" 
-                                 depth (set-count current-fringe) (position-count-in-file "prev-fringe") (position-count-in-file "current-fringe"))
+                         (printf "At depth ~a: current-fringe has ~a positions (and new-fringe ~a)~%" 
+                                 depth (position-count-in-file "prev-fringe") (position-count-in-file "current-fringe"))
                          ;;(for ([p current-fringe]) (displayln p))
                          (cluster-fringe-search (add1 depth))]))])))
 

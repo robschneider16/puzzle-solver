@@ -151,6 +151,11 @@
 
 ;; position<?: position position -> boolean
 (define (position<? p1 p2)
+  (when (and (not (equal? p1 p2)) (eq? (equal-hash-code p1) (equal-hash-code p2)))
+    (printf "hash collision on ~a and ~a at ~a~%" p1 p2 (equal-hash-code p1)))
+  (when (and (and (not (equal? p1 p2)) (eq? (equal-hash-code p1) (equal-hash-code p2)))
+             (eq? (equal-secondary-hash-code p1) (equal-secondary-hash-code p2)))
+    (error 'position<? "double hash collision"))
   (let ([hc1 (equal-hash-code p1)]
         [hc2 (equal-hash-code p2)])
     (or (fx< hc1 hc2)
