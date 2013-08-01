@@ -120,10 +120,10 @@
           (filter-not empty?
                       (map (lambda (vop)
                              #|(printf "remote-merge-expansions: fastforwarding vec of ~a positions to ~a positions (indices [~a-~a])~%" 
-                                     (vector-length vop) (- (find-pos-index (second my-range) vop) (find-pos-index (first my-range) vop)) 
-                                     (find-pos-index (first my-range) vop) (find-pos-index (second my-range) vop))|#
-                             (for/list ([i (in-range (find-pos-index (first my-range) vop)
-                                                     (find-pos-index (second my-range) vop))])
+                                     (vector-length vop) (- (find-pos-index (second my-range) 0 vop) (find-pos-index (first my-range) 0 vop)) 
+                                     (find-pos-index (first my-range) 0 vop) (find-pos-index (second my-range) 0 vop))|#
+                             (for/list ([i (in-range (find-pos-index (first my-range) 0 vop)
+                                                     (find-pos-index (second my-range) 0 vop))])
                                (vector-ref vop i)))
                            lovo-positions))]
          ;; this will become a heap of file-handles

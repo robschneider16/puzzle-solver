@@ -37,6 +37,8 @@
 ;;-------------------------------------------------------------------------------
 ;; COMMON UTILITIES TO BOTH GENERIC FRINGE-SEARCH AND CLUSTER-FRINGE-SEARCH
 
+;; Fringe Writing/Reading 
+
 ;; write-fringe-to-disk: (listof or vectorof position) string -> void
 ;; writes the positions from the given fringe (whether list or vector) into a file with given file-name
 (define (write-fringe-to-disk fringe file-name)
@@ -55,6 +57,9 @@
 ;; reports the number of positions in the given fringe file assuming the file was written with write-fringe-to-disk
 (define (position-count-in-file f)
   (read-from-string (with-output-to-string (lambda () (system (string-append "wc -l " f))))))
+
+
+;; Set-like Operations on Lists
 
 ;; list-union: (listof X) (listof X) (X X -> boolean) -> (listof X)
 ;; ASSUME lists are sorted
@@ -146,25 +151,32 @@
 
 ;; position<?: position position -> boolean
 (define (position<? p1 p2)
-  (fx< (equal-hash-code p1) (equal-hash-code p2)))
+  (let ([hc1 (equal-hash-code p1)]
+        [hc2 (equal-hash-code p2)])
+    (or (fx< hc1 hc2)
+        (and (fx= hc1 hc2)
+             (fx< (equal-secondary-hash-code p1) (equal-secondary-hash-code p2))))))
 
 ;; position-in-vec?: (vectorof position) position -> boolean
 ;; determine if given position is in vector of positions
 (define (position-in-vec? v p)
   (vec-member? v p position<?))
 
-;; find-pos-index: int (vectorof position) -> int
+;; find-pos-index: fixnum fixnum (vectorof position) -> int
 ;; find the index of the *FIRST* position (if present) or of the first position greater than where it would be
-(define (find-pos-index pos-hashcode vop (low 0) (high (vector-length vop)))
+(define (find-pos-index pos-hashcode pos-hashcode2 vop (low 0) (high (vector-length vop)))
   (let* ([mid (floor (/ (+ low high) 2))]
-         [mid-hashcode (and (< mid (vector-length vop)) (equal-hash-code (vector-ref vop mid)))])
+         [mid-hashcode (and (< mid (vector-length vop)) (equal-hash-code (vector-ref vop mid)))]
+         [mid-hashcode2 (and mid-hashcode (equal-secondary-hash-code (vector-ref vop mid)))])
     (cond [(>= low high) low]
-          [(fx= pos-hashcode mid-hashcode) (or (for/last ([index (in-range mid -1 -1)]
-                                                          #:when (fx= (equal-hash-code (vector-ref vop index)) mid-hashcode))
-                                                 index)
-                                               0)]
-          [(fx< pos-hashcode mid-hashcode) (find-pos-index pos-hashcode vop low mid)]
-          [else (find-pos-index pos-hashcode vop (add1 mid) high)])))
+          [(and (fx= pos-hashcode mid-hashcode) (fx= pos-hashcode2 mid-hashcode2))
+           (or (for/last ([index (in-range mid -1 -1)]
+                          #:when (fx= (equal-hash-code (vector-ref vop index)) mid-hashcode))
+                 index)
+               0)]
+          [(and (fx<= pos-hashcode mid-hashcode) (fx< pos-hashcode2 mid-hashcode2))
+           (find-pos-index pos-hashcode pos-hashcode2 vop low mid)]
+          [else (find-pos-index pos-hashcode pos-hashcode2 vop (add1 mid) high)])))
 
 ;; vec-member?: (vectorof X) X (X X -> boolean) [int] [int] -> boolean
 ;; determine if the given item appears in the SORTED vector of positions
