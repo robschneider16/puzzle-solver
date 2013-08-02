@@ -82,7 +82,7 @@
 ;; given a vector containing the current fringe, a pair of indices into that vector, and a samping frequency,
 ;; expand the positions in the indices range, ignoring duplicates other than within the new fringe being constructed.
 ;; While building the expansion, maintain stats on hash-code values and a list of sampled hash-code values.
-;; Return a pair containing the stats from this expansion and the expansion itself.
+;; Return a pair containing the stats from this expansion and the SORTED expansion itself.
 (define (remote-expand-part-fringe current-fringe ipair sample-freq)
   (let* ([start (first ipair)]
          [end (second ipair)]
@@ -144,10 +144,10 @@
     (printf "remote-merge-expansions: fw-lolop-lengths=~a [total ~a]~%" (map length fastforwarded-lolops) (for/sum ([l fastforwarded-lolops]) (length l)))
     ;(printf "remote-merge-expansions: merged-expns-length=~a~%" (length sorted-merged-expansions))
     ;;***error-check
-    #|
+    ;;#|
     (unless (= (length sorted-merged-expansions) (set-count (list->set sorted-merged-expansions))) 
       (error 'remote-merge-expansions "list-merging vs. set mis-match"))
-    |#
+    ;;|#
     sorted-merged-expansions
     ))
 
@@ -183,7 +183,7 @@
     made-merge-ranges))
 
 
-;; distributed-expand-fringe: (vectorof position) (vectorof position) -> void
+;; distributed-expand-fringe:  -> void
 ;; Distributed version of expand-fringe
 ;; convert prev-fringe set to vector to pass riot-net
 (define (distributed-expand-fringe)
@@ -201,10 +201,17 @@
                                       (format "partial-expansion~a" (~a i #:left-pad-string "0" #:width 2 #:align 'right)))
                                      ;; return the sampling-stats
                                      (first local-stats+expand)))]
+         [wait-for-partial-expansions (for ([i (in-range (length sampling-stats))])
+                                        (do ([present #f]) (present)
+                                          (set! present (file-exists? (format "partial-expansion~a" (~a i #:left-pad-string "0" #:width 2 #:align 'right))))))]
+         [error-check1 (for/first ([i (in-range (length sampling-stats))]
+                                   [ss sampling-stats]
+                                   #:unless (= (vector-ref ss 0) (position-count-in-file (format "partial-expansion~a" (~a i #:left-pad-string "0" #:width 2 #:align 'right)))))
+                         (error 'distributed-expand-fringe (format "err-chk1: partial-expansion sizes do not match up for ~a which should be ~a" i (vector-ref ss 0))))]
          ;; Distribute the merging work
          [merge-ranges (make-merge-ranges-from-expansions sampling-stats)]
-         [sorted-expansion-files
-          (let* ([merged-expansion-files 
+         [sorted-expansion-files-lengths
+          (let* ([merged-expansion-files-lens
                   (for/work ([merge-range merge-ranges] ;; merged results should come back in order of merge-ranges assignments
                              [i (in-range (length merge-ranges))])
                             (let* ([prev-fringe-vec (list->vector (read-fringe-from-disk "prev-fringe"))] ;; bind prev-fringe-vec to read-fringe-from-disk
@@ -212,23 +219,31 @@
                                    [just-expansions (for/list ([f (string-split (with-output-to-string (lambda () (system "ls partial-expansion*"))))])
                                                       (list->vector (read-fringe-from-disk f)))]
                                    [merged-responsibility-range (remote-merge-expansions merge-range just-expansions prev-fringe-vec current-fringe-vec)]
-                                   [ofile-name (format "partial-merge~a" (~a i #:left-pad-string "0" #:width 2 #:align 'right))] ;; merged file name uniquely identified by first of responsibility range
+                                   [ofile-name (format "partial-merge~a" (~a i #:left-pad-string "0" #:width 2 #:align 'right))] 
                                    )
                               ;;(printf "remote-expand-fringe: merge-range = ~a~%" merge-range)
                               (write-fringe-to-disk merged-responsibility-range ofile-name)
-                              ofile-name))]
+                              (list ofile-name (length merged-responsibility-range))))]
+                 [merged-expansion-files (map first merged-expansion-files-lens)]
                  [expan-lengths (for/list ([f merged-expansion-files])
-                                  #|(do ([present #f])
+                                  (do ([present #f])
                                     (present)
-                                    (set! present (file-exists? f)))|#
+                                    (set! present (file-exists? f)))
                                   (position-count-in-file f))]
                  [min-expan (argmin identity expan-lengths)]
                  [max-expan (argmax identity expan-lengths)]
                  [variation-percent (/ (round (* 10000.0 (/ (- max-expan min-expan) (/ (for/sum ([i expan-lengths]) i) (length expan-lengths))))) 100.0)])
             #|(printf "distributed-expand-fringe: lengths = ~a [spread ~a or ~a%]~%" 
                     expan-lengths (- max-expan min-expan) variation-percent)|#
-            merged-expansion-files
-            )])
+            merged-expansion-files-lens
+            )]
+         [sorted-expansion-files (map first sorted-expansion-files-lengths)]
+         [sef-lengths (map second sorted-expansion-files-lengths)]
+         [error-check2 (for/first ([f sorted-expansion-files]
+                                   [len sef-lengths]
+                                   #:unless (= len (position-count-in-file f)))
+                         (error 'distributed-expand-fringe (format "err-chk2: partial-merges do not match up for ~a which should be ~a" f len)))]
+         )
     (rename-file-or-directory "current-fringe" "prev-fringe" #t) ;;(system "mv current-fringe prev-fringe")
     (for ([f sorted-expansion-files])
       (system (format "cat ~a >> current-fringe" f)))

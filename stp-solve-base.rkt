@@ -58,6 +58,9 @@
 (define (position-count-in-file f)
   (read-from-string (with-output-to-string (lambda () (system (string-append "wc -l " f))))))
 
+;; touch: string -> void
+;; create the file with given name
+(define (touch fname) (display-to-file "" fname))
 
 ;; Set-like Operations on Lists
 
@@ -151,13 +154,13 @@
 
 ;; position<?: position position -> boolean
 (define (position<? p1 p2)
-  (when (and (not (equal? p1 p2)) (eq? (equal-hash-code p1) (equal-hash-code p2)))
-    (printf "hash collision on ~a and ~a at ~a~%" p1 p2 (equal-hash-code p1)))
-  (when (and (and (not (equal? p1 p2)) (eq? (equal-hash-code p1) (equal-hash-code p2)))
-             (eq? (equal-secondary-hash-code p1) (equal-secondary-hash-code p2)))
-    (error 'position<? "double hash collision"))
   (let ([hc1 (equal-hash-code p1)]
         [hc2 (equal-hash-code p2)])
+    (when (and (not (equal? p1 p2)) (eq? hc1 hc2))
+      (printf "hash collision on ~a and ~a at ~a~%" p1 p2 hc1))
+    (when (and (and (not (equal? p1 p2)) (eq? hc1 hc2))
+               (eq? (equal-secondary-hash-code p1) (equal-secondary-hash-code p2)))
+      (error 'position<? "double hash collision"))
     (or (fx< hc1 hc2)
         (and (fx= hc1 hc2)
              (fx< (equal-secondary-hash-code p1) (equal-secondary-hash-code p2))))))
