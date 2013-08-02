@@ -183,15 +183,16 @@
     made-merge-ranges))
 
 
-;; distributed-expand-fringe:  -> void
+;; distributed-expand-fringe: int -> void
 ;; Distributed version of expand-fringe
 ;; convert prev-fringe set to vector to pass riot-net
-(define (distributed-expand-fringe)
+(define (distributed-expand-fringe depth)
   ;;(printf "distributed-expand-fringe: ~a nodes in prev and ~a in current fringes~%" (vector-length prev-fringe-vec) (vector-length current-fringe-vec))
   (let* (;; Distribute the expansion work
          [ranges (make-vector-ranges (position-count-in-file "current-fringe"))]
          [sampling-stats (for/work ([range-pair ranges]
                                     [i (in-range (length ranges))])
+                                   (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end"))
                                    (let* ([cfv (list->vector (read-fringe-from-disk "current-fringe"))]  ;; bind current-fringe-vec to read-fringe-from-disk
                                           [samp-freq (max (floor (/ (vector-length cfv) (* 100 *n-processors*))) 1)]
                                           [local-stats+expand (remote-expand-part-fringe cfv range-pair samp-freq)])
@@ -214,6 +215,7 @@
           (let* ([merged-expansion-files-lens
                   (for/work ([merge-range merge-ranges] ;; merged results should come back in order of merge-ranges assignments
                              [i (in-range (length merge-ranges))])
+                            (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end"))
                             (let* ([prev-fringe-vec (list->vector (read-fringe-from-disk "prev-fringe"))] ;; bind prev-fringe-vec to read-fringe-from-disk
                                    [current-fringe-vec (list->vector (read-fringe-from-disk "current-fringe"))] ;; bind current-fringe-vec to read-fringe-from-disk
                                    [just-expansions (for/list ([f (string-split (with-output-to-string (lambda () (system "ls partial-expansion*"))))])
@@ -251,10 +253,10 @@
     ))
 ;;----------------------------------------------------------------------------------------
 
-;; expand-fringe: (setof position) (setof position) -> void
+;; expand-fringe: (setof position) (setof position) int -> void
 ;; Given a current fringe to expand, and the immediately previous fringe, 
 ;; return the new fringe by breaking it up into ranges
-(define (expand-fringe prev-fringe current-fringe)
+(define (expand-fringe prev-fringe current-fringe depth)
   (let* ([current-fringe-vec (vectorize-set current-fringe)])
     ;;***error-check
     ;;(unless (= (vector-length current-fringe-vec) (set-count current-fringe)) (error 'expand-fringe "vectorization screw-up"))
@@ -267,7 +269,7 @@
                        (printf "calling distributed-exp... with ~a and ~a positions in prev and current fringes, respectively~%"
                                (set-count prev-fringe) (vector-length current-fringe-vec))
                        |#
-          (distributed-expand-fringe)))))
+          (distributed-expand-fringe depth)))))
 
 ;; vectorize-set: (setof position) -> (vectorof position)
 ;; convert a set of positions into a vector for easy/efficient partitioning
@@ -286,7 +288,7 @@
         [else (cons (first l2) (fringe-merge l1 (rest l2)))]))
 
 
-(define *max-depth* 10)(set! *max-depth* 31)
+(define *max-depth* 10)(set! *max-depth* 61)
 
 ;; cluster-fringe-search: (setof position) (setof position) int -> position
 ;; perform a fringe BFS starting at the given state until depth is 0
@@ -299,7 +301,7 @@
              (cond [maybe-goal
                     (print "found goal")
                     maybe-goal]
-                   [else (expand-fringe prev-fringe current-fringe)
+                   [else (expand-fringe prev-fringe current-fringe depth)
                          (printf "At depth ~a: current-fringe has ~a positions (and new-fringe ~a)~%" 
                                  depth (position-count-in-file "prev-fringe") (position-count-in-file "current-fringe"))
                          ;;(for ([p current-fringe]) (displayln p))
@@ -312,8 +314,8 @@
   (cluster-fringe-search 1))
   
 
-(block10-init)
-;(climb12-init)
+;(block10-init)
+(climb12-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
 ;;#|

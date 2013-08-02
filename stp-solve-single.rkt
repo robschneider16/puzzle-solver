@@ -4,7 +4,7 @@
 (require "stp-solve-base.rkt")
 
 
-(define *max-depth* 10)(set! *max-depth* 32)
+(define *max-depth* 10)(set! *max-depth* 61)
 
 
 
@@ -40,8 +40,8 @@
 
 
 
-(block10-init)
-;(climb12-init)
+;(block10-init)
+(climb12-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
 (write-fringe-to-disk empty "prev-fringe")
