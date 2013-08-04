@@ -5,6 +5,7 @@
 (require racket/fixnum)
 (require racket/set)
 (require mzlib/string)
+(require test-engine/racket-tests)
 
 (provide (all-defined-out))
 
@@ -152,6 +153,20 @@
           (cell-to-loc (translate-cell (cdr tile) trans)))))
 
 
+;; lexi<?: position position -> boolean
+;; lexicographic less-than test on two positions (that presumably have a primary hash collision)
+(check-expect (lexi<? #((1 2 3) (1 3) (1 2 3)) #((1 2 3) (1 3) (1 2 3))) #f)
+(check-expect (lexi<? #((1 2 3) (2 3) (1 2 3)) #((1 2 3) (1 3) (1 2 3))) #f)
+(check-expect (lexi<? #((1 2 3) (1 3) (1 2 3)) #((1 2 3) (2 3) (1 2 3))) #t)
+(define (lexi<? p1 p2)
+  (for/first ([tile-types1 p1]
+              [tile-types2 p2]
+              #:when (not (equal? tile-types1 tile-types2)))
+    (for/first ([tile1 tile-types1]
+                [tile2 tile-types2]
+                #:when (not (= tile1 tile2)))
+      (< tile1 tile2))))
+
 ;; position<?: position position -> boolean
 (define (position<? p1 p2)
   (let ([hc1 (equal-hash-code p1)]
@@ -159,13 +174,9 @@
     (when (and (not (equal? p1 p2))
                (fx= hc1 hc2))
       (printf "hash collision on ~a and ~a at ~a~%" p1 p2 hc1))
-    (when (and (not (equal? p1 p2))
-               (fx= hc1 hc2))
-               (fx= (equal-secondary-hash-code p1) (equal-secondary-hash-code p2))
-      (error 'position<? (format "double hash collision for ~a and ~a at ~a and ~a" p1 p2 hc1 (equal-secondary-hash-code p1))))
     (or (fx< hc1 hc2)
         (and (fx= hc1 hc2)
-             (fx< (equal-secondary-hash-code p1) (equal-secondary-hash-code p2))))))
+             (lexi<? p1 p2)))))
 
 ;; position-in-vec?: (vectorof position) position -> boolean
 ;; determine if given position is in vector of positions
@@ -275,3 +286,4 @@
               #:when (is-goal? pos))
     pos))
 
+;(test)
