@@ -120,4 +120,40 @@
 (define (climb12-init)
   (set-em! *climb12-piece-types* *climb12-start* *climb12-target* 6 5))
 ;;------------------------------------------------------------------------------------------------------
+;; CLIMB-15 PUZZLE INIT
+;; (variation 1: 104 moves)
+(define *climb15-piece-types*
+  '#((reserved-spaces)
+     ((0 0)(1 -1)(1 0)(1 1))             ; 1  4 square T (stem up)
+     ((0 0)(0 1)(1 0))                   ; 2  Upper Left pointing L
+     ((0 0)(1 -1)(1 0))                  ; 3  Lower Right pointing L
+     ((0 0)(1 0)(1 1))                   ; 4  Lower Left pointing L
+     ((0 0)(0 1)(1 1))                   ; 5  Upper Right pointing L
+     ((0 0)(1 0))                        ; 6  2x1 vertical rectangle
+     ((0 0)(0 1))                        ; 7  1x2 horizontal rectangle
+     ((0 0))                             ; 8  1x1 unit square
+     ((0 0)(0 1)(1 0)(1 1))))            ; 9  2x2 square
+     
+(define *climb15-start*
+  '((1 6 2)
+    (2 2 0)
+    (3 2 2)
+    (4 4 2)
+    (5 4 3)
+    (6 2 3)
+    (6 2 4)
+    (7 6 0)
+    (7 6 3)
+    (8 1 0)
+    (8 1 4)
+    (8 7 0)
+    (8 7 4)
+    (9 4 0)
+    ((0 2)(1 1)(1 2)(1 3))
+    ))
+
+(define *climb15-target* '((1 0 2)))
+
+(define (climb15-init)
+  (set-em! *climb15-piece-types* *climb15-start* *climb15-target* 8 5))
 

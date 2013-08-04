@@ -288,7 +288,7 @@
         [else (cons (first l2) (fringe-merge l1 (rest l2)))]))
 
 
-(define *max-depth* 10)(set! *max-depth* 61)
+(define *max-depth* 10)(set! *max-depth* 40)
 
 ;; cluster-fringe-search: (setof position) (setof position) int -> position
 ;; perform a fringe BFS starting at the given state until depth is 0
@@ -315,7 +315,8 @@
   
 
 ;(block10-init)
-(climb12-init)
+;(climb12-init)
+(climb15-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
 ;;#|
