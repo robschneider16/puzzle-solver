@@ -183,9 +183,9 @@
 (define (position<? p1 p2)
   (let ([hc1 (equal-hash-code p1)]
         [hc2 (equal-hash-code p2)])
-    (when (and (not (equal? p1 p2))
+    #|(when (and (not (equal? p1 p2))
                (fx= hc1 hc2))
-      (printf "hash collision on ~a and ~a at ~a~%" p1 p2 hc1))
+      (printf "hash collision on ~a and ~a at ~a~%" p1 p2 hc1))|#
     (or (fx< hc1 hc2)
         (and (fx= hc1 hc2)
              (lexi<? p1 p2)))))

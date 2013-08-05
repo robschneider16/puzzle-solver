@@ -151,10 +151,8 @@
     (printf "remote-merge-expansions: fw-lolop-lengths=~a [total ~a]~%" (map length fastforwarded-lolops) (for/sum ([l fastforwarded-lolops]) (length l)))
     ;(printf "remote-merge-expansions: merged-expns-length=~a~%" (length sorted-merged-expansions))
     ;;***error-check
-    ;;#|
-    (unless (= (length sorted-merged-expansions) (set-count (list->set sorted-merged-expansions))) 
-      (error 'remote-merge-expansions "list-merging vs. set mis-match"))
-    ;;|#
+    #|(unless (= (length sorted-merged-expansions) (set-count (list->set sorted-merged-expansions))) 
+      (error 'remote-merge-expansions "list-merging vs. set mis-match"))|#
     sorted-merged-expansions
     ))
 
