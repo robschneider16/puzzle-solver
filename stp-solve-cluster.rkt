@@ -148,7 +148,7 @@
                                     (unless (empty? (cdr lops)) (heap-add! heap-o-position-lists (cdr lops)))));;******???????
              (unless (empty? (cdr lops)) (heap-add! heap-o-position-lists (cdr lops)))
              (car lops)))])
-    (printf "remote-merge-expansions: fw-lolop-lengths=~a [total ~a]~%" (map length fastforwarded-lolops) (for/sum ([l fastforwarded-lolops]) (length l)))
+    ;(printf "remote-merge-expansions: fw-lolop-lengths=~a [total ~a]~%" (map length fastforwarded-lolops) (for/sum ([l fastforwarded-lolops]) (length l)))
     ;(printf "remote-merge-expansions: merged-expns-length=~a~%" (length sorted-merged-expansions))
     ;;***error-check
     #|(unless (= (length sorted-merged-expansions) (set-count (list->set sorted-merged-expansions))) 
@@ -320,8 +320,8 @@
   (cluster-fringe-search 1))
   
 
-(block10-init)
-;(climb12-init)
+;(block10-init)
+(climb12-init)
 ;(climb15-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
