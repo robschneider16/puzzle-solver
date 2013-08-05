@@ -16,8 +16,8 @@
 
 (provide (all-defined-out))
 
-(define *n-processors* 31)
-;(define *n-processors* 4)
+;(define *n-processors* 31)
+(define *n-processors* 4)
 
 (define *most-positive-fixnum* 0)
 (define *most-negative-fixnum* 0)
@@ -82,12 +82,12 @@
                (list (list (last start-list) vlength)) 
                (drop-right start-list 1)))))
 
-;; remote-expand-part-fringe: (list int int) int -> (list sampling-stat (vectorof position))
+;; remote-expand-part-fringe: (list int int) int int -> sampling-stat
 ;; given a pair of indices into the current-fringe that should be expanded by this process, and a samping frequency,
 ;; expand the positions in the indices range, ignoring duplicates other than within the new fringe being constructed.
 ;; While building the expansion, maintain stats on hash-code values and a list of sampled hash-code values.
 ;; Return a pair containing the stats from this expansion and the SORTED expansion itself.
-(define (remote-expand-part-fringe ipair sample-freq)
+(define (remote-expand-part-fringe ipair sample-freq process-id)
   (let* ([start (first ipair)]
          [end (second ipair)]
          [sample-stats (vector 0 *most-positive-fixnum* *most-negative-fixnum* empty #f)]
@@ -106,13 +106,17 @@
     (vector-sort! position<? resv)
     ;; resv should be sorted and have no duplicates w/in itself because it came from a set
     (vector-set! sample-stats 3 (sort (vector-ref sample-stats 3) fx<))
+    ;; write local-expansion to disk w/ naming convention "partial-expansion" + beginning of expansion range
+    (write-fringe-to-disk
+     resv ;; this is already sorted in remote-expand-part-fringe
+     (format "partial-expansion~a" (~a process-id #:left-pad-string "0" #:width 2 #:align 'right)))
     #|
     (printf "remote-expand-part-fringe: starting w/ ~a positions, expansion has ~a/~a positions and sampled ~a hashcodes~%"
             (- end start) (vector-ref sample-stats 0) (vector-length resv) (length (vector-ref sample-stats 3)))
     (printf "remote-expand-part-fringe: HAVE EXPANSIONS:~%")
     (for ([p resv]) (displayln p))
     |#
-    (list sample-stats resv)))
+    sample-stats))
 
 
 ;; MERGING .....
@@ -198,14 +202,9 @@
          [sampling-stats (for/work ([range-pair ranges]
                                     [i (in-range (length ranges))])
                                    (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end"))
-                                   (let* ([samp-freq (max (floor (/ cur-fringe-size (* 100 *n-processors*))) 1)]
-                                          [local-stats+expand (remote-expand-part-fringe range-pair samp-freq)])
-                                     ;; write local-expansion to disk w/ naming convention "partial-expansion" + beginning of expansion range
-                                     (write-fringe-to-disk
-                                      (second local-stats+expand) ;; this is already sorted in remote-expand-part-fringe
-                                      (format "partial-expansion~a" (~a i #:left-pad-string "0" #:width 2 #:align 'right)))
-                                     ;; return the sampling-stats
-                                     (first local-stats+expand)))]
+                                   (remote-expand-part-fringe range-pair 
+                                                              (max (floor (/ cur-fringe-size (* 100 *n-processors*))) 1)
+                                                              i))]
          [check-for-goal (for/first ([ss sampling-stats]
                                      #:when (vector-ref ss 4))
                            (set! *found-goal* (vector-ref ss 4)))]
@@ -296,7 +295,7 @@
         [else (cons (first l2) (fringe-merge l1 (rest l2)))]))
 
 
-(define *max-depth* 10)(set! *max-depth* 40)
+(define *max-depth* 10)(set! *max-depth* 61)
 
 ;; cluster-fringe-search: (setof position) (setof position) int -> position
 ;; perform a fringe BFS starting at the given state until depth is 0
@@ -328,8 +327,8 @@
 ;;#|
 (module+ main
   ;; Switch between these according to if using the cluster or testing on multi-core single machine
-  (connect-to-riot-server! "wcp")
-  ;;(connect-to-riot-server! "localhost")
+  ;;(connect-to-riot-server! "wcp")
+  (connect-to-riot-server! "localhost")
   (define search-result (time (start-cluster-fringe-search *start*)))
   (print search-result))
 ;;|#
