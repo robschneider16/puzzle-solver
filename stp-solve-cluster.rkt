@@ -16,7 +16,7 @@
 
 (provide (all-defined-out))
 
-(define *n-processors* 32)
+(define *n-processors* 31)
 ;(define *n-processors* 4)
 
 (define *most-positive-fixnum* 0)
@@ -78,19 +78,20 @@
                (list (list (last start-list) vlength)) 
                (drop-right start-list 1)))))
 
-;; remote-expand-part-fringe: (vectorof position) (list int int) int -> (list sampling-stat (vectorof position))
-;; given a vector containing the current fringe, a pair of indices into that vector, and a samping frequency,
+;; remote-expand-part-fringe: (list int int) int -> (list sampling-stat (vectorof position))
+;; given a pair of indices into the current-fringe that should be expanded by this process, and a samping frequency,
 ;; expand the positions in the indices range, ignoring duplicates other than within the new fringe being constructed.
 ;; While building the expansion, maintain stats on hash-code values and a list of sampled hash-code values.
 ;; Return a pair containing the stats from this expansion and the SORTED expansion itself.
-(define (remote-expand-part-fringe current-fringe ipair sample-freq)
+(define (remote-expand-part-fringe ipair sample-freq)
   (let* ([start (first ipair)]
          [end (second ipair)]
          [sample-stats (vector 0 *most-positive-fixnum* *most-negative-fixnum* empty)]
          [resv (for/vector ([p (for*/fold ([expansions (set)])
-                                 ([i (in-range start end)])
+                                 ([pos-to-expand (read-partial-fringe "current-fringe" start end)])
                                  ;; do the expansion of the indexed position, adding in any new positions found
-                                 (set-union expansions (expand (vector-ref current-fringe i))))])
+                                 (set-union expansions (expand pos-to-expand))
+                                 )])
                            (vector-set! sample-stats 0 (add1 (vector-ref sample-stats 0)))
                            (vector-set! sample-stats 1 (fxmin (vector-ref sample-stats 1) (equal-hash-code p)))
                            (vector-set! sample-stats 2 (fxmax (vector-ref sample-stats 2) (equal-hash-code p)))
@@ -107,6 +108,7 @@
     (for ([p resv]) (displayln p))
     |#
     (list sample-stats resv)))
+
 
 ;; MERGING .....
 
@@ -189,13 +191,13 @@
 (define (distributed-expand-fringe depth)
   ;;(printf "distributed-expand-fringe: ~a nodes in prev and ~a in current fringes~%" (vector-length prev-fringe-vec) (vector-length current-fringe-vec))
   (let* (;; Distribute the expansion work
-         [ranges (make-vector-ranges (position-count-in-file "current-fringe"))]
+         [cur-fringe-size (position-count-in-file "current-fringe")]
+         [ranges (make-vector-ranges cur-fringe-size)]
          [sampling-stats (for/work ([range-pair ranges]
                                     [i (in-range (length ranges))])
                                    (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end"))
-                                   (let* ([cfv (list->vector (read-fringe-from-disk "current-fringe"))]  ;; bind current-fringe-vec to read-fringe-from-disk
-                                          [samp-freq (max (floor (/ (vector-length cfv) (* 100 *n-processors*))) 1)]
-                                          [local-stats+expand (remote-expand-part-fringe cfv range-pair samp-freq)])
+                                   (let* ([samp-freq (max (floor (/ cur-fringe-size (* 100 *n-processors*))) 1)]
+                                          [local-stats+expand (remote-expand-part-fringe range-pair samp-freq)])
                                      ;; write local-expansion to disk w/ naming convention "partial-expansion" + beginning of expansion range
                                      (write-fringe-to-disk
                                       (second local-stats+expand) ;; this is already sorted in remote-expand-part-fringe
@@ -314,9 +316,9 @@
   (cluster-fringe-search 1))
   
 
-;(block10-init)
+(block10-init)
 ;(climb12-init)
-(climb15-init)
+;(climb15-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
 ;;#|

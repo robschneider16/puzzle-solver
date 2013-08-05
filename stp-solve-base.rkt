@@ -54,6 +54,18 @@
 (define (read-fringe-from-disk file-path)
   (with-input-from-file file-path port->list))
 
+;; read-partial-fringe: path int int -> (listof position)
+;; open, advance, read, and close the given file, returning only the indicated range of positions
+(define (read-partial-fringe fname start end)
+  (let* ([my-input (open-input-file fname)]
+         [ignore-front (for ([i (in-range start)])
+                         (read-line my-input))]
+         [partial-fringe (for/list ([i (in-range (- end start))])
+                           (read my-input))]
+         )
+    (close-input-port my-input)
+    partial-fringe))
+
 ;; position-count-in-file: string -> number
 ;; reports the number of positions in the given fringe file assuming the file was written with write-fringe-to-disk
 (define (position-count-in-file f)
