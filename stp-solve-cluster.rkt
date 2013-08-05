@@ -31,6 +31,8 @@
        (set! *most-negative-fixnum* (fx+ (fx* -1 (expt 2 29)) (fx* -1 (expt 2 29))));; ***** likewise *****
        ])
 
+(define *found-goal* #f)
+
 
 ;; Cluster/multi-process specific code for the sliding-tile puzzle solver
 
@@ -38,16 +40,17 @@
 ;;----------------------------------------------------------------------------------------
 
 
-;; expand-fringe-portion: (list int int) (setof position) (vectorof position) -> void
+;; expand-fringe-self: (setof position) (vectorof position) -> void
 ;; expand just the portion of the sorted-fringe-vector specified by the indices in the given range-pair.  
 ;; ASSUME: current-fringe-vec is sorted
-(define (expand-fringe-portion range-pair prev-fringe-set current-fringe-vec)
+(define (expand-fringe-self prev-fringe-set current-fringe-vec)
   (let ((res (for/list ([p (for/fold ([expansions (set)])
-                             ([i (in-range (first range-pair) (second range-pair))])
+                             ([p-to-expand current-fringe-vec])
                              (set-union expansions
-                                        (expand (vector-ref current-fringe-vec i))))]
+                                        (expand p-to-expand)))]
                         #:unless (or (set-member? prev-fringe-set p)
                                      (position-in-vec? current-fringe-vec p)))
+               (when (is-goal? p) (set! *found-goal* p))
                p)))
     #|(printf "Finished the work packet generating a set of ~a positions~%" (set-count res))
     (for ([p res])
@@ -65,6 +68,7 @@
 ;; 1. minimum hash value of the positions
 ;; 2. maximum hash value of the positions
 ;; 3. vector of bin-counts for the range min-to-max divided into *n-processors* ranges
+;; 4. boolean goal-found if found when expanding the assigned positions
 
 ;; EXPANSION .....
 
@@ -86,18 +90,19 @@
 (define (remote-expand-part-fringe ipair sample-freq)
   (let* ([start (first ipair)]
          [end (second ipair)]
-         [sample-stats (vector 0 *most-positive-fixnum* *most-negative-fixnum* empty)]
+         [sample-stats (vector 0 *most-positive-fixnum* *most-negative-fixnum* empty #f)]
          [resv (for/vector ([p (for*/fold ([expansions (set)])
                                  ([pos-to-expand (read-partial-fringe "current-fringe" start end)])
                                  ;; do the expansion of the indexed position, adding in any new positions found
                                  (set-union expansions (expand pos-to-expand))
                                  )])
-                           (vector-set! sample-stats 0 (add1 (vector-ref sample-stats 0)))
-                           (vector-set! sample-stats 1 (fxmin (vector-ref sample-stats 1) (equal-hash-code p)))
-                           (vector-set! sample-stats 2 (fxmax (vector-ref sample-stats 2) (equal-hash-code p)))
-                           (when (zero? (modulo (vector-ref sample-stats 0) sample-freq))
-                             (vector-set! sample-stats 3 (cons (equal-hash-code p) (vector-ref sample-stats 3))))
-                           p)])
+                 (vector-set! sample-stats 0 (add1 (vector-ref sample-stats 0)))
+                 (vector-set! sample-stats 1 (fxmin (vector-ref sample-stats 1) (equal-hash-code p)))
+                 (vector-set! sample-stats 2 (fxmax (vector-ref sample-stats 2) (equal-hash-code p)))
+                 (when (zero? (modulo (vector-ref sample-stats 0) sample-freq))
+                   (vector-set! sample-stats 3 (cons (equal-hash-code p) (vector-ref sample-stats 3))))
+                 (when (is-goal? p) (vector-set! sample-stats 4 p))
+                 p)])
     (vector-sort! position<? resv)
     ;; resv should be sorted and have no duplicates w/in itself because it came from a set
     (vector-set! sample-stats 3 (sort (vector-ref sample-stats 3) fx<))
@@ -185,13 +190,12 @@
     made-merge-ranges))
 
 
-;; distributed-expand-fringe: int -> void
+;; distributed-expand-fringe: int int -> void
 ;; Distributed version of expand-fringe
 ;; convert prev-fringe set to vector to pass riot-net
-(define (distributed-expand-fringe depth)
+(define (distributed-expand-fringe cur-fringe-size depth)
   ;;(printf "distributed-expand-fringe: ~a nodes in prev and ~a in current fringes~%" (vector-length prev-fringe-vec) (vector-length current-fringe-vec))
   (let* (;; Distribute the expansion work
-         [cur-fringe-size (position-count-in-file "current-fringe")]
          [ranges (make-vector-ranges cur-fringe-size)]
          [sampling-stats (for/work ([range-pair ranges]
                                     [i (in-range (length ranges))])
@@ -204,6 +208,9 @@
                                       (format "partial-expansion~a" (~a i #:left-pad-string "0" #:width 2 #:align 'right)))
                                      ;; return the sampling-stats
                                      (first local-stats+expand)))]
+         [check-for-goal (for/first ([ss sampling-stats]
+                                     #:when (vector-ref ss 4))
+                           (set! *found-goal* (vector-ref ss 4)))]
          [wait-for-partial-expansions (for ([i (in-range (length sampling-stats))])
                                         (do ([present #f]) (present)
                                           (set! present (file-exists? (format "partial-expansion~a" (~a i #:left-pad-string "0" #:width 2 #:align 'right))))))]
@@ -255,28 +262,28 @@
     ))
 ;;----------------------------------------------------------------------------------------
 
-;; expand-fringe: (setof position) (setof position) int -> void
-;; Given a current fringe to expand, and the immediately previous fringe, 
-;; return the new fringe by breaking it up into ranges
-(define (expand-fringe prev-fringe current-fringe depth)
-  (let* ([current-fringe-vec (vectorize-set current-fringe)])
-    ;;***error-check
-    ;;(unless (= (vector-length current-fringe-vec) (set-count current-fringe)) (error 'expand-fringe "vectorization screw-up"))
-    (if (< (vector-length current-fringe-vec) 1000)
-        ;; do it myself
-        (expand-fringe-portion (list 0 (vector-length current-fringe-vec)) prev-fringe current-fringe-vec)
-        ;; else call distributed-expand, which will farm out to workers
-        (begin 
-          #|
-                       (printf "calling distributed-exp... with ~a and ~a positions in prev and current fringes, respectively~%"
-                               (set-count prev-fringe) (vector-length current-fringe-vec))
-                       |#
-          (distributed-expand-fringe depth)))))
+;; expand-fringe: int int -> void
+;; Given the size of the current fringe to expand, and the current depth of search,
+;; do the expansions and merges as appropriate
+(define (expand-fringe current-fringe-size depth)
+  (if (< current-fringe-size 1000)
+      ;; do it myself
+      (expand-fringe-self (list->set (read-fringe-from-disk "prev-fringe"))
+                          (vectorize-list (read-fringe-from-disk "current-fringe")))
+      ;; else call distributed-expand, which will farm out to workers
+      (begin 
+        #|(printf "calling distributed-exp... with ~a and ~a positions in prev and current fringes, respectively~%"
+                  (set-count prev-fringe) (vector-length current-fringe-vec))|#
+        (distributed-expand-fringe current-fringe-size depth))))
 
 ;; vectorize-set: (setof position) -> (vectorof position)
 ;; convert a set of positions into a vector for easy/efficient partitioning
 (define (vectorize-set f)
   (let ([new-vec (for/vector #:length (set-count f) ([p f]) p)])
+    (vector-sort! position<? new-vec)
+    new-vec))
+(define (vectorize-list f)
+  (let ([new-vec (list->vector f)])
     (vector-sort! position<? new-vec)
     new-vec))
 
@@ -295,19 +302,17 @@
 ;; cluster-fringe-search: (setof position) (setof position) int -> position
 ;; perform a fringe BFS starting at the given state until depth is 0
 (define (cluster-fringe-search depth)
-  (let ([prev-fringe (list->set (read-fringe-from-disk "prev-fringe"))]
-        [current-fringe (list->set (read-fringe-from-disk "current-fringe"))])
-    (cond [(or (set-empty? current-fringe) (> depth *max-depth*)) #f]
-          [else
-           (let ([maybe-goal (goal-in-fringe? current-fringe)])
-             (cond [maybe-goal
-                    (print "found goal")
-                    maybe-goal]
-                   [else (expand-fringe prev-fringe current-fringe depth)
-                         (printf "At depth ~a: current-fringe has ~a positions (and new-fringe ~a)~%" 
-                                 depth (position-count-in-file "prev-fringe") (position-count-in-file "current-fringe"))
-                         ;;(for ([p current-fringe]) (displayln p))
-                         (cluster-fringe-search (add1 depth))]))])))
+  (let ([current-fringe-size (position-count-in-file "current-fringe")]
+        )
+    (cond [(or (zero? current-fringe-size) (> depth *max-depth*)) #f]
+          [*found-goal*
+           (print "found goal")
+           *found-goal*]
+          [else (expand-fringe current-fringe-size depth)
+                (printf "At depth ~a: current-fringe has ~a positions (and new-fringe ~a)~%" 
+                        depth (position-count-in-file "prev-fringe") (position-count-in-file "current-fringe"))
+                ;;(for ([p current-fringe]) (displayln p))
+                (cluster-fringe-search (add1 depth))])))
 
 (define (start-cluster-fringe-search start-position)
   ;; initialization of fringe files
