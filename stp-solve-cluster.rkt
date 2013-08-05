@@ -91,8 +91,14 @@
   (let* ([start (first ipair)]
          [end (second ipair)]
          [sample-stats (vector 0 *most-positive-fixnum* *most-negative-fixnum* empty #f)]
-         [resv (for/vector ([p (for*/fold ([expansions (set)])
-                                 ([pos-to-expand (read-partial-fringe "current-fringe" start end)])
+         [my-in (let ([in (open-input-file "current-fringe")]) 
+                  (for ([i (in-range start)]
+                        [ignore (in-port read in)])
+                    void)
+                  in)]
+         [resv (for/vector ([p (for/fold ([expansions (set)])
+                                 ([pos-to-expand (in-port read my-in)]
+                                  [assignment-count (in-range (- end start))])
                                  ;; do the expansion of the indexed position, adding in any new positions found
                                  (set-union expansions (expand pos-to-expand))
                                  )])
@@ -103,6 +109,7 @@
                    (vector-set! sample-stats 3 (cons (equal-hash-code p) (vector-ref sample-stats 3))))
                  (when (is-goal? p) (vector-set! sample-stats 4 p))
                  p)])
+    (close-input-port my-in)
     (vector-sort! position<? resv)
     ;; resv should be sorted and have no duplicates w/in itself because it came from a set
     (vector-set! sample-stats 3 (sort (vector-ref sample-stats 3) fx<))
