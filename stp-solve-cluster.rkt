@@ -214,10 +214,10 @@
          [wait-for-partial-expansions (for ([i (in-range (length sampling-stats))])
                                         (do ([present #f]) (present)
                                           (set! present (file-exists? (format "partial-expansion~a" (~a i #:left-pad-string "0" #:width 2 #:align 'right))))))]
-         [error-check1 (for/first ([i (in-range (length sampling-stats))]
+         #|[error-check1 (for/first ([i (in-range (length sampling-stats))]
                                    [ss sampling-stats]
                                    #:unless (= (vector-ref ss 0) (position-count-in-file (format "partial-expansion~a" (~a i #:left-pad-string "0" #:width 2 #:align 'right)))))
-                         (error 'distributed-expand-fringe (format "err-chk1: partial-expansion sizes do not match up for ~a which should be ~a" i (vector-ref ss 0))))]
+                         (error 'distributed-expand-fringe (format "err-chk1: partial-expansion sizes do not match up for ~a which should be ~a" i (vector-ref ss 0))))]|#
          ;; Distribute the merging work
          [merge-ranges (make-merge-ranges-from-expansions sampling-stats)]
          [sorted-expansion-files-lengths
@@ -235,7 +235,7 @@
                               ;;(printf "remote-expand-fringe: merge-range = ~a~%" merge-range)
                               (write-fringe-to-disk merged-responsibility-range ofile-name)
                               (list ofile-name (length merged-responsibility-range))))]
-                 [merged-expansion-files (map first merged-expansion-files-lens)]
+                 #|[merged-expansion-files (map first merged-expansion-files-lens)]
                  [expan-lengths (for/list ([f merged-expansion-files])
                                   (do ([present #f])
                                     (present)
@@ -243,17 +243,18 @@
                                   (position-count-in-file f))]
                  [min-expan (argmin identity expan-lengths)]
                  [max-expan (argmax identity expan-lengths)]
-                 [variation-percent (/ (round (* 10000.0 (/ (- max-expan min-expan) (/ (for/sum ([i expan-lengths]) i) (length expan-lengths))))) 100.0)])
+                 [variation-percent (/ (round (* 10000.0 (/ (- max-expan min-expan) (/ (for/sum ([i expan-lengths]) i) (length expan-lengths))))) 100.0)]|#
+                 )
             #|(printf "distributed-expand-fringe: lengths = ~a [spread ~a or ~a%]~%" 
                     expan-lengths (- max-expan min-expan) variation-percent)|#
             merged-expansion-files-lens
             )]
          [sorted-expansion-files (map first sorted-expansion-files-lengths)]
          [sef-lengths (map second sorted-expansion-files-lengths)]
-         [error-check2 (for/first ([f sorted-expansion-files]
+         #|[error-check2 (for/first ([f sorted-expansion-files]
                                    [len sef-lengths]
                                    #:unless (= len (position-count-in-file f)))
-                         (error 'distributed-expand-fringe (format "err-chk2: partial-merges do not match up for ~a which should be ~a" f len)))]
+                         (error 'distributed-expand-fringe (format "err-chk2: partial-merges do not match up for ~a which should be ~a" f len)))]|#
          )
     (rename-file-or-directory "current-fringe" "prev-fringe" #t) ;;(system "mv current-fringe prev-fringe")
     (for ([f sorted-expansion-files])
