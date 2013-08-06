@@ -16,8 +16,8 @@
 
 (provide (all-defined-out))
 
-;(define *n-processors* 31)
-(define *n-processors* 4)
+(define *n-processors* 31)
+;(define *n-processors* 4)
 
 (define *most-positive-fixnum* 0)
 (define *most-negative-fixnum* 0)
@@ -87,11 +87,13 @@
 ;; expand the positions in the indices range, ignoring duplicates other than within the new fringe being constructed.
 ;; While building the expansion, maintain stats on hash-code values and a list of sampled hash-code values.
 ;; Return a pair containing the stats from this expansion and the SORTED expansion itself.
-(define (remote-expand-part-fringe ipair sample-freq process-id)
+(define (remote-expand-part-fringe ipair sample-freq process-id current-fringe-size)
   (let* ([start (first ipair)]
          [end (second ipair)]
          [sample-stats (vector 0 *most-positive-fixnum* *most-negative-fixnum* empty #f)]
-         [my-in (open-input-file "current-fringe")]
+         [my-in (if (= current-fringe-size (position-count-in-file "current-fringe"))
+                    (open-input-file "current-fringe")
+                    (error 'remote-expand-part-fringe "current-fringe not ready to read"))]
          [my-in-seq (sequence-tail (in-port read my-in) start)]
          [resv (for/vector ([p (for/fold ([expansions (set)])
                                  ([pos-to-expand my-in-seq]
@@ -243,7 +245,7 @@
                                    (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end"))
                                    (remote-expand-part-fringe range-pair 
                                                               (max (floor (/ cur-fringe-size (* 100 *n-processors*))) 1)
-                                                              i))]
+                                                              i cur-fringe-size))]
          [check-for-goal (for/first ([ss sampling-stats]
                                      #:when (vector-ref ss 4))
                            (set! *found-goal* (vector-ref ss 4)))]
@@ -363,8 +365,8 @@
 ;;#|
 (module+ main
   ;; Switch between these according to if using the cluster or testing on multi-core single machine
-  ;;(connect-to-riot-server! "wcp")
-  (connect-to-riot-server! "localhost")
+  (connect-to-riot-server! "wcp")
+  ;;(connect-to-riot-server! "localhost")
   (define search-result (time (start-cluster-fringe-search *start*)))
   (print search-result))
 ;;|#
