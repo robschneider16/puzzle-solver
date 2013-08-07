@@ -1,5 +1,6 @@
 #lang racket
 
+(require (planet soegaard/gzip:2:2))
 (require srfi/25) ;; multi-dimensional arrays
 (require "stp-init.rkt")
 (require racket/fixnum)
@@ -41,53 +42,45 @@
 ;; Fringe Writing/Reading 
 
 ;; write-fringe-to-disk: (listof or vectorof position) string -> void
-;; writes the positions from the given fringe (whether list or vector) into a file with given file-name
-(define (write-fringe-to-disk fringe file-name)
-  (let ([my-output (open-output-file file-name #:exists 'replace)])
+;; writes the positions from the given fringe (whether list or vector) into a file with given file-name.
+;; If file-name has .gz extension, writes a gzipped file.
+(define (write-fringe-to-disk fringe file-name (compress #t))
+  (let ([my-output (if (string=? ".gz" (substring file-name (- (string-length file-name) 3)))
+                       (open-output-gz-file (string->path file-name) #:replace #t)
+                       (open-output-file file-name #:exists 'replace))])
     (for ([position fringe])
       (fprintf my-output "~a~%" position))
-    (close-output-port my-output)
-    (system "sync")))
+    (close-output-port my-output)))
 
-;; read-fringe-from-disk: file -> fringe
+;; read-fringe-from-gzfile: string -> (listof position)
 ;; reads a file from a file path (if you are in the current directory just simply the file-name)
 ;; and returns the fringe that was in that file.
-(define (read-fringe-from-disk file-path)
-  (system "sync")
-  (with-input-from-file file-path port->list))
-
-;; read-partial-fringe: path int int -> (listof position)
-;; open, advance, read, and close the given file, returning only the indicated range of positions
-(define (read-partial-fringe fname start end)
-  (let* ([my-input (open-input-file fname)]
-         [ignore-front (for ([i (in-range start)])
-                         (read-line my-input))]
-         [partial-fringe (for/list ([i (in-range (- end start))])
-                           (read my-input))]
-         )
-    (close-input-port my-input)
-    partial-fringe))
+(define (read-fringe-from-gzfile file-name)
+  (port->list read (open-input-gz-file (string->path file-name))))
 
 ;; position-count-in-file: string -> number
 ;; reports the number of positions in the given fringe file assuming the file was written with write-fringe-to-disk
 (define (position-count-in-file f)
-  (read-from-string (with-output-to-string (lambda () (system (string-append "sync; wc -l " f))))))
+  (read-from-string (with-output-to-string (lambda () (system (format "gunzip -c ~a | wc -l" f))))))
 
 ;; touch: string -> void
 ;; create the file with given name
 (define (touch fname) (display-to-file "" fname))
 
+;;---- fringehead structs and utilities
 
 ;; a fringehead in a struct
-;; where next is a position and iprt is an input port
+;; where next is a position, iprt is an input port, readcount is the number of positions read from this fringehead
+;; and total is the number of positions expected to be able to read
 (struct fringehead (next iprt readcount total) #:mutable)
 
 ;; fhdone?: fringehead -> boolean
-;; #t if readcount >= total for the given fringehead
+;; #t if readcount >= total for the given fringehead -- that is, this fringehead is exhausted
 (define (fhdone? fh)
   (>= (fringehead-readcount fh) (fringehead-total fh)))
 
 ;; advance-fhead!: fringehead -> position OR void
+;; move to the next position
 (define (advance-fhead! fh)
   (unless (or (eof-object? (fringehead-next fh))
               (fhdone? fh))
@@ -106,6 +99,7 @@
          (fhdone? fh)
          (not (position<? fhp p))) 
      (equal? fhp p))))
+
 
 ;; Set-like Operations on Lists
 
