@@ -46,12 +46,14 @@
   (let ([my-output (open-output-file file-name #:exists 'replace)])
     (for ([position fringe])
       (fprintf my-output "~a~%" position))
-    (close-output-port my-output)))
+    (close-output-port my-output)
+    (system "sync")))
 
 ;; read-fringe-from-disk: file -> fringe
 ;; reads a file from a file path (if you are in the current directory just simply the file-name)
 ;; and returns the fringe that was in that file.
 (define (read-fringe-from-disk file-path)
+  (system "sync")
   (with-input-from-file file-path port->list))
 
 ;; read-partial-fringe: path int int -> (listof position)
@@ -69,11 +71,41 @@
 ;; position-count-in-file: string -> number
 ;; reports the number of positions in the given fringe file assuming the file was written with write-fringe-to-disk
 (define (position-count-in-file f)
-  (read-from-string (with-output-to-string (lambda () (system (string-append "wc -l " f))))))
+  (read-from-string (with-output-to-string (lambda () (system (string-append "sync; wc -l " f))))))
 
 ;; touch: string -> void
 ;; create the file with given name
 (define (touch fname) (display-to-file "" fname))
+
+
+;; a fringehead in a struct
+;; where next is a position and iprt is an input port
+(struct fringehead (next iprt readcount total) #:mutable)
+
+;; fhdone?: fringehead -> boolean
+;; #t if readcount >= total for the given fringehead
+(define (fhdone? fh)
+  (>= (fringehead-readcount fh) (fringehead-total fh)))
+
+;; advance-fhead!: fringehead -> position OR void
+(define (advance-fhead! fh)
+  (unless (or (eof-object? (fringehead-next fh))
+              (fhdone? fh))
+    (set-fringehead-next! fh (read (fringehead-iprt fh)))
+    (set-fringehead-readcount! fh (add1 (fringehead-readcount fh)))
+    (fringehead-next fh)))
+
+;; position-in-fhead?: position fringehead -> boolean
+;; determines if given position is present in the fringe headed by the given fringehead
+;; side-effect: advances the fringehead, assuming no position _less-than_ thi given position will subsequently be queried
+;; if the given position is less than the head of the fringe, then we'll not find it further in the fringe
+;; that is, advance the fh while it is strictly less-than the given position
+(define (position-in-fhead? p fh)
+  (do ([fhp (fringehead-next fh) (advance-fhead! fh)])
+    ((or (eof-object? fhp)
+         (fhdone? fh)
+         (not (position<? fhp p))) 
+     (equal? fhp p))))
 
 ;; Set-like Operations on Lists
 

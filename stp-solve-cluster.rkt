@@ -127,26 +127,6 @@
 
 ;; MERGING .....
 
-;; a fringehead in a struct
-;; where next is a position and iprt is an input port
-(struct fringehead (next iprt) #:mutable)
-
-;; advance-fhead!: fringehead -> position
-(define (advance-fhead! fh)
-  (set-fringehead-next! fh (read (fringehead-iprt fh)))
-  (fringehead-next fh))
-
-;; position-in-fhead?: position fringehead -> boolean
-;; determines if given position is present in the fringe headed by the given fringehead
-;; side-effect: advances the fringehead, assuming no position _less-than_ thi given position will subsequently be queried
-;; if the given position is less than the head of the fringe, then we'll not find it further in the fringe
-;; that is, advance the fh while it is strictly less-than the given position
-(define (position-in-fhead? p fh)
-  (do ([fhp (fringehead-next fh) (advance-fhead! fh)])
-    ((or (eof-object? fhp)
-         (not (position<? fhp p))) 
-     (equal? fhp p))))
-
 ;; merge-expansions: (list int int) -> (listof position)
 ;; given a specification of a range of _position-hash-codes_ to consider
 ;; go through all the partial-expansions and merge the positions (removing duplicates) in that range into a single collection
@@ -357,8 +337,8 @@
   (cluster-fringe-search 1))
   
 
-;(block10-init)
-(climb12-init)
+(block10-init)
+;(climb12-init)
 ;(climb15-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
