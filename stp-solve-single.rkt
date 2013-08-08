@@ -4,15 +4,15 @@
 (require "stp-solve-base.rkt")
 
 
-(define *max-depth* 10)(set! *max-depth* 40)
+(define *max-depth* 10)(set! *max-depth* 61)
 
 
 
 ;; fringe-search: [file(listof position)] [file(listof position)] int -> ...
 ;; perform a fringe BFS starting at the given state until depth is 0
 (define (fringe-search depth)
-  (let ([prev-fringe (list->set (read-fringe-from-disk "prev-fringe"))]
-        [current-fringe (list->set (read-fringe-from-disk "current-fringe"))]) ; current fringe is a FILE
+  (let ([prev-fringe (list->set (read-fringe-from-gzfile "prev-fringe.gz"))]
+        [current-fringe (list->set (read-fringe-from-gzfile "current-fringe.gz"))]) ; current fringe is a FILE
     ;;(printf "current-fringe: ~a~%" current-fringe)
     (cond [(or (empty? current-fringe) (> depth *max-depth*)) #f]
           [else
@@ -34,8 +34,8 @@
                                           string<?)])
                              (printf "~a~%" s)))|#
                            
-                           (rename-file-or-directory "current-fringe" "prev-fringe" #t)
-                           (write-fringe-to-disk (set->list new-fringe) "current-fringe")
+                           (rename-file-or-directory "current-fringe.gz" "prev-fringe.gz" #t)
+                           (write-fringe-to-disk (set->list new-fringe) "current-fringe.gz")
                            (fringe-search (add1 depth)))]))])))
 
 
@@ -45,8 +45,8 @@
 ;(climb15-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
-(write-fringe-to-disk empty "prev-fringe")
-(write-fringe-to-disk (list *start*) "current-fringe")
+(write-fringe-to-disk empty "prev-fringe.gz")
+(write-fringe-to-disk (list *start*) "current-fringe.gz")
 
 
 (time (fringe-search 1))

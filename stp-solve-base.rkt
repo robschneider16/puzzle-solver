@@ -50,6 +50,7 @@
                        (open-output-file file-name #:exists 'replace))])
     (for ([position fringe])
       (fprintf my-output "~a~%" position))
+    (flush-output my-output)
     (close-output-port my-output)))
 
 ;; read-fringe-from-gzfile: string -> (listof position)
@@ -66,6 +67,13 @@
 ;; touch: string -> void
 ;; create the file with given name
 (define (touch fname) (display-to-file "" fname))
+
+;; fringe-file-not-ready?: (list string int int) -> boolean
+;; determine if the file exists on disk and has the appropriate size
+(define (fringe-file-not-ready? spec-triple)
+  (or (not (file-exists? (first spec-triple)))
+      (< (file-size (first spec-triple)) (third spec-triple))))
+  
 
 ;;---- fringehead structs and utilities
 
