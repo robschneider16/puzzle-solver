@@ -19,6 +19,7 @@
 
 ;(define *n-processors* 31)
 (define *n-processors* 8)
+(define *expand-multiplier* 1)
 
 (define *most-positive-fixnum* 0)
 (define *most-negative-fixnum* 0)
@@ -64,12 +65,12 @@
 ;;----------------------------------------------------------------------------------------
 ;; DISTRIBUTED EXPANSION AND MERGING OF FRINGES
 
-;; a sampling-stat is a (vector int int int (vectorof int)
+;; a sampling-stat is a (vector int fixnum fixnum (listofof fixnum) boolean string int)
 ;; where the elements are:s
 ;; 0. total number of positions in the corresponding expansion
 ;; 1. minimum hash value of the positions
 ;; 2. maximum hash value of the positions
-;; 3. vector of bin-counts for the range min-to-max divided into *n-processors* ranges
+;; 3. [deprecated] list of sampled hash-codes
 ;; 4. boolean goal-found if found when expanding the assigned positions
 ;; 5. output file name, e.g., partial-expansionXX.gz
 ;; 6. compressed file size
@@ -81,7 +82,8 @@
 (define (make-vector-ranges vlength)
   (if (< vlength 10) ;;1000
       (list (list 0 vlength))
-      (let ((start-list (build-list *n-processors* (lambda (i) (floor (* i (/ vlength *n-processors*)))))))
+      (let ((start-list (build-list (* *expand-multiplier* *n-processors*)
+                                    (lambda (i) (floor (* i (/ vlength (* *expand-multiplier* *n-processors*))))))))
         (foldr (lambda (x r) (cons (list x (first (first r))) r)) 
                (list (list (last start-list) vlength)) 
                (drop-right start-list 1)))))
@@ -106,11 +108,11 @@
                                  (set! expanded (add1 expanded))
                                  (set-union expansions (expand pos-to-expand))
                                  )])
-                 (vector-set! sample-stats 0 (add1 (vector-ref sample-stats 0)))
+                 ;;(vector-set! sample-stats 0 (add1 (vector-ref sample-stats 0))) ;; set the count at the end
                  (vector-set! sample-stats 1 (fxmin (vector-ref sample-stats 1) (equal-hash-code p)))
                  (vector-set! sample-stats 2 (fxmax (vector-ref sample-stats 2) (equal-hash-code p)))
-                 (when (zero? (modulo (vector-ref sample-stats 0) sample-freq))
-                   (vector-set! sample-stats 3 (cons (equal-hash-code p) (vector-ref sample-stats 3))))
+                 #|(when (zero? (modulo (vector-ref sample-stats 0) sample-freq))
+                   (vector-set! sample-stats 3 (cons (equal-hash-code p) (vector-ref sample-stats 3))))|#
                  (when (is-goal? p) (vector-set! sample-stats 4 p))
                  p)])
     (vector-sort! position<? resv)
@@ -119,31 +121,33 @@
     (write-fringe-to-disk
      resv ;; this has just been sorted above
      ofile-name)
+    (when (< expanded assignment-count)
+      (error 'remote-expand-part-fringe
+             (format "only expanded ~a of the assigned ~a (~a-~a) positions" expanded assignment-count start end)))
+    (close-input-port my-in)
+    (vector-set! sample-stats 0 (vector-length resv))
+    ;;(vector-set! sample-stats 3 (sort (vector-ref sample-stats 3) fx<))
+    (vector-set! sample-stats 6 (file-size (string->path ofile-name)))
     #|
     (printf "remote-expand-part-fringe: starting w/ ~a positions, expansion has ~a/~a positions and sampled ~a hashcodes~%"
             assignment-count (vector-ref sample-stats 0) (vector-length resv) (length (vector-ref sample-stats 3)))
     (printf "remote-expand-part-fringe: HAVE EXPANSIONS:~%")
     (for ([p resv]) (displayln p))
     |#
-    (when (< expanded assignment-count)
-      (error 'remote-expand-part-fringe
-             (format "only expanded ~a of the assigned ~a (~a-~a) positions" expanded assignment-count start end)))
-    (close-input-port my-in)
-    (vector-set! sample-stats 3 (sort (vector-ref sample-stats 3) fx<))
-    (vector-set! sample-stats 6 (file-size (string->path ofile-name)))
     sample-stats))
 
 ;; remote-expand-fringe: (listof (list fixnum fixnum) int int -> (listof sampling-stat)
 ;; trigger the distributed expansion according to the given ranges
 (define (remote-expand-fringe ranges cur-fringe-size depth)
-  (printf "remote-expand-fringe: current-fringe of ~a split as: ~a~%" cur-fringe-size 
-          (map (lambda (pr) (- (second pr) (first pr))) ranges))
-  (for/work ([range-pair ranges]
-             [i (in-range (length ranges))])
-            (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end"))
-            (remote-expand-part-fringe range-pair 
-                                       (max (floor (/ cur-fringe-size (* 100 *n-processors*))) 1)
-                                       i cur-fringe-size)))
+  ;;(printf "remote-expand-fringe: current-fringe of ~a split as: ~a~%" cur-fringe-size (map (lambda (pr) (- (second pr) (first pr))) ranges))
+  (let ([distrib-results (for/work ([range-pair ranges]
+                                    [i (in-range (length ranges))])
+                                   (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end"))
+                                   (remote-expand-part-fringe range-pair 
+                                                              0;; samp-freq not used, was: (max (floor (/ cur-fringe-size (* 100 *n-processors*))) 1)
+                                                              i cur-fringe-size))])
+    ;;(printf "remote-expand-fringe: respective expansion counts: ~a~%" (map (lambda (ssv) (vector-ref ssv 0)) distrib-results))
+    distrib-results))
 
 
 ;; MERGING .....
@@ -160,7 +164,7 @@
          [prev-fringe-fh (fringehead (read pf-port) pf-port 0 prev-fringe-count)]
          [current-fringe-fh (fringehead (read cf-port) cf-port 0 current-fringe-count)]
          [to-merge-ports 
-          (for/list ([i (in-range *n-processors*)])
+          (for/list ([i (in-range (length expand-files-specs))])
             (open-input-gz-file (string->path (format "partial-expansion~a.gz" (~a i #:left-pad-string "0" #:width 2 #:align 'right)))))]
          [fastforwarded-fheads
           (filter-not (lambda (fh) (eof-object? (fringehead-next fh)))
@@ -206,15 +210,19 @@
 
 ;; remote-merge: (listof (list fixnum fixnum)) (listof int) int int int -> (listof string int)
 (define (remote-merge merge-ranges expand-files-specs prev-fringe-size cur-fringe-size depth)
-  (for/work ([merge-range merge-ranges] ;; merged results should come back in order of merge-ranges assignments
-             [i (in-range (length merge-ranges))])
-            (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end"))
-            (let* ([merged-responsibility-range (remote-merge-expansions merge-range expand-files-specs prev-fringe-size cur-fringe-size)]
-                   [ofile-name (format "partial-merge~a.gz" (~a i #:left-pad-string "0" #:width 2 #:align 'right))] 
-                   )
-              ;;(printf "distributed-expand-fringe: merge-range = ~a~%~a~%" merge-range merged-responsibility-range)
-              (write-fringe-to-disk merged-responsibility-range ofile-name)
-              (list ofile-name (length merged-responsibility-range)))))
+  (let ([merge-results
+         (for/work ([merge-range merge-ranges] ;; merged results should come back in order of merge-ranges assignments
+                    [i (in-range (length merge-ranges))])
+                   (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end"))
+                   (let* ([merged-responsibility-range (remote-merge-expansions merge-range expand-files-specs prev-fringe-size cur-fringe-size)]
+                          [ofile-name (format "partial-merge~a.gz" (~a i #:left-pad-string "0" #:width 2 #:align 'right))] 
+                          )
+                     ;;(printf "distributed-expand-fringe: merge-range = ~a~%~a~%" merge-range merged-responsibility-range)
+                     (write-fringe-to-disk merged-responsibility-range ofile-name)
+                     (list ofile-name (length merged-responsibility-range))))])
+    ;;(printf "remote-merge: merged segment lengths ~a~%" (map second merge-results))
+    merge-results))
+
 
 ;; make-one-merge-range: int int (heapof (listof number)) -> (list int int)
 ;; consume the elements from the sorted lists in the heap until the target-num is reach, returning the range pair
@@ -247,6 +255,22 @@
     ;;(printf "make-merge-ranges-from-expansions: returning ~a~%" made-merge-ranges)
     made-merge-ranges))
 
+;; simple-merge-ranges: (listof sampling-stats) -> (list merge-ranges)
+;; just divide the span between the global min and max evenly among the processors
+(define (simple-merge-ranges lo-sample-stat)
+  (let* (;;[total-num-positions (foldl (lambda (ss sum) (+ (vector-ref ss 0) sum)) 0 lo-sample-stat)]
+         [overall-min (foldl (lambda (ss tmin) (fxmin (vector-ref ss 1) tmin)) *most-positive-fixnum* lo-sample-stat)]
+         [overall-max (foldl (lambda (ss tmax) (fxmax (vector-ref ss 2) tmax)) *most-negative-fixnum* lo-sample-stat)]
+         [segment-width (fx+ (fxquotient overall-min (- *n-processors*)) (fxquotient overall-max *n-processors*))]
+         [start-list (foldl (lambda (dinc res) (cons (list (fx- (car (car res)) dinc) (car (car res))) res))
+                            (list (list (fx- overall-max segment-width)
+                                        (if (fx= overall-max *most-positive-fixnum*)
+                                            overall-max
+                                            (fx+ 1 overall-max))))
+                            (make-list (- *n-processors* 2) segment-width))]
+         [final-list (cons (list overall-min (car (car start-list))) start-list)])
+    ;(printf "simple-merge-ranges: generated ranges: ~a~%" final-list)
+    final-list))
 
 ;; distributed-expand-fringe: int int int -> int
 ;; Distributed version of expand-fringe
@@ -279,7 +303,8 @@
                                    #:unless (= (vector-ref ss 0) (position-count-in-file (format "partial-expansion~a" (~a i #:left-pad-string "0" #:width 2 #:align 'right)))))
                          (error 'distributed-expand-fringe (format "err-chk1: partial-expansion sizes do not match up for ~a which should be ~a" i (vector-ref ss 0))))]|#
          ;; MERGE
-         [merge-ranges (make-merge-ranges-from-expansions sampling-stats)]
+         ;;[merge-ranges (make-merge-ranges-from-expansions sampling-stats)]
+         [merge-ranges (simple-merge-ranges sampling-stats)]
          ;; --- Distribute the merging work ----------
          [sorted-expansion-files-lengths
           (let* ([merged-expansion-files-lens (remote-merge merge-ranges expand-files-specs prev-fringe-size cur-fringe-size depth)]
@@ -372,8 +397,8 @@
   (cluster-fringe-search 0 1 1))
   
 
-(block10-init)
-;(climb12-init)
+;(block10-init)
+(climb12-init)
 ;(climb15-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
