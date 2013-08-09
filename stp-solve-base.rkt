@@ -85,13 +85,14 @@
 ;; fhdone?: fringehead -> boolean
 ;; #t if readcount >= total for the given fringehead -- that is, this fringehead is exhausted
 (define (fhdone? fh)
+  (when (and (>= (fringehead-readcount fh) (fringehead-total fh)) (eof-object? (fringehead-next fh)))
+    (error 'fhdone? "hit end of file before the appropriate number of positions had been read"))
   (>= (fringehead-readcount fh) (fringehead-total fh)))
 
 ;; advance-fhead!: fringehead -> position OR void
 ;; move to the next position
 (define (advance-fhead! fh)
-  (unless (or (eof-object? (fringehead-next fh))
-              (fhdone? fh))
+  (unless (fhdone? fh)
     (set-fringehead-next! fh (read (fringehead-iprt fh)))
     (set-fringehead-readcount! fh (add1 (fringehead-readcount fh)))
     (fringehead-next fh)))
@@ -103,8 +104,7 @@
 ;; that is, advance the fh while it is strictly less-than the given position
 (define (position-in-fhead? p fh)
   (do ([fhp (fringehead-next fh) (advance-fhead! fh)])
-    ((or (eof-object? fhp)
-         (fhdone? fh)
+    ((or (fhdone? fh)
          (not (position<? fhp p))) 
      (equal? fhp p))))
 
