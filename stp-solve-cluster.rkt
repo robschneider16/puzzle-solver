@@ -18,7 +18,7 @@
 (provide (all-defined-out))
 
 ;(define *n-processors* 31)
-(define *n-processors* 8)
+(define *n-processors* 4)
 (define *expand-multiplier* 1)
 
 (define *most-positive-fixnum* 0)
@@ -60,7 +60,7 @@
       (printf "pos: ~a~%~a~%" (stringify p) p))|#
     (system "mv current-fringe.gz prev-fringe.gz")
     (write-fringe-to-disk (sort res position<?) "current-fringe.gz")
-    (length res)))
+    (list "current-fringe.gz" (length res) (file-size "current-fringe.gz"))))
 
 ;;----------------------------------------------------------------------------------------
 ;; DISTRIBUTED EXPANSION AND MERGING OF FRINGES
@@ -88,12 +88,12 @@
                (list (list (last start-list) vlength)) 
                (drop-right start-list 1)))))
 
-;; remote-expand-part-fringe: (list int int) int int -> sampling-stat
+;; remote-expand-part-fringe: (list int int) int (list string int int) -> sampling-stat
 ;; given a pair of indices into the current-fringe that should be expanded by this process, and a samping frequency,
 ;; expand the positions in the indices range, ignoring duplicates other than within the new fringe being constructed.
 ;; While building the expansion, maintain stats on hash-code values and a list of sampled hash-code values.
 ;; Return a pair containing the stats from this expansion and the SORTED expansion itself.
-(define (remote-expand-part-fringe ipair sample-freq process-id current-fringe-size)
+(define (remote-expand-part-fringe ipair sample-freq process-id cf-spec)
   (let* ([ofile-name (format "partial-expansion~a.gz" (~a process-id #:left-pad-string "0" #:width 2 #:align 'right))]
          [start (first ipair)]
          [end (second ipair)]
@@ -136,16 +136,18 @@
     |#
     sample-stats))
 
-;; remote-expand-fringe: (listof (list fixnum fixnum) int int -> (listof sampling-stat)
+;; remote-expand-fringe: (listof (list fixnum fixnum) (list string int int) int -> (listof sampling-stat)
 ;; trigger the distributed expansion according to the given ranges
-(define (remote-expand-fringe ranges cur-fringe-size depth)
+(define (remote-expand-fringe ranges cf-spec depth)
   ;;(printf "remote-expand-fringe: current-fringe of ~a split as: ~a~%" cur-fringe-size (map (lambda (pr) (- (second pr) (first pr))) ranges))
   (let ([distrib-results (for/work ([range-pair ranges]
                                     [i (in-range (length ranges))])
                                    (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end"))
+                                   (wait-for-files (list cf-spec))
+                                   (system "mv /tmp/current-fringe.gz /tmp/prev-fringe.gz; cp current-fringe.gz /tmp")
                                    (remote-expand-part-fringe range-pair 
                                                               0;; samp-freq not used, was: (max (floor (/ cur-fringe-size (* 100 *n-processors*))) 1)
-                                                              i cur-fringe-size))])
+                                                              i cf-spec))])
     ;;(printf "remote-expand-fringe: respective expansion counts: ~a~%" (map (lambda (ssv) (vector-ref ssv 0)) distrib-results))
     distrib-results))
 
@@ -272,16 +274,26 @@
     ;(printf "simple-merge-ranges: generated ranges: ~a~%" final-list)
     final-list))
 
-;; distributed-expand-fringe: int int int -> int
+;; wait-for-files: (listof (list string int int)) -> 'ready
+;; given a list of file-specs (name n-pos compressed-size), wait until the file is present on the local machine
+(define (wait-for-files lo-fspecs)
+  (do ([fspecs (filter fringe-file-not-ready? lo-fspecs)
+                  (filter fringe-file-not-ready? fspecs)]
+       [sleep-time 0.1 (* sleep-time 2)])
+    ((empty? fspecs) 'ready)
+    (printf "wait-for-files: waiting for ~a files such as ~a ... and sleeping ~a~%" (length fspecs) (first (first fspecs)) sleep-time)
+    (sleep sleep-time)))
+
+;; distributed-expand-fringe: int (list string int int) int -> (list string int int)
 ;; Distributed version of expand-fringe
 ;; given prev and current fringe sizes and present depth, expand and merge the current fringe,
-;; returning the size of the newly expanded and merged fringe.
-(define (distributed-expand-fringe prev-fringe-size cur-fringe-size depth)
+;; returning the fringe-spec of the newly expanded and merged fringe.
+(define (distributed-expand-fringe prev-fringe-size cf-spec depth)
   ;;(printf "distributed-expand-fringe: ~a nodes in prev and ~a in current fringes~%" (vector-length prev-fringe-vec) (vector-length current-fringe-vec))
   (let* (;; EXPAND
-         [ranges (make-vector-ranges cur-fringe-size)]
+         [ranges (make-vector-ranges (second cf-spec))]
          ;; --- Distribute the actual expansion work ------------------------
-         [sampling-stats (remote-expand-fringe ranges cur-fringe-size depth)]
+         [sampling-stats (remote-expand-fringe ranges cf-spec depth)]
          ;; -----------------------------------------------------------------
          [check-for-goal (for/first ([ss sampling-stats]
                                      #:when (vector-ref ss 4))
@@ -292,12 +304,7 @@
                                        (vector-ref ss 5) (vector-ref ss 0) (file-size (vector-ref ss 5)) (vector-ref ss 6))|#
                                (list (vector-ref ss 5) (vector-ref ss 0) (vector-ref ss 6)))]
          ;; need to wait for write to complete -- i.e., all data to appear on master
-         [wait-for-partial-expansions (do ([exp-specs (filter fringe-file-not-ready? expand-files-specs)
-                                                      (filter fringe-file-not-ready? exp-specs)]
-                                           [sleep-time 0.1 (* sleep-time 2)])
-                                        ((empty? exp-specs) 'ready)
-                                        (printf "distributed-expand-fringe: waiting for partial expansions and sleeping ~a~%" sleep-time)
-                                        (sleep sleep-time))]
+         [wait-for-partial-expansions (wait-for-files expand-files-specs)]
          #|[error-check1 (for/first ([i (in-range (length sampling-stats))]
                                    [ss sampling-stats]
                                    #:unless (= (vector-ref ss 0) (position-count-in-file (format "partial-expansion~a" (~a i #:left-pad-string "0" #:width 2 #:align 'right)))))
@@ -307,7 +314,7 @@
          [merge-ranges (simple-merge-ranges sampling-stats)]
          ;; --- Distribute the merging work ----------
          [sorted-expansion-files-lengths
-          (let* ([merged-expansion-files-lens (remote-merge merge-ranges expand-files-specs prev-fringe-size cur-fringe-size depth)]
+          (let* ([merged-expansion-files-lens (remote-merge merge-ranges expand-files-specs prev-fringe-size (second cf-spec) depth)]
                  #|[merged-expansion-files (map first merged-expansion-files-lens)]
                  [expan-lengths (for/list ([f merged-expansion-files])
                                   (do ([present #f])
@@ -335,16 +342,16 @@
     (for ([f sorted-expansion-files])
       (system (format "zcat ~a >> current-fringe" f)))
     (system "gzip current-fringe; rm partial-expansion* partial-merge*")
-    (foldl + 0 sef-lengths)))
+    (list "current-fringe.gz" (foldl + 0 sef-lengths) (file-size "current-fringe.gz"))))
 
 
 ;;----------------------------------------------------------------------------------------
 
-;; expand-fringe: int int int -> int
+;; expand-fringe: int (list string int int) int -> (list string int int)
 ;; Given the size of the current fringe to expand, and the current depth of search,
-;; do the expansions and merges as appropriate, returning the size of the new fringe
-(define (expand-fringe prev-fringe-size current-fringe-size depth)
-  (if (< current-fringe-size 1000)
+;; do the expansions and merges as appropriate, returning the fringe-spec of the new fringe
+(define (expand-fringe prev-fringe-size cf-spec depth)
+  (if (< (second cf-spec) 1000)
       ;; do it myself
       (expand-fringe-self (list->set (read-fringe-from-gzfile "prev-fringe.gz"))
                           (vectorize-list (read-fringe-from-gzfile "current-fringe.gz")))
@@ -352,7 +359,7 @@
       (begin 
         #|(printf "calling distributed-exp... with ~a and ~a positions in prev and current fringes, respectively~%"
                   (set-count prev-fringe) (vector-length current-fringe-vec))|#
-        (distributed-expand-fringe prev-fringe-size current-fringe-size depth))))
+        (distributed-expand-fringe prev-fringe-size cf-spec depth))))
 
 ;; vectorize-set: (setof position) -> (vectorof position)
 ;; convert a set of positions into a vector for easy/efficient partitioning
@@ -377,28 +384,28 @@
 
 (define *max-depth* 10)(set! *max-depth* 61)
 
-;; cluster-fringe-search: (setof position) (setof position) int -> position
+;; cluster-fringe-search: int (list string int int) int -> position
 ;; perform a fringe BFS starting at the given state until depth is 0
-(define (cluster-fringe-search prev-fringe-size current-fringe-size depth)
-  (cond [(or (zero? current-fringe-size) (> depth *max-depth*)) #f]
+(define (cluster-fringe-search prev-fringe-size cf-spec depth)
+  (cond [(or (zero? (second cf-spec)) (> depth *max-depth*)) #f]
         [*found-goal*
          (print "found goal")
          *found-goal*]
-        [else (let ([new-fringe-size (expand-fringe prev-fringe-size current-fringe-size depth)])
+        [else (let ([new-fringe-spec (expand-fringe prev-fringe-size cf-spec depth)])
                 (printf "At depth ~a: current-fringe has ~a positions (and new-fringe ~a)~%" 
-                        depth current-fringe-size new-fringe-size)
+                        depth (second cf-spec) (second new-fringe-spec))
                 ;;(for ([p current-fringe]) (displayln p))
-                (cluster-fringe-search current-fringe-size new-fringe-size (add1 depth)))]))
+                (cluster-fringe-search (second cf-spec) new-fringe-spec (add1 depth)))]))
 
 (define (start-cluster-fringe-search start-position)
   ;; initialization of fringe files
   (write-fringe-to-disk empty "prev-fringe.gz")
   (write-fringe-to-disk (list start-position) "current-fringe.gz")
-  (cluster-fringe-search 0 1 1))
+  (cluster-fringe-search 0 (list "current-fringe.gz" 1 (file-size "current-fringe.gz")) 1))
   
 
-;(block10-init)
-(climb12-init)
+(block10-init)
+;(climb12-init)
 ;(climb15-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 

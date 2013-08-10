@@ -85,7 +85,7 @@
 ;; fhdone?: fringehead -> boolean
 ;; #t if readcount >= total for the given fringehead -- that is, this fringehead is exhausted
 (define (fhdone? fh)
-  (when (and (>= (fringehead-readcount fh) (fringehead-total fh)) (eof-object? (fringehead-next fh)))
+  (when (and (< (fringehead-readcount fh) (fringehead-total fh)) (eof-object? (fringehead-next fh)))
     (error 'fhdone? "hit end of file before the appropriate number of positions had been read"))
   (>= (fringehead-readcount fh) (fringehead-total fh)))
 
