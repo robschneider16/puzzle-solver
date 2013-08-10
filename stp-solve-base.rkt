@@ -34,6 +34,10 @@
 ;; a position is a (vectorof (listof int))
 ;; where the index of the top-level vectors reflect the piece-type as given in the init,
 ;; and the ints in the secondary vectors are the SORTED locations of the pieces of that type
+
+;; a fspec is a list: (list string int int)
+;; where the string is the file-name-(path), count of positions, and file-size in bytes
+
 ;; ******************************************************************************
 
 ;;-------------------------------------------------------------------------------
@@ -108,6 +112,12 @@
          (not (position<? fhp p))) 
      (equal? fhp p))))
 
+;; fh-from-fspec: fspec -> fringehead
+;; create a fringehead from a given fspec
+;; *** the open port must be closed by the requestor of this fringehead
+(define (fh-from-fspec fs)
+  (let ([inprt (open-input-gz-file (string->path (first fs)))])
+    (fringehead (read inprt) inprt 1 (second fs))))
 
 ;; Set-like Operations on Lists
 
