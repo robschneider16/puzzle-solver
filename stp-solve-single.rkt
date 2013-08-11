@@ -4,7 +4,7 @@
 (require "stp-solve-base.rkt")
 
 
-(define *max-depth* 10)(set! *max-depth* 61)
+(define *max-depth* 10)(set! *max-depth* 31)
 
 
 
@@ -35,7 +35,8 @@
                              (printf "~a~%" s)))|#
                            
                            (rename-file-or-directory "current-fringe.gz" "prev-fringe.gz" #t)
-                           (write-fringe-to-disk (set->list new-fringe) "current-fringe.gz")
+                           (write-fringe-to-disk (sort (set->list new-fringe) position<?) "current-fringe.gz")
+                           ;(write-fringe-to-disk (set->list new-fringe) "current-fringe.gz")
                            (fringe-search (add1 depth)))]))])))
 
 

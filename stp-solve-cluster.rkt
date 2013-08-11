@@ -99,6 +99,7 @@
 ;; remove duplicate positions from the expand-fspec file that also appear in the prev- or current-fringes.
 ;; write the non-duplicate positions to a file
 (define (remove-dupes pfspec cfspec expand-fspec)
+  ;; EXPAND PHASE 2 (REMOVE DUPLICATES)
   (let* ([pffh (fh-from-fspec pfspec)]
          [cffh (fh-from-fspec cfspec)]
          [effh (fh-from-fspec expand-fspec)]
@@ -107,11 +108,13 @@
          [unique-expansions 0]
          [sample-stats (vector 0 *most-positive-fixnum* *most-negative-fixnum* empty #f ofile-name 0)]
          ;; check for duplicates in prev- and current-fringes and write new positions to expand-out
-         [chk-dupes (do ([efpos (fringehead-next effh) (advance-fhead! effh)])
-                      ((fhdone? effh) 'done)
+         [chk-dupes (do ([efpos (fringehead-next effh) (advance-fhead! effh)]
+                         [i 0 (add1 i)])
+                      ((>= i (second expand-fspec)) 'done)
                       (unless (or (position-in-fhead? efpos pffh)
                                   (position-in-fhead? efpos cffh))
                         (fprintf expand-out "~a~%" efpos)
+                        (when (is-goal? efpos) (vector-set! sample-stats 4 efpos))
                         (vector-set! sample-stats 1 (fxmin (vector-ref sample-stats 1) (equal-hash-code efpos)))
                         (vector-set! sample-stats 2 (fxmax (vector-ref sample-stats 2) (equal-hash-code efpos)))
                         (set! unique-expansions (add1 unique-expansions))
@@ -120,14 +123,15 @@
          )
     (vector-set! sample-stats 0 unique-expansions)
     (vector-set! sample-stats 6 (file-size ofile-name))
-    #|
-    (printf "remote-expand-part-fringe: starting w/ ~a positions, expansion has ~a/~a positions and sampled ~a hashcodes~%"
-            assignment-count (vector-ref sample-stats 0) (vector-length resv) (length (vector-ref sample-stats 3)))
-    (printf "remote-expand-part-fringe: HAVE EXPANSIONS:~%")
-    (for ([p resv]) (displayln p))
-    |#
+    ;(printf "remote-expand-part-fringe: HAVE EXPANSIONS:~%")
+    ;(for ([p resv]) (displayln p))
     (for-each (lambda (fh) (close-input-port (fringehead-iprt fh))) (list pffh cffh effh)) 
     (close-output-port expand-out)
+    (delete-file (first expand-fspec))
+    #|(printf "remove-dupes: starting w/ ~a positions, expansion has ~a/~a positions~%"
+            (second expand-fspec) unique-expansions (position-count-in-file ofile-name))|#
+    (unless (check-sorted-fringe? ofile-name)
+      (error 'remove-dupes "phase 2: failed to generate a sorted fringe file ~a" ofile-name))
     sample-stats))
 
 
@@ -138,30 +142,35 @@
 ;; While building the expansion, maintain stats on hash-code values and a list of sampled hash-code values.
 ;; Return a pair containing the stats from this expansion and the SORTED expansion itself.
 (define (remote-expand-part-fringe ipair process-id pf-spec cf-spec)
+  ;; EXPAND PHASE 1
   (let* ([pre-ofile-name (format "/tmp/partial-expansion~a.gz" (~a process-id #:left-pad-string "0" #:width 2 #:align 'right))]
          [start (first ipair)]
          [end (second ipair)]
          [assignment-count (- end start)]
-         [expanded-phase1 0]
-         [my-in (open-input-gz-file (string->path (first cf-spec)))]
-         [my-in-seq (sequence-tail (in-port read my-in) start)] ;; ***** fix ***** !!!!
-         [pre-resv (for/vector ([p (for/fold ([expansions (set)])
-                                     ([pos-to-expand my-in-seq])
-                                     ;; do the expansion of the indexed position, adding in any new positions found
-                                     (set! expanded-phase1 (add1 expanded-phase1))
-                                     (set-union expansions (expand pos-to-expand))
-                                     )])
-                     p)]
+         [expanded-phase1 1]
+         [cffh (do ([i 0 (add1 i)]
+                    [fh (fh-from-fspec cf-spec)])
+                 ((>= i start) fh)
+                 (advance-fhead! fh))]
+         [pre-resv (do ([i 1 (add1 i)]
+                        [expansions (expand (fringehead-next cffh)) (set-union expansions (expand (fringehead-next cffh)))])
+                     ((>= i assignment-count) (for/vector #:length (set-count expansions) ([p expansions]) p))
+                     (when (fhdone? cffh) 
+                       (error 'remote-expand-part-fringe (format "hit end of cur-fringe after ~a of ~a expansions" expanded-phase1 assignment-count)))
+                     (advance-fhead! cffh)
+                     (set! expanded-phase1 (add1 expanded-phase1)))]
          )
-    (close-input-port my-in)
     (vector-sort! position<? pre-resv)
     ;; pre-resv is sorted and has no duplicates w/in itself because it came from a set
     ;; write sorted local-expansion to disk w/ naming convention "partial-expansion" + process-id + ".gz"
     (write-fringe-to-disk pre-resv pre-ofile-name)
+    #|(printf "remote-exp-part-fring: PHASE 1: expanding ~a positions yielding ~a/~a positions~%" 
+            expanded-phase1 (vector-length pre-resv) (position-count-in-file pre-ofile-name))|#
     (when (< expanded-phase1 assignment-count)
       (error 'remote-expand-part-fringe
              (format "only expanded ~a of the assigned ~a (~a-~a) positions" expanded-phase1 assignment-count start end)))
-    ;; now pass through the expansion file as well as prev-fringe and current-fringe to remove duplicates
+    (close-input-port (fringehead-iprt cffh))
+    ;; PHASE 2: now pass through the expansion file as well as prev-fringe and current-fringe to remove duplicates
     (remove-dupes pf-spec cf-spec (list pre-ofile-name (vector-length pre-resv) (file-size pre-ofile-name)))))
 
 
@@ -173,7 +182,7 @@
                                      [i (in-range (length ranges))])
                                     (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end")) ;;prevent riot cache-failure
                                     (wait-for-files (list pf-spec cf-spec))
-                                    (unless (file-exists? (format "/tmp/current-fringe-d~a.gz" (sub1 depth)))
+                                    #|(unless (file-exists? (format "/tmp/current-fringe-d~a.gz" (sub1 depth)))
                                       (cond [(file-exists? (format "/tmp/current-fringe-d~a.gz" (sub1 depth)))
                                              (rename-file-or-directory (format "/tmp/current-fringe-d~a.gz" (sub1 depth))
                                                                        (format "/tmp/prev-fringe-d~a.gz" (sub1 depth)) #t)]
@@ -181,28 +190,30 @@
                                                              (format "/tmp/prev-fringe-d~a.gz" (sub1 depth)))])
                                       (copy-file (format "current-fringe-d~a.gz" (sub1 depth))
                                                  (format "/tmp/current-fringe-d~a.gz" (sub1 depth)))
-                                      )
-                                    (remote-expand-part-fringe range-pair i 
+                                      )|#
+                                    #|(printf "rem-exp-frng_for/work: about to call remote-expand-part-fringe w/ pf=~a and cf=~a~%"
+                                            (cons (string-append "/tmp/" (first pf-spec)) (cdr pf-spec))
+                                            (cons (string-append "/tmp/" (first cf-spec)) (cdr cf-spec)))|#
+                                    #|(remote-expand-part-fringe range-pair i 
                                                                (cons (string-append "/tmp/" (first pf-spec)) (cdr pf-spec))
-                                                               (cons (string-append "/tmp/" (first cf-spec)) (cdr cf-spec))))])
-    ;;(printf "remote-expand-fringe: respective expansion counts: ~a~%" (map (lambda (ssv) (vector-ref ssv 0)) distrib-results))
+                                                               (cons (string-append "/tmp/" (first cf-spec)) (cdr cf-spec)))|#
+                                    (remote-expand-part-fringe range-pair i pf-spec cf-spec))])
+    ;(printf "remote-expand-fringe: respective expansion counts: ~a~%" (map (lambda (ssv) (vector-ref ssv 0)) distrib-results))
     distrib-results))
 
 
 ;; ------------------------------------------------------------------------------------------
 ;; MERGING .....
 
-;; merge-expansions: (list int int) (listof (list string int int) int int int -> (listof position)
+;; merge-expansions: (list int int) (listof fspec) fspec fspec int -> (listof position)
 ;; given a specification of a range of _position-hash-codes_ to consider,
 ;; a list of specs (filename, pos-count, file-size), and the counts on prev and current fringes,
 ;; go through all the partial-expansions and merge the positions (removing duplicates) in that range into a single collection
-(define (remote-merge-expansions my-range expand-files-specs prev-fringe-count current-fringe-count depth)
+(define (remote-merge-expansions my-range expand-files-specs pf-spec cf-spec depth)
   ;; as first step:
   ;; ...  need to read all the partial fringe-files int a local variable called lovo-positions
-  (let* ([pf-port (open-input-gz-file (string->path (format "prev-fringe-d~a.gz" (sub1 depth))))]
-         [cf-port (open-input-gz-file (string->path (format "current-fringe-d~a.gz" (sub1 depth))))]
-         [prev-fringe-fh (fringehead (read pf-port) pf-port 1 prev-fringe-count)]
-         [current-fringe-fh (fringehead (read cf-port) cf-port 1 current-fringe-count)]
+  (let* (;[prev-fringe-fh (fh-from-fspec pf-spec)]
+         ;[current-fringe-fh (fh-from-fspec cf-spec)]
          [to-merge-ports 
           (for/list ([i (in-range (length expand-files-specs))])
             (open-input-gz-file (string->path (format "partial-expansion~a.gz" (~a i #:left-pad-string "0" #:width 2 #:align 'right)))))]
@@ -226,13 +237,15 @@
           (sorted-remove-dups
            (for/list ([an-fhead (in-heap/consume! heap-o-fheads)]
                       #:break (fx>= (equal-hash-code (fringehead-next an-fhead)) (second my-range))
+                      #|
                       #:unless (and #f ;; duplicates with prev- and current- have been removed already
                                     (or ;;(equal? (car lops) (car (heap-min heap-o-position-lists)))
                                      (position-in-fhead? (fringehead-next an-fhead) prev-fringe-fh)
                                      (position-in-fhead? (fringehead-next an-fhead) current-fringe-fh))
                                     (unless (fhdone? an-fhead) ;(eof-object? (peek-byte (fringehead-iprt an-fhead) 1))
                                       (advance-fhead! an-fhead)
-                                      (heap-add! heap-o-fheads an-fhead))));;******???????
+                                      (heap-add! heap-o-fheads an-fhead)))|#
+                      )
              (let ([keep-pos (fringehead-next an-fhead)])
                (unless (fhdone? an-fhead) ;;(eof-object? (peek-byte (fringehead-iprt an-fhead) 1))
                  (advance-fhead! an-fhead)
@@ -243,58 +256,27 @@
     ;;***error-check
     #|(unless (= (length sorted-merged-expansions) (set-count (list->set sorted-merged-expansions))) 
       (error 'remote-merge-expansions "list-merging vs. set mis-match"))|#
-    (close-input-port pf-port)
-    (close-input-port cf-port)
+    ;(close-input-port (fringehead-iprt prev-fringe-fh))
+    ;(close-input-port (fringehead-iprt current-fringe-fh))
     (for ([iprt to-merge-ports]) (close-input-port iprt))
     sorted-merged-expansions
     ))
 
 ;; remote-merge: (listof (list fixnum fixnum)) (listof int) int int int -> (listof string int)
-(define (remote-merge merge-ranges expand-files-specs prev-fringe-size cur-fringe-size depth)
+(define (remote-merge merge-ranges expand-files-specs pf-spec cf-spec depth)
   (let ([merge-results
          (for/work ([merge-range merge-ranges] ;; merged results should come back in order of merge-ranges assignments
                     [i (in-range (length merge-ranges))])
                    (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end"))
-                   (let* ([merged-responsibility-range (remote-merge-expansions merge-range expand-files-specs prev-fringe-size cur-fringe-size depth)]
+                   (let* ([merged-responsibility-range (remote-merge-expansions merge-range expand-files-specs pf-spec cf-spec depth)]
                           [ofile-name (format "partial-merge~a.gz" (~a i #:left-pad-string "0" #:width 2 #:align 'right))] 
                           )
                      ;;(printf "distributed-expand-fringe: merge-range = ~a~%~a~%" merge-range merged-responsibility-range)
                      (write-fringe-to-disk merged-responsibility-range ofile-name)
                      (list ofile-name (length merged-responsibility-range))))])
-    ;;(printf "remote-merge: merged segment lengths ~a~%" (map second merge-results))
+    ;(printf "remote-merge: merged segment names and lengths ~a~%" merge-results)
     merge-results))
 
-
-;; make-one-merge-range: int int (heapof (listof number)) -> (list int int)
-;; consume the elements from the sorted lists in the heap until the target-num is reach, returning the range pair
-(define (make-one-merge-range target-n start a-heap)
-  (for ([i (in-range target-n)]
-        #:break (and (= (heap-count a-heap) 1)
-                     (= (length (heap-min a-heap)) 1)))
-    (unless (empty? (cdr (heap-min a-heap))) (heap-add! a-heap (cdr (heap-min a-heap))))
-    (heap-remove-min! a-heap))
-  (list start (car (heap-min a-heap))))
-
-;; make-merge-ranges-from-expansions: (listof sampling-stats) -> (list merge-ranges)
-;; decide how to partition the space of positions as distributed over the expansions reflected in the sampling-stats
-;;***** consider and compare this to simply dividing the hash-code range by *n-processors*
-;;***** compare such an approach in terms of the uniformity of the distribution of positions assigned to each bin
-(define (make-merge-ranges-from-expansions lo-sample-stat)
-  ;;(printf "make-merge-ranges-from-expansions: sample-stats:~%~a" lo-sample-stat)
-  (let* (;;[total-num-positions (foldl (lambda (ss sum) (+ (vector-ref ss 0) sum)) 0 lo-sample-stat)]
-         [overall-min (foldl (lambda (ss tmin) (fxmin (vector-ref ss 1) tmin)) *most-positive-fixnum* lo-sample-stat)]
-         [overall-max (foldl (lambda (ss tmax) (fxmax (vector-ref ss 2) tmax)) *most-negative-fixnum* lo-sample-stat)]
-         [total-num-samples (foldl (lambda (ss sum) (+ (length (vector-ref ss 3)) sum)) 0 lo-sample-stat)]
-         [heap-o-sample-hash-lists (let ([lheap (make-heap (lambda (l1 l2) (fx< (first l1) (first l2))))])
-                                     (heap-add-all! lheap (map (lambda (ss) (sort (vector-ref ss 3) fx<)) lo-sample-stat))
-                                     (heap-add! lheap (list overall-min))
-                                     lheap)]
-         [made-merge-ranges (append 
-                             (for/list ([processor (in-range 1 *n-processors*)])
-                               (make-one-merge-range (/ total-num-samples *n-processors*) (car (heap-min heap-o-sample-hash-lists)) heap-o-sample-hash-lists))
-                             (list (list (car (heap-min heap-o-sample-hash-lists)) (add1 overall-max))))])
-    ;;(printf "make-merge-ranges-from-expansions: returning ~a~%" made-merge-ranges)
-    made-merge-ranges))
 
 ;; simple-merge-ranges: (listof sampling-stats) -> (list merge-ranges)
 ;; just divide the span between the global min and max evenly among the processors
@@ -306,18 +288,19 @@
          [start-list (foldl (lambda (dinc res) (cons (list (fx- (car (car res)) dinc) (car (car res))) res))
                             (list (list (fx- overall-max segment-width)
                                         (if (fx= overall-max *most-positive-fixnum*)
-                                            overall-max
+                                            (error 'simple-merge-ranges "max hash-code is *most-positive-fixnum*")
                                             (fx+ 1 overall-max))))
                             (make-list (- *n-processors* 2) segment-width))]
          [final-list (cons (list overall-min (car (car start-list))) start-list)])
     ;(printf "simple-merge-ranges: generated ranges: ~a~%" final-list)
     final-list))
 
-;; wait-for-files: (listof (list string int int)) -> 'ready
-;; given a list of file-specs (name n-pos compressed-size), wait until the file is present on the local machine
+;; wait-for-files: (listof fspec) -> 'ready
+;; given a list of fringe-specs (list filename num-positions compressed-size), wait until the file is present on the local machine
+;; with the specified size
 (define (wait-for-files lo-fspecs)
   (do ([fspecs (filter fringe-file-not-ready? lo-fspecs)
-                  (filter fringe-file-not-ready? fspecs)]
+               (filter fringe-file-not-ready? fspecs)]
        [sleep-time 0.1 (* sleep-time 2)])
     ((empty? fspecs) 'ready)
     (printf "wait-for-files: waiting for ~a files such as ~a ... and sleeping ~a~%" (length fspecs) (first (first fspecs)) sleep-time)
@@ -328,7 +311,8 @@
 ;; given prev and current fringe-specs and the present depth, expand and merge the current fringe,
 ;; returning the fringe-spec of the newly expanded and merged fringe.
 (define (distributed-expand-fringe pf-spec cf-spec depth)
-  ;;(printf "distributed-expand-fringe: ~a nodes in prev and ~a in current fringes~%" (vector-length prev-fringe-vec) (vector-length current-fringe-vec))
+  #|(printf "distributed-expand-fringe: at depth ~a, expanding ~a (~a pos) w/ context ~a (~a pos)~%" 
+          depth (first cf-spec) (second cf-spec) (first pf-spec) (second pf-spec))|#
   (let* (;; EXPAND
          [ranges (make-vector-ranges (second cf-spec))]
          ;; --- Distribute the actual expansion work ------------------------
@@ -353,7 +337,7 @@
          [merge-ranges (simple-merge-ranges sampling-stats)]
          ;; --- Distribute the merging work ----------
          [sorted-expansion-files-lengths
-          (let* ([merged-expansion-files-lens (remote-merge merge-ranges expand-files-specs (second pf-spec) (second cf-spec) depth)]
+          (let* ([merged-expansion-files-lens (remote-merge merge-ranges expand-files-specs pf-spec cf-spec depth)]
                  #|[merged-expansion-files (map first merged-expansion-files-lens)]
                  [expan-lengths (for/list ([f merged-expansion-files])
                                   (do ([present #f])
@@ -376,14 +360,20 @@
                                    [len sef-lengths]
                                    #:unless (= len (position-count-in-file f)))
                          (error 'distributed-expand-fringe (format "err-chk2: partial-merges do not match up for ~a which should be ~a" f len)))]|#
+         [new-cf-name (format "current-fringe-d~a.gz" depth)]
          )
-    (rename-file-or-directory (format "current-fringe-d~a.gz" (sub1 depth))
+    (rename-file-or-directory (first cf-spec)
                               (format "prev-fringe-d~a.gz" depth) #t) ;;(system "mv current-fringe prev-fringe")
     (for ([f sorted-expansion-files])
+      ;(printf "distributed-expand-fringe: concatenating ~a~%" f)
       (system (format "zcat ~a >> current-fringe-d~a" f depth)))
     (gzip (format "current-fringe-d~a" depth))
+    (unless (check-sorted-fringe? new-cf-name)
+      (error 'distributed-expand-fringe "concatenated merge files do not make a sorted fringe"))
     (system "rm partial-expansion* partial-merge*")
-    (list (format "current-fringe-d~a.gz" depth) (foldl + 0 sef-lengths) (file-size (format "current-fringe-d~a.gz" depth)))))
+    (delete-file (first pf-spec))
+    (delete-file (format "current-fringe-d~a" depth))
+    (list new-cf-name (foldl + 0 sef-lengths) (file-size new-cf-name))))
 
 
 ;;----------------------------------------------------------------------------------------

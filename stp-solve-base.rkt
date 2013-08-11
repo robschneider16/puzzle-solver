@@ -77,7 +77,18 @@
 (define (fringe-file-not-ready? spec-triple)
   (or (not (file-exists? (first spec-triple)))
       (< (file-size (first spec-triple)) (third spec-triple))))
-  
+
+;; check-sorted-fringe?: string -> boolean
+;; check to see that a given fringe file is indeed sorted
+(define (check-sorted-fringe? f)
+  (let* ([myin (open-input-gz-file (string->path f))]
+         [prevpos (read myin)]
+         [bool-res (for/and ([pos (in-port read myin)])
+                     (let ([res (position<? prevpos pos)])
+                       (set! prevpos pos)
+                       res))])
+    (close-input-port myin)
+    bool-res))
 
 ;;---- fringehead structs and utilities
 
@@ -87,9 +98,10 @@
 (struct fringehead (next iprt readcount total) #:mutable)
 
 ;; fhdone?: fringehead -> boolean
-;; #t if readcount >= total for the given fringehead -- that is, this fringehead is exhausted
+;; #t if readcount >= total for the given fringehead -- that is, this fringehead is exhausted.
+;; Note: readcount starts at 1, so test readcount for greater-than-or-equal to total.
 (define (fhdone? fh)
-  (when (and (< (fringehead-readcount fh) (fringehead-total fh)) (eof-object? (fringehead-next fh)))
+  (when (and (<= (fringehead-readcount fh) (fringehead-total fh)) (eof-object? (fringehead-next fh)))
     (error 'fhdone? "hit end of file before the appropriate number of positions had been read"))
   (>= (fringehead-readcount fh) (fringehead-total fh)))
 
