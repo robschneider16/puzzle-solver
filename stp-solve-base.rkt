@@ -78,6 +78,17 @@
   (or (not (file-exists? (first spec-triple)))
       (< (file-size (first spec-triple)) (third spec-triple))))
 
+;; wait-for-files: (listof fspec) -> 'ready
+;; given a list of fringe-specs (list filename num-positions compressed-size), wait until the file is present on the local machine
+;; with the specified size
+(define (wait-for-files lo-fspecs)
+  (do ([fspecs (filter fringe-file-not-ready? lo-fspecs)
+               (filter fringe-file-not-ready? fspecs)]
+       [sleep-time 0.1 (* sleep-time 2)])
+    ((empty? fspecs) 'ready)
+    (printf "wait-for-files: waiting for ~a files such as ~a ... and sleeping ~a~%" (length fspecs) (first (first fspecs)) sleep-time)
+    (sleep sleep-time)))
+
 ;; check-sorted-fringe?: string -> boolean
 ;; check to see that a given fringe file is indeed sorted
 (define (check-sorted-fringe? f)
