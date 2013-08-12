@@ -247,18 +247,10 @@
           (sorted-remove-dups
            (for/list ([an-fhead (in-heap/consume! heap-o-fheads)]
                       #:break (fx>= (equal-hash-code (fringehead-next an-fhead)) (second my-range))
-                      #|
-                      #:unless (and #f ;; duplicates with prev- and current- have been removed already
-                                    (or ;;(equal? (car lops) (car (heap-min heap-o-position-lists)))
-                                     (position-in-fhead? (fringehead-next an-fhead) prev-fringe-fh)
-                                     (position-in-fhead? (fringehead-next an-fhead) current-fringe-fh))
-                                    (unless (fhdone? an-fhead) ;(eof-object? (peek-byte (fringehead-iprt an-fhead) 1))
-                                      (advance-fhead! an-fhead)
-                                      (heap-add! heap-o-fheads an-fhead)))|#
                       )
              (let ([keep-pos (fringehead-next an-fhead)])
+               (advance-fhead! an-fhead)
                (unless (fhdone? an-fhead) ;;(eof-object? (peek-byte (fringehead-iprt an-fhead) 1))
-                 (advance-fhead! an-fhead)
                  (heap-add! heap-o-fheads an-fhead))
                keep-pos)))])
     ;(printf "remote-merge-expansions: fw-lolop-lengths=~a [total ~a]~%" (map length fastforwarded-lolops) (for/sum ([l fastforwarded-lolops]) (length l)))
@@ -432,8 +424,8 @@
             1))
   
 
-(block10-init)
-;(climb12-init)
+;(block10-init)
+(climb12-init)
 ;(climb15-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
