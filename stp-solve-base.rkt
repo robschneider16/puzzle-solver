@@ -72,18 +72,24 @@
 ;; create the file with given name
 (define (touch fname) (display-to-file "" fname))
 
-;; fringe-file-not-ready?: (list string int int) -> boolean
+;; fringe-file-not-ready?: fspec [check-alt-flag #f] -> boolean
 ;; determine if the file exists on disk and has the appropriate size
-(define (fringe-file-not-ready? spec-triple)
+;; with optional check-alt-flag will look on the nfs share and copy if found
+(define (fringe-file-not-ready? spec-triple [check-alt-flag #f])
+  (when (and check-alt-flag
+             (not (file-exists? (first spec-triple)))
+             (file-exists? (substring (car spec-triple) 5)))
+    (copy-file (substring (car spec-triple) 5) (car spec-triple))) ;; YUCK!
   (or (not (file-exists? (first spec-triple)))
       (< (file-size (first spec-triple)) (third spec-triple))))
+      
 
-;; wait-for-files: (listof fspec) -> 'ready
+;; wait-for-files: (listof fspec) [check-alt-flag #f] -> 'ready
 ;; given a list of fringe-specs (list filename num-positions compressed-size), wait until the file is present on the local machine
-;; with the specified size
-(define (wait-for-files lo-fspecs)
-  (do ([fspecs (filter fringe-file-not-ready? lo-fspecs)
-               (filter fringe-file-not-ready? fspecs)]
+;; with the specified size.  if check-alt-flag is true, then drop the /tmp/ and see if the file is available via NFS (copy if so!)
+(define (wait-for-files lo-fspecs [check-alt-flag #f])
+  (do ([fspecs (filter (lambda (fspec) (fringe-file-not-ready? fspec check-alt-flag)) lo-fspecs)
+               (filter (lambda (fspec) (fringe-file-not-ready? fspec check-alt-flag)) fspecs)]
        [sleep-time 0.1 (* sleep-time 2)])
     ((empty? fspecs) 'ready)
     (printf "wait-for-files: waiting for ~a files such as ~a ... and sleeping ~a~%" (length fspecs) (first (first fspecs)) sleep-time)

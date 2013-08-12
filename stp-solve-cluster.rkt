@@ -18,9 +18,11 @@
 
 (provide (all-defined-out))
 
-(define *master-name* "the name of the host where the master process is running")(set! *master-name* "localhost")
-;(define *n-processors* 31)
-(define *n-processors* 4)
+(define *master-name* "the name of the host where the master process is running")
+;(set! *master-name* "localhost")
+(set! *master-name* "wcp")
+(define *n-processors* 31)
+;(define *n-processors* 4)
 (define *expand-multiplier* 1)
 
 (define *most-positive-fixnum* 0)
@@ -190,7 +192,7 @@
   (let* ([distrib-results (for/work ([range-pair ranges]
                                      [i (in-range (length ranges))])
                                     (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end")) ;;prevent riot cache-failure
-                                    (wait-for-files (list pf-spec cf-spec))
+                                    (wait-for-files (list pf-spec cf-spec) #t)
                                     #|(cond [(file-exists? (format "/tmp/current-fringe-d~a.gz" (sub1 depth)))
                                            (rename-file-or-directory (format "/tmp/current-fringe-d~a.gz" (sub1 depth))
                                                                      (format "/tmp/prev-fringe-d~a.gz" (sub1 depth)) #t)]
@@ -313,7 +315,7 @@
   ;; push newest fringe (current-fringe) to all workers
   (if (string=? *master-name* "localhost")
       (copy-file (car cf-spec) (format "/tmp/~a" (car cf-spec)))
-      (system (format "rocks run host compute 'cp ~a /tmp'" (car cf-spec))))
+      (system (format "rocks run host compute 'scp wcp:puzzle-solver/~a /tmp'" (car cf-spec))))
   (let* (;; EXPAND
          [ranges (make-vector-ranges (second cf-spec))]
          [rcf-spec (cons (string-append "/tmp/" (car cf-spec)) (cdr cf-spec))]
@@ -438,7 +440,6 @@
 ;;#|
 (module+ main
   ;; Switch between these according to if using the cluster or testing on multi-core single machine
-  ;(set! *master-name* "wcp")
   (connect-to-riot-server! *master-name*)
   (define search-result (time (start-cluster-fringe-search *start*)))
   (print search-result))
