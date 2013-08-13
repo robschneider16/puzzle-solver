@@ -140,8 +140,8 @@
                                 (format "/tmp/prev-fringe-d~a.gz" depth)))
     #|(printf "remove-dupes: starting w/ ~a positions, expansion has ~a/~a positions~%"
             (second expand-fspec) unique-expansions (position-count-in-file ofile-name))|#
-    (unless (check-sorted-fringe? ofile-name)
-      (error 'remove-dupes "phase 2: failed to generate a sorted fringe file ~a" ofile-name))
+    #|(unless (check-sorted-fringe? ofile-name)
+      (error 'remove-dupes "phase 2: failed to generate a sorted fringe file ~a" ofile-name))|#
     sample-stats))
 
 
@@ -297,6 +297,9 @@
     ;(printf "simple-merge-ranges: generated ranges: ~a~%" final-list)
     final-list))
 
+;; ------------------------------------------------------------------------------------------
+;; DISTRIBUTED EXPAND AND MERGE
+
 ;; distributed-expand-fringe: fspec fspec int -> (list string int int)
 ;; Distributed version of expand-fringe
 ;; given prev and current fringe-specs and the present depth, expand and merge the current fringe,
@@ -312,6 +315,7 @@
          [ranges (make-vector-ranges (second cf-spec))]
          [rcf-spec (cons (string-append "/tmp/" (car cf-spec)) (cdr cf-spec))]
          ;; --- Distribute the actual expansion work ------------------------
+         [infomsg1 (printf "starting to distribute EXPAND work~%")]
          [sampling-stats (remote-expand-fringe ranges pf-spec rcf-spec depth)]
          ;; -----------------------------------------------------------------
          [check-for-goal (for/first ([ss sampling-stats]
@@ -332,6 +336,7 @@
          ;;[merge-ranges (make-merge-ranges-from-expansions sampling-stats)]
          [merge-ranges (simple-merge-ranges sampling-stats)]
          ;; --- Distribute the merging work ----------
+         [infomsg2 (printf "starting to distribute MERGE work~%")]
          [sorted-expansion-files-lengths
           (let ([merged-expansion-files-lens (remote-merge merge-ranges expand-files-specs depth)]
                 )
@@ -355,8 +360,8 @@
       ;(printf "distributed-expand-fringe: concatenating ~a~%" f)
       (system (format "zcat ~a >> current-fringe-d~a" f depth)))
     (gzip (format "current-fringe-d~a" depth))
-    (unless (check-sorted-fringe? new-cf-name)
-      (error 'distributed-expand-fringe "concatenated merge files do not make a sorted fringe"))
+    #|(unless (check-sorted-fringe? new-cf-name)
+      (error 'distributed-expand-fringe "concatenated merge files do not make a sorted fringe"))|#
     (delete-file (first pf-spec))
     (delete-file (format "current-fringe-d~a" depth))
     (system "rm partial-expansion* partial-merge*")
@@ -369,7 +374,7 @@
 ;; Given the size of the current fringe to expand, and the current depth of search,
 ;; do the expansions and merges as appropriate, returning the fringe-spec of the new fringe
 (define (expand-fringe pf-spec cf-spec depth)
-  (if (< (second cf-spec) 1000)
+  (if (< (second cf-spec) 10000)
       ;; do it myself
       (expand-fringe-self pf-spec cf-spec depth)
       
@@ -397,7 +402,7 @@
         [else (cons (first l2) (fringe-merge l1 (rest l2)))]))
 
 
-(define *max-depth* 10)(set! *max-depth* 61)
+(define *max-depth* 10)(set! *max-depth* 105)
 
 ;; cfs-file: fspec fspec int -> position
 ;; perform a file-based cluster-fringe-search at given depth
@@ -425,8 +430,8 @@
   
 
 ;(block10-init)
-(climb12-init)
-;(climb15-init)
+;(climb12-init)
+(climb15-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
 ;;#|

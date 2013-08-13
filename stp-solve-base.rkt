@@ -90,7 +90,7 @@
 (define (wait-for-files lo-fspecs [check-alt-flag #f])
   (do ([fspecs (filter (lambda (fspec) (fringe-file-not-ready? fspec check-alt-flag)) lo-fspecs)
                (filter (lambda (fspec) (fringe-file-not-ready? fspec check-alt-flag)) fspecs)]
-       [sleep-time 0.1 (* sleep-time 2)])
+       [sleep-time 0.01 (* sleep-time 2)])
     ((empty? fspecs) 'ready)
     (printf "wait-for-files: waiting for ~a files such as ~a ... and sleeping ~a~%" (length fspecs) (first (first fspecs)) sleep-time)
     (sleep sleep-time)))
@@ -119,14 +119,19 @@
 ;; Note: readcount starts at 1, 
 (define (fhdone? fh)
   (when (and (eof-object? (fringehead-next fh)) (<= (fringehead-readcount fh) (fringehead-total fh)))
+    ;; try to reset 
     (error 'fhdone? "hit end of file before the appropriate number of positions had been read"))
   ;(> (fringehead-readcount fh) (fringehead-total fh))
   (eof-object? (fringehead-next fh))
   )
 
 ;; advance-fhead!: fringehead -> position OR void
-;; move to the next position
+;; move to the next position, but check to make sure something is available if expected
 (define (advance-fhead! fh)
+  (when (< (fringehead-readcount fh) (fringehead-total fh))
+    (do ([sleep-time 0.01 (* sleep-time 2)])
+      ((not (eof-object? (peek-bytes 1 1 (fringehead-iprt fh)))) 'proceed)
+      (sleep sleep-time)))
   (unless (fhdone? fh)
     (set-fringehead-next! fh (read (fringehead-iprt fh)))
     (set-fringehead-readcount! fh (add1 (fringehead-readcount fh)))
