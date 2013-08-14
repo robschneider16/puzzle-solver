@@ -37,7 +37,7 @@
                          (rename-file-or-directory "current-fringe.gz" "prev-fringe.gz" #t)
                          (write-fringe-to-disk (sort (set->list new-fringe) position<?) "current-fringe.gz")
                          ;(write-fringe-to-disk (set->list new-fringe) "current-fringe.gz")
-                         (fringe-search (add1 depth) #f #|found-goal?|# (+ npos (set-count new-fringe))))])])))
+                         (fringe-search (add1 depth) found-goal? (+ npos (set-count new-fringe))))])])))
 
 
 

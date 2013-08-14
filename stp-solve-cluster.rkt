@@ -24,6 +24,8 @@
 ;(define *n-processors* 31)
 (define *n-processors* 4)
 (define *expand-multiplier* 1)
+(define *diy-threshold* 1000)
+(define *pre-proto-fringe-size* 5000)
 
 (define *most-positive-fixnum* 0)
 (define *most-negative-fixnum* 0)
@@ -98,42 +100,45 @@
                (drop-right start-list 1)))))
 
 
-;; remove-dupes: fspec fspec fspec int -> sampling-stat
-;; remove duplicate positions from the expand-fspec file that also appear in the prev- or current-fringes.
-;; write the non-duplicate positions to a file
-(define (remove-dupes pfspec cfspec expand-fspec depth)
+;; remove-dupes: fspec fspec (listof fspec) string int -> sampling-stat
+;; remove duplicate positions from the list of expand-fspec files, for any positions that also appear in the prev- or current-fringes.
+;; write the non-duplicate positions to a file in the home directory
+(define (remove-dupes pfspec cfspec lo-expand-fspec ofile-name depth)
   ;; EXPAND PHASE 2 (REMOVE DUPLICATES)
   (let* ([pffh (cond [(file-exists? (string-append "/tmp/" (car pfspec))) ;; moved to this from current-fringe during prev depth
                       (fh-from-fspec (cons (string-append "/tmp/" (car pfspec)) (cdr pfspec)))]
                      [else (copy-file (car pfspec) (string-append "/tmp/" (car pfspec)))
                            (fh-from-fspec (cons (string-append "/tmp/" (car pfspec)) (cdr pfspec)))])]
          [cffh (fh-from-fspec cfspec)]
-         [effh (fh-from-fspec expand-fspec)]
-         [ofile-name (substring (first expand-fspec) 5)]
+         [lo-effh (for/list ([an-fspec lo-expand-fspec]) (fh-from-fspec an-fspec))]
+         [heap-o-fheads (let ([lheap (make-heap (lambda (fh1 fh2) (position<? (fringehead-next fh1) (fringehead-next fh2))))])
+                          (heap-add-all! lheap lo-effh)
+                          lheap)]
          [expand-out (open-output-gz-file (string->path ofile-name) #:replace #t)]
          [unique-expansions 0]
          [sample-stats (vector 0 *most-positive-fixnum* *most-negative-fixnum* empty #f ofile-name 0)]
-         ;; check for duplicates in prev- and current-fringes and write new positions to expand-out
-         [chk-dupes (do ([efpos (fringehead-next effh) (advance-fhead! effh)]
-                         [i 0 (add1 i)])
-                      ((>= i (second expand-fspec)) 'done)
-                      (unless (or (position-in-fhead? efpos pffh)
-                                  (position-in-fhead? efpos cffh))
-                        (fprintf expand-out "~a~%" efpos)
-                        (when (is-goal? efpos) (vector-set! sample-stats 4 efpos))
-                        (vector-set! sample-stats 1 (fxmin (vector-ref sample-stats 1) (equal-hash-code efpos)))
-                        (vector-set! sample-stats 2 (fxmax (vector-ref sample-stats 2) (equal-hash-code efpos)))
-                        (set! unique-expansions (add1 unique-expansions))
-                        )
-                      )]
          )
+    ;; locally merge the pre-proto-fringes, removing duplicates from prev- and current-fringes
+    (for ([an-fhead (in-heap/consume! heap-o-fheads)])
+      (let ([efpos (fringehead-next an-fhead)])
+        (unless (or (position-in-fhead? efpos pffh)
+                    (position-in-fhead? efpos cffh))
+          (fprintf expand-out "~a~%" efpos)
+          (when (is-goal? efpos) (vector-set! sample-stats 4 efpos))
+          (vector-set! sample-stats 1 (fxmin (vector-ref sample-stats 1) (equal-hash-code efpos)))
+          (vector-set! sample-stats 2 (fxmax (vector-ref sample-stats 2) (equal-hash-code efpos)))
+          (set! unique-expansions (add1 unique-expansions))
+          )
+        (advance-fhead! an-fhead)
+        (unless (fhdone? an-fhead) ;;(eof-object? (peek-byte (fringehead-iprt an-fhead) 1))
+          (heap-add! heap-o-fheads an-fhead))))
     (vector-set! sample-stats 0 unique-expansions)
     (vector-set! sample-stats 6 (file-size ofile-name))
     ;(printf "remote-expand-part-fringe: HAVE EXPANSIONS:~%")
     ;(for ([p resv]) (displayln p))
-    (for-each (lambda (fh) (close-input-port (fringehead-iprt fh))) (list pffh cffh effh)) 
+    (for-each (lambda (fh) (close-input-port (fringehead-iprt fh))) (cons pffh (cons cffh lo-effh))) 
     (close-output-port expand-out)
-    (delete-file (first expand-fspec))
+    (for ([efspec lo-expand-fspec]) (delete-file (first efspec)))
     (when (file-exists? (string-append "/tmp/" (car pfspec))) (delete-file (string-append "/tmp/" (car pfspec))))
     (unless (file-exists? (format "/tmp/prev-fringe-d~a.gz" depth))
       (rename-file-or-directory (car cfspec) 
@@ -145,6 +150,18 @@
     sample-stats))
 
 
+;; process-proto-fringe: (setof position) string string (listof fspec) -> (listof fspec)
+;; convert set to vector, sort it and write the sorted vector to the given filename,
+;; returning the file name to which the proto-fringe was written
+(define (process-proto-fringe sop pre-ofile-template pre-ofile-counter pre-ofiles)
+  (cons (let ([resv (for/vector #:length (set-count sop) ([p sop]) p)]
+              [f (format "~a~a.gz" pre-ofile-template pre-ofile-counter)])
+          (vector-sort! position<? resv)
+          (write-fringe-to-disk resv f)
+          (list f (vector-length resv) (file-size f)))
+        pre-ofiles))
+                        
+
 ;; remote-expand-part-fringe: (list int int) int fspec fspec int -> sampling-stat
 ;; given a pair of indices into the current-fringe that should be expanded by this process, a process-id,
 ;; and the fspecs for the prev- and current-fringes, ...
@@ -153,27 +170,33 @@
 ;; Return a pair containing the stats from this expansion and the SORTED expansion itself.
 (define (remote-expand-part-fringe ipair process-id pf-spec cf-spec depth)
   ;; EXPAND PHASE 1
-  (let* ([pre-ofile-name (format "/tmp/partial-expansion~a.gz" (~a process-id #:left-pad-string "0" #:width 2 #:align 'right))]
+  (let* ([pre-ofile-template (format "/tmp/partial-expansion~a" (~a process-id #:left-pad-string "0" #:width 2 #:align 'right))]
+         [pre-ofile-counter 0]
+         [pre-ofiles empty]
+         
          [start (first ipair)]
          [end (second ipair)]
          [assignment-count (- end start)]
-         [expanded-phase1 1]
+         [expanded-phase1 1];; technically, not yet, but during initialization in pre-resv do loop
          [cffh (do ([i 0 (add1 i)]
                     [fh (fh-from-fspec cf-spec)])
                  ((>= i start) fh)
-                 (advance-fhead! fh))]
-         [pre-resv (do ([i 1 (add1 i)]
-                        [expansions (expand (fringehead-next cffh)) (set-union expansions (expand (fringehead-next cffh)))])
-                     ((>= i assignment-count) (for/vector #:length (set-count expansions) ([p expansions]) p))
-                     (when (fhdone? cffh) 
-                       (error 'remote-expand-part-fringe (format "hit end of cur-fringe after ~a of ~a expansions" expanded-phase1 assignment-count)))
-                     (advance-fhead! cffh)
-                     (set! expanded-phase1 (add1 expanded-phase1)))]
-         )
-    (vector-sort! position<? pre-resv)
-    ;; pre-resv is sorted and has no duplicates w/in itself because it came from a set
-    ;; write sorted local-expansion to disk w/ naming convention "partial-expansion" + process-id + ".gz"
-    (write-fringe-to-disk pre-resv pre-ofile-name)
+                 (advance-fhead! fh))])
+    ;; do the actual expansions
+    (do ([i 1 (add1 i)]
+         [expansions (expand (fringehead-next cffh)) (set-union expansions (expand (fringehead-next cffh)))])
+      ((>= i assignment-count)
+       (set! pre-ofiles
+             (process-proto-fringe expansions pre-ofile-template pre-ofile-counter pre-ofiles)))
+      (when (fhdone? cffh) 
+        (error 'remote-expand-part-fringe (format "hit end of cur-fringe after ~a of ~a expansions" expanded-phase1 assignment-count)))
+      (when (> (set-count expansions) *pre-proto-fringe-size*)
+        (set! pre-ofiles
+              (process-proto-fringe expansions pre-ofile-template pre-ofile-counter pre-ofiles))
+        (set! pre-ofile-counter (add1 pre-ofile-counter))
+        (set! expansions (set)))
+      (advance-fhead! cffh)
+      (set! expanded-phase1 (add1 expanded-phase1)))
     #|(printf "remote-exp-part-fring: PHASE 1: expanding ~a positions yielding ~a/~a positions~%" 
             expanded-phase1 (vector-length pre-resv) (position-count-in-file pre-ofile-name))|#
     (when (< expanded-phase1 assignment-count)
@@ -181,7 +204,7 @@
              (format "only expanded ~a of the assigned ~a (~a-~a) positions" expanded-phase1 assignment-count start end)))
     (close-input-port (fringehead-iprt cffh))
     ;; PHASE 2: now pass through the expansion file as well as prev-fringe and current-fringe to remove duplicates
-    (remove-dupes pf-spec cf-spec (list pre-ofile-name (vector-length pre-resv) (file-size pre-ofile-name)) depth)))
+    (remove-dupes pf-spec cf-spec pre-ofiles (string-append (substring pre-ofile-template 5) ".gz") depth)))
 
 
 ;; remote-expand-fringe: (listof (list fixnum fixnum)) fspec fspec int -> (listof sampling-stat)
@@ -381,7 +404,7 @@
 ;; Given the size of the current fringe to expand, and the current depth of search,
 ;; do the expansions and merges as appropriate, returning the fringe-spec of the new fringe
 (define (expand-fringe pf-spec cf-spec depth)
-  (if (< (second cf-spec) 1000)
+  (if (< (second cf-spec) *diy-threshold*)
       ;; do it myself
       (expand-fringe-self pf-spec cf-spec depth)
       
@@ -436,8 +459,8 @@
             1))
   
 
-;(block10-init)
-(climb12-init)
+(block10-init)
+;(climb12-init)
 ;(climb15-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
