@@ -25,7 +25,7 @@
 (define *n-processors* 4)
 (define *expand-multiplier* 1)
 (define *diy-threshold* 1000)
-(define *pre-proto-fringe-size* 5000)
+(define *pre-proto-fringe-size* 500)
 
 (define *most-positive-fixnum* 0)
 (define *most-negative-fixnum* 0)
@@ -238,15 +238,14 @@
 ;; ------------------------------------------------------------------------------------------
 ;; MERGING .....
 
-;; merge-expansions: (list int int) (listof fspec) int -> (listof position)
+;; merge-expansions: (list int int) (listof fspec) int string -> number
 ;; given a specification of a range of _position-hash-codes_ to consider,
 ;; a list of specs (filename, pos-count, file-size), and the counts on prev and current fringes,
 ;; go through all the partial-expansions and merge the positions (removing duplicates) in that range into a single collection
-(define (remote-merge-expansions my-range expand-files-specs depth)
-  ;; as first step:
-  ;; ...  need to read all the partial fringe-files int a local variable called lovo-positions
+(define (remote-merge-expansions my-range expand-files-specs depth ofile-name)
   (let* (;[prev-fringe-fh (fh-from-fspec pf-spec)]
          ;[current-fringe-fh (fh-from-fspec cf-spec)]
+         [mrg-segment-oport (open-output-gz-file ofile-name)]
          [to-merge-ports 
           (for/list ([i (in-range (length expand-files-specs))])
             (open-input-gz-file (string->path (format "partial-expansion~a.gz" (~a i #:left-pad-string "0" #:width 2 #:align 'right)))))]
@@ -266,16 +265,22 @@
          [heap-o-fheads (let ([lheap (make-heap (lambda (fh1 fh2) (position<? (fringehead-next fh1) (fringehead-next fh2))))])
                           (heap-add-all! lheap fastforwarded-fheads)
                           lheap)]
-         [sorted-merged-expansions
-          (sorted-remove-dups
+         [segment-size
+          (let ([last-pos (void)]
+                [keep-pos (void)]
+                [num-written 0])
            (for/list ([an-fhead (in-heap/consume! heap-o-fheads)]
                       #:break (fx>= (equal-hash-code (fringehead-next an-fhead)) (second my-range))
                       )
-             (let ([keep-pos (fringehead-next an-fhead)])
-               (advance-fhead! an-fhead)
-               (unless (fhdone? an-fhead) ;;(eof-object? (peek-byte (fringehead-iprt an-fhead) 1))
-                 (heap-add! heap-o-fheads an-fhead))
-               keep-pos)))])
+             (set! keep-pos (fringehead-next an-fhead))
+             (advance-fhead! an-fhead)
+             (unless (fhdone? an-fhead) ;;(eof-object? (peek-byte (fringehead-iprt an-fhead) 1))
+               (heap-add! heap-o-fheads an-fhead))
+             (unless (equal? keep-pos last-pos)
+               (fprintf mrg-segment-oport "~a~%" keep-pos)
+               (set! num-written (add1 num-written)))
+             (set! last-pos keep-pos))
+            num-written)])
     ;(printf "remote-merge-expansions: fw-lolop-lengths=~a [total ~a]~%" (map length fastforwarded-lolops) (for/sum ([l fastforwarded-lolops]) (length l)))
     ;(printf "remote-merge-expansions: merged-expns-length=~a~%" (length sorted-merged-expansions))
     ;;***error-check
@@ -283,8 +288,9 @@
       (error 'remote-merge-expansions "list-merging vs. set mis-match"))|#
     ;(close-input-port (fringehead-iprt prev-fringe-fh))
     ;(close-input-port (fringehead-iprt current-fringe-fh))
+    (close-output-port mrg-segment-oport)
     (for ([iprt to-merge-ports]) (close-input-port iprt))
-    sorted-merged-expansions
+    segment-size
     ))
 
 ;; remote-merge: (listof (list fixnum fixnum)) (listof int) int -> (listof string int)
@@ -293,12 +299,12 @@
          (for/work ([merge-range merge-ranges] ;; merged results should come back in order of merge-ranges assignments
                     [i (in-range (length merge-ranges))])
                    (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end"))
-                   (let* ([merged-responsibility-range (remote-merge-expansions merge-range expand-files-specs depth)]
-                          [ofile-name (format "partial-merge~a.gz" (~a i #:left-pad-string "0" #:width 2 #:align 'right))] 
+                   (let* ([ofile-name (format "partial-merge~a.gz" (~a i #:left-pad-string "0" #:width 2 #:align 'right))]
+                          [merged-resp-rng-size (remote-merge-expansions merge-range expand-files-specs depth ofile-name)]
                           )
                      ;;(printf "distributed-expand-fringe: merge-range = ~a~%~a~%" merge-range merged-responsibility-range)
-                     (write-fringe-to-disk merged-responsibility-range ofile-name)
-                     (list ofile-name (length merged-responsibility-range))))])
+                     ;(write-fringe-to-disk merged-responsibility-range ofile-name)
+                     (list ofile-name merged-resp-rng-size)))])
     ;(printf "remote-merge: merged segment names and lengths ~a~%" merge-results)
     merge-results))
 
