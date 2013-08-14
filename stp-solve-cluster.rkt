@@ -19,10 +19,10 @@
 (provide (all-defined-out))
 
 (define *master-name* "the name of the host where the master process is running")
-;(set! *master-name* "localhost")
-(set! *master-name* "wcp")
-(define *n-processors* 31)
-;(define *n-processors* 4)
+(set! *master-name* "localhost")
+;(set! *master-name* "wcp")
+;(define *n-processors* 31)
+(define *n-processors* 4)
 (define *expand-multiplier* 1)
 
 (define *most-positive-fixnum* 0)
@@ -316,7 +316,9 @@
          [rcf-spec (cons (string-append "/tmp/" (car cf-spec)) (cdr cf-spec))]
          ;; --- Distribute the actual expansion work ------------------------
          [infomsg1 (printf "starting to distribute EXPAND work~%")]
+         [expand-start (current-seconds)]
          [sampling-stats (remote-expand-fringe ranges pf-spec rcf-spec depth)]
+         [expand-time-msg (printf "expand time: ~a~%" (~r (/ (- (current-seconds) expand-start) 60.0) #:precision 4))]
          ;; -----------------------------------------------------------------
          [check-for-goal (for/first ([ss sampling-stats]
                                      #:when (vector-ref ss 4))
@@ -337,6 +339,7 @@
          [merge-ranges (simple-merge-ranges sampling-stats)]
          ;; --- Distribute the merging work ----------
          [infomsg2 (printf "starting to distribute MERGE work~%")]
+         [merge-start (current-seconds)]
          [sorted-expansion-files-lengths
           (let ([merged-expansion-files-lens (remote-merge merge-ranges expand-files-specs depth)]
                 )
@@ -345,6 +348,8 @@
             ;;(error 'distributed-expand-fringe "stop to check partial files")
             merged-expansion-files-lens
             )]
+         [merge-end (current-seconds)]
+         [merge-time-msg (printf "merge time: ~a~%" (~r (/ (- merge-end merge-start) 60.0) #:precision 4))]
          ;; -------------------------------------------
          [sorted-expansion-files (map first sorted-expansion-files-lengths)]
          [sef-lengths (map second sorted-expansion-files-lengths)]
@@ -365,6 +370,8 @@
     (delete-file (first pf-spec))
     (delete-file (format "current-fringe-d~a" depth))
     (system "rm partial-expansion* partial-merge*")
+    (printf "distributed-expand-fringe: file manipulation ~a, and total at depth ~a: ~a~%" 
+            (~r (/ (- (current-seconds) merge-end) 60.0) #:precision 4) depth (~r (/ (- (current-seconds) expand-start) 60.0) #:precision 4))
     (list new-cf-name (foldl + 0 sef-lengths) (file-size new-cf-name))))
 
 
@@ -374,7 +381,7 @@
 ;; Given the size of the current fringe to expand, and the current depth of search,
 ;; do the expansions and merges as appropriate, returning the fringe-spec of the new fringe
 (define (expand-fringe pf-spec cf-spec depth)
-  (if (< (second cf-spec) 10000)
+  (if (< (second cf-spec) 1000)
       ;; do it myself
       (expand-fringe-self pf-spec cf-spec depth)
       
@@ -430,8 +437,8 @@
   
 
 ;(block10-init)
-;(climb12-init)
-(climb15-init)
+(climb12-init)
+;(climb15-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
 ;;#|
