@@ -20,8 +20,9 @@
   (set! *num-piece-types* (vector-length ptv)) ;; must come before positionify/(pre-compress)
   (set! *piece-types* (for/vector ([cell-specs ptv])
                                   (list->set cell-specs)));****
-  (set! *start* (positionify s))
-  (set! *target* t)
+  ;(set! *start* (positionify s))
+  (set! *start* (bw-positionify s))
+  (set! *target* (for/list ([tile-spec t]) (list (first tile-spec) (list-to-bwrep (list (cell-to-loc (cdr tile-spec)))))))
   )
 
 ;; positionify: pre-position -> position
@@ -31,6 +32,30 @@
                [i (in-range *num-piece-types*)])
     (unless (= i (first pspec)) (error 'positionify "mis-matched piece-type in vector representation of position"))
     (sort (map cell-to-loc (cdr pspec)) <)))
+
+;; bw-positionify: pre-position -> bw-position
+;; create a bitwise-'position' representation of a board state based on the given start-list pre-position format
+(define (bw-positionify pre-position)
+  (for/vector ([pspec (pre-compress pre-position)]
+               [i (in-range *num-piece-types*)])
+    (unless (= i (first pspec)) (error 'positionify "mis-matched piece-type in vector representation of position"))
+    (list-to-bwrep (map cell-to-loc (cdr pspec)))))
+
+;; list-to-bwrep: (listof loc) -> int
+;; convert the list of locations into a bitwise representation
+(define (list-to-bwrep lo-loc)
+  (foldl (lambda (a-loc bwint)
+           (+ (arithmetic-shift 1 a-loc) bwint))
+         0
+         lo-loc))
+
+;; bwrep-to-list: int -> (listof loc)
+;; extract the locs encoded in the given int
+(define (bwrep-to-list n)
+  (for/list ([i (in-range (integer-length n))]
+             #:when (bitwise-bit-set? n i))
+    i))    
+
 
 ;; cell-to-loc: cell -> int
 ;; convert ordered pair to row-major-order rank location
@@ -157,3 +182,4 @@
 (define (climb15-init)
   (set-em! *climb15-piece-types* *climb15-start* *climb15-target* 8 5))
 
+;(block10-init)

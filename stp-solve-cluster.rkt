@@ -25,7 +25,7 @@
 (define *n-processors* 4)
 (define *expand-multiplier* 1)
 (define *diy-threshold* 1000)
-(define *pre-proto-fringe-size* 500)
+(define *pre-proto-fringe-size* 5000)
 
 (define *most-positive-fixnum* 0)
 (define *most-negative-fixnum* 0)
@@ -157,6 +157,7 @@
   (cons (let ([resv (for/vector #:length (set-count sop) ([p sop]) p)]
               [f (format "~a~a.gz" pre-ofile-template pre-ofile-counter)])
           (vector-sort! position<? resv)
+          ;(set! resv (vector-sort position<? resv))
           (write-fringe-to-disk resv f)
           (list f (vector-length resv) (file-size f)))
         pre-ofiles))
@@ -465,8 +466,8 @@
             1))
   
 
-(block10-init)
-;(climb12-init)
+;(block10-init)
+(climb12-init)
 ;(climb15-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 

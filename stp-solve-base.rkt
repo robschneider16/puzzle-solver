@@ -29,11 +29,16 @@
 
 ;; a tile-spec is a triple, (cons a c), where a is the tile-type and c is the cell of the piece-type's origin
 
+;; a tile-loc-spec (tlspec), is a (list t l), where t is the tile-type and l is the loc of that tile
+
 ;; a pre-position is a (append (listof tile-spec) (listof cell))
 
 ;; a position is a (vectorof (listof int))
 ;; where the index of the top-level vectors reflect the piece-type as given in the init,
 ;; and the ints in the secondary vectors are the SORTED locations of the pieces of that type
+
+;; a bw-position is a (vector int)
+;; where each int is a bitwise representation of the locations of the pieces of that type
 
 ;; a fspec is a list: (list string int int)
 ;; where the string is the file-name-(path), count of positions, and file-size in bytes
@@ -176,11 +181,6 @@
         [(comp? (first l1) (first l2)) (cons (first l1) (list-subtract (rest l1) l2 comp?))]
         [else (list-subtract l1 (rest l2) comp?)]))
 
-;; sorted-remove-dups: (listof X) -> (listof X)
-(define (sorted-remove-dups lox)
-  (cond [(or (empty? lox) (empty? (rest lox))) lox]
-        [(equal? (first lox) (second lox)) (sorted-remove-dups (rest lox))]
-        [else (cons (first lox) (sorted-remove-dups (cdr lox)))]))
 
 ;;------------------------------------------------------------------------------------------------------
 ;; Compiling move-schemas
@@ -199,7 +199,7 @@
         (for ([dir (in-range (length *prim-move-translations*))])
           (array-set! a pti loc dir
                       (if (andmap onboard? (translate-piece piece-type-spec (translate-cell (list-ref *prim-move-translations* dir) (loc-to-cell loc))))
-                          (basic-move-schema (cons pti (loc-to-cell loc)) (list-ref *prim-move-translations* dir))
+                          (better-move-schema (cons pti (loc-to-cell loc)) (list-ref *prim-move-translations* dir))
                           #f)))))
     (set! *ms-array* a)))
 
@@ -216,48 +216,43 @@
   (for/list ([cell cell-list])
     (translate-cell cell trans)))
 
-;; translate-spaces: (listof loc) move-schema -> (listof loc)
-;; for a move-in-progress, create the new list of space cells for the given piece move
-(define (translate-spaces spaces ms)
-  (append (list-subtract spaces (third ms) <)
-          (fourth ms)))
 
-;***  move-schema has cells -- where used?
-
-
-;; basic-move-schema: tile-spec trans-spec -> (list (listof loc) (listof loc) (listof loc) (listof loc) loc)
-;; the resulting schema specifies:
-;; 0. listof current locs occupied by piece
-;; 1. list of locs occupied by piece after the translation in question
-;; 2. list of precondition locs for spaces,
-;; 3. list of post-condition locs for spaces after move, and
-;; 4. the translated loc (origin) of the piece
-;; This is only called by compile-ms-array! once before a solution of a particular puzzle so time here is less important
-(define (basic-move-schema tile trans)
-  (let* ((current-cell-list (translate-piece (vector-ref *piece-types* (first tile)) (cdr tile)))
-         (current-loc-list (sort (map cell-to-loc current-cell-list) <))
-         (cell-list-to (translate-piece current-cell-list trans))
-         (loc-list-to (sort (map cell-to-loc cell-list-to) <)))
-    (list current-loc-list
-          loc-list-to
-          (list-subtract loc-list-to  current-loc-list <)
-          (list-subtract current-loc-list loc-list-to <)
+;; better-move-schema: tile-spec trans-spec -> (list int int int)
+;; a better-move-schema (better-ms) is a list:
+;; first:   bit-rep of space preconditions
+;; second:  xor of space preconditions and space postconditions
+;; third:   xor of current location and translated location (origin) of the piece
+;; fourth:  new location of the moved tile's origin
+(define (better-move-schema tile trans)
+  (let* ([current-cell-list (translate-piece (vector-ref *piece-types* (first tile)) (cdr tile))]
+         [current-loc-list (sort (map cell-to-loc current-cell-list) <)]
+         [cell-list-to (translate-piece current-cell-list trans)]
+         [loc-list-to (sort (map cell-to-loc cell-list-to) <)])
+    (list (list-to-bwrep (list-subtract loc-list-to  current-loc-list <))
+          (bitwise-xor (list-to-bwrep (list-subtract loc-list-to  current-loc-list <))
+                       (list-to-bwrep (list-subtract current-loc-list loc-list-to <)))
+          (list-to-bwrep (list (cell-to-loc (cdr tile))
+                               (cell-to-loc (translate-cell (cdr tile) trans))))
           (cell-to-loc (translate-cell (cdr tile) trans)))))
 
 
 ;; lexi<?: position position -> boolean
 ;; lexicographic less-than test on two positions (that presumably have a primary hash collision)
+#|
 (check-expect (lexi<? #((1 2 3) (1 3) (1 2 3)) #((1 2 3) (1 3) (1 2 3))) #f)
 (check-expect (lexi<? #((1 2 3) (2 3) (1 2 3)) #((1 2 3) (1 3) (1 2 3))) #f)
 (check-expect (lexi<? #((1 2 3) (1 3) (1 2 3)) #((1 2 3) (2 3) (1 2 3))) #t)
+|#
 (define (lexi<? p1 p2)
   (for/first ([tile-types1 p1]
               [tile-types2 p2]
               #:when (not (equal? tile-types1 tile-types2)))
-    (for/first ([tile1 tile-types1]
-                [tile2 tile-types2]
-                #:when (not (= tile1 tile2)))
-      (< tile1 tile2))))
+    (if (and (number? tile-types1) (number? tile-types2))
+        (< tile-types1 tile-types2)
+        (for/first ([tile1 tile-types1]
+                    [tile2 tile-types2]
+                    #:when (not (= tile1 tile2)))
+          (< tile1 tile2)))))
 
 ;; position<?: position position -> boolean
 (define (position<? p1 p2)
@@ -299,51 +294,67 @@
           [(compare? x (vector-ref v mid)) (vec-member? v x compare? low mid)]
           [else (vec-member? v x compare? (add1 mid) high)])))
 
-;; spaces: position -> (listof cell)
-;; return the list of space cells
-(define (spaces p)
-  (vector-ref p 0))
 
-;; one-piece-one-step: tile-spec position (setof position) -> (setof (list tile-spec position))
-;; for a given piece in a given position, generate all next-positions obtained by moving one-step (only)
-;; but for each next-position, return a tile-spec/position pair for the tile-spec of the piece just moved
-(define (one-piece-one-step tile-to-move position prior-pos)
-  (let ((mv-schema empty)
-        (tile-to-move-loc (cell-to-loc (cdr tile-to-move))))
+;; bw-1pc-1step: int int bw-position (setof loc) -> (setof (list loc bw-position))
+;; for a given piece, identified by piece-type and location, generate all next-positions obtained by moving one-step (only)
+;; but for each next-position, return a tile-loc/position pair for the given piece just moved
+(define (bw-1pc-1step piece-type piece-loc position prior-pos)
+  (let ([mv-schema empty])
     (for/set ([dir-trans *prim-move-translations*]
               [dir-i (in-range (length *prim-move-translations*))]
-              #:when (begin (set! mv-schema (array-ref *ms-array* (first tile-to-move) tile-to-move-loc dir-i))
+              #:when (begin (set! mv-schema (array-ref *ms-array* piece-type piece-loc dir-i))
                             (and mv-schema
-                                 (valid-move? (spaces position) (third mv-schema)))))
-             (list
-              (cons (first tile-to-move) (loc-to-cell (fifth mv-schema)))      ; tile-spec of the moved tile that gives rise to this position
-              (let ((new-vec (vector-copy position)))                          ; build the new position
-                (vector-set! 
-                 new-vec (first tile-to-move)
-                 (sort (cons (fifth mv-schema) (remove tile-to-move-loc (vector-ref new-vec (first tile-to-move))))
-                       <))
-                (vector-set! new-vec 0 (sort (translate-spaces (vector-ref new-vec 0) mv-schema) <))
-                new-vec)))))
+                                 (not (set-member? prior-pos (fourth mv-schema)))
+                                 (bw-valid-move? (vector-ref position 0) (first mv-schema)))))
+      (list
+       (fourth mv-schema)      ; new location of the moved tile that gives rise to this position
+       (let ((new-vec (vector-copy position)))                          ; build the new position
+         ;; update piece
+         (vector-set! new-vec piece-type
+                      (bitwise-xor (vector-ref new-vec piece-type)
+                                   (third mv-schema)))
+         ;; update spaces
+         (vector-set! new-vec 0
+                      (bitwise-xor (vector-ref new-vec 0)
+                                   (second mv-schema)))
+         new-vec)))))
 
-;; expand-piece: tile-spec position -> (setof position)
-;; for a given tile-spec (piece), return the list of new positions resulting from moving the given piece in the given position
-(define (expand-piece tile-to-move position)
-  (do ([return-positions (set position) 
-                         (set-union return-positions (for/set ([ts-pos new-positions]) (second ts-pos)))]
-       [new-positions (one-piece-one-step tile-to-move position (set))
-                      (for/fold ([new-add (set)])
-                        ([ts-pos new-positions]
-                         #:unless (set-member? return-positions (second ts-pos)))
-                        (set-union new-add (one-piece-one-step (first ts-pos) (second ts-pos) return-positions)))])
-    ((set-empty? new-positions) (set-remove return-positions position))))
+;; expand-piece: int int bw-position -> (setof bw-position)
+;; for a given piece (identified by piece-type and location of tile of that type),
+;; return the list or set of all new positions reachable by moving the given piece starting in the given position
+(define (expand-piece piece-type piece-loc position)
+  (let ([loc-places (set piece-loc)]); piece-history is the set of locations that we've already checked for this piece
+    (do ([return-positions (set)
+                           (set-union (for/set ([p new-positions]) (second p)) return-positions)]
+         ;; new-positions is a set of (list piece-loc bw-position) for this piece
+         [new-positions (bw-1pc-1step piece-type piece-loc position (set))
+                        (for/fold ([new-add (set)])
+                          ([ts-pos new-positions]
+                           #:unless (set-member? loc-places (first ts-pos)))
+                          (set! loc-places (set-add loc-places (first ts-pos)))
+                          (set-union (bw-1pc-1step piece-type (first ts-pos) (second ts-pos) loc-places)
+                                     new-add))])
+      ;; until no further moves of this piece
+      ((set-empty? new-positions)
+       ;(set-remove return-positions position)
+       return-positions))))
+
+;; expand: bw-position -> (setof bw-position)
+;; generate next states from this one
+(define (expand s)
+  (for/fold ([all-moves (set)])
+    ([piece-type (in-range 1 *num-piece-types*)])
+    (set-union (for/fold ([new-moves (set)])
+                 ([piece-loc (bwrep-to-list (vector-ref s piece-type))])
+                 (set-union (expand-piece piece-type piece-loc s)
+                            new-moves))
+               all-moves)))
 
 
-;; valid-move?: (listof loc) (listof loc) -> boolean
-;; determine if the proposed move has the current-spaces in the right position
-;; as required by the move-schema (INDEPENDENT OF if on the board)
-(define (valid-move? current-space-locs prerequisite-spaces)
-  (for/and ([needed-space prerequisite-spaces])
-    (member needed-space current-space-locs)))
+
+(define (bw-valid-move? space-int space-prereq)
+  (= (bitwise-and space-int space-prereq)
+     space-prereq))
   
 ;; onboard?: cell -> boolean
 (define (onboard? c)
@@ -353,23 +364,13 @@
 (define (loc-onboard? loc)
   (< -1 loc *bsz*))
 
-;; expand: position -> (setof position)
-;; generate next states from this one
-(define (expand s)
-  (for/fold ([all-moves (set)])
-    ([piece-type (in-range 1 *num-piece-types*)])
-    (set-union all-moves
-               (for/fold ([new-moves (set)])
-                 ([ploc (vector-ref s piece-type)])
-                 (set-union new-moves
-                            (expand-piece (cons piece-type (loc-to-cell ploc)) s))))))
-
-
 ;;------------------------------------------------------------------------------------
 
 ;; is-goal?: position -> boolean
 (define (is-goal? p)
-  (andmap (lambda (tile-spec) (member (cell-to-loc (cdr tile-spec)) (vector-ref p (first tile-spec))))
+  (andmap (lambda (tile-type-target-pair) 
+            (positive? (bitwise-and (vector-ref p (first tile-type-target-pair))
+                                    (second tile-type-target-pair))))
           *target*))
 
 ;; goal-in-fringe?: (setof position) -> position OR #f
@@ -378,4 +379,5 @@
               #:when (is-goal? pos))
     pos))
 
+;(compile-ms-array! *piece-types* *bh* *bw*)
 ;(test)
