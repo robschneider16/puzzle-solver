@@ -21,7 +21,7 @@
                               found-goal?]
                  [else (let* ([new-fringe (for/set ([p (for/fold ([expansions (set)])
                                                          ([p current-fringe])
-                                                         (set-union expansions (expand p)))]
+                                                        (set-union expansions (expand p)))]
                                                     #:unless (or (set-member? prev-fringe p)
                                                                  (set-member? current-fringe p)))
                                             (when (is-goal? p) (set! found-goal? p))
@@ -59,13 +59,13 @@
                        (fringe-mem-search current-fringe new-fringe (add1 depth) found-goal? (+ npos (set-count new-fringe))))])]))
 
 
-(block10-init)
-;(climb12-init)
+;(block10-init)
+(climb12-init)
 ;(climb15-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
 (write-fringe-to-disk empty "prev-fringe.gz")
 (write-fringe-to-disk (list *start*) "current-fringe.gz")
 
-;(time (fringe-file-search 1))
-(time (fringe-mem-search (set) (set *start*) 1))
+(time (fringe-file-search 1))
+;(time (fringe-mem-search (set) (set *start*) 1))

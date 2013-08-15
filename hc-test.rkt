@@ -1,7 +1,36 @@
 #lang racket
 
-(printf "12,13,24...: ~a, and 2,5,19,...: ~a (reported -879673486) with secondary hash codes: ~a and ~a, respectively (reported 942)~%"
-        (equal-hash-code #((12 23 24 29) (22) (5) (11) (9 20) (7 17) (2 13 19 21)))
-        (equal-hash-code #((2 5 19 28) (21) (7) (9) (10 24) (16 22) (6 11 18 20)))
-        (equal-secondary-hash-code #((12 23 24 29) (22) (5) (11) (9 20) (7 17) (2 13 19 21)))
-        (equal-secondary-hash-code #((2 5 19 28) (21) (7) (9) (10 24) (16 22) (6 11 18 20))))
+(require (planet soegaard/gzip:2:2))
+(require file/gunzip)
+(require file/gzip)
+
+(define *ntimes* 50)
+
+#| For *ntimes* = 50, takes 5 minutes, 31.039 seconds 
+(time (for ([i *ntimes*])
+        (let ([iprt (open-input-gz-file (string->path "current-fringeC12d59.gz"))]
+              [oprt (open-output-gz-file (string->path "test-out.gz") #:replace #t)])
+          (for ([p (in-port read iprt)]
+                #:unless (= (vector-ref p 0) -99))
+            (when (= (vector-ref p 0) -99) (printf "found it ~a~%" p))
+            (fprintf oprt "~a~%" p))
+          (close-input-port iprt)
+          (close-output-port oprt))))
+;|#
+
+#| For *ntimes* = 50, takes 2 minutes, 39 seconds
+(time (for ([i *ntimes*])
+        (gunzip "current-fringeC12d59.gz")
+        (let ([iprt (open-input-file "current-fringeC12d59")]
+              [oprt (open-output-file "test-out" #:exists 'replace)])
+          (for ([p (in-port read iprt)]
+                #:unless (= (vector-ref p 0) -99))
+            (when (= (vector-ref p 0) -99) (printf "found it ~a~%" p))
+            (fprintf oprt "~a~%" p))
+          (close-input-port iprt)
+          (close-output-port oprt))
+        (gzip "test-out")))
+  |#        
+           
+
+        

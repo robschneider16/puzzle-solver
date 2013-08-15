@@ -160,18 +160,8 @@
   (let ([inprt (open-input-gz-file (string->path (first fs)))])
     (fringehead (read inprt) inprt 1 (second fs))))
 
-;; Set-like Operations on Lists
 
-;; list-union: (listof X) (listof X) (X X -> boolean) -> (listof X)
-;; ASSUME lists are sorted
-(define (list-union l1 l2 comp?)
-  (cond [(empty? l1) l2]
-        [(empty? l2) l1]
-        [(and (not (empty? (rest l1))) (equal? (first l1) (second l1))) (list-union (rest l1) (rest l2) comp?)]
-        [(equal? (first l1) (first l2)) (list-union l1 (rest l2) comp?)]
-        [(comp? (first l1) (first l2)) (cons (first l1)
-                                             (list-union (rest l1) l2 comp?))]
-        [else (cons (first l2) (list-union l1 (rest l2) comp?))]))
+;; Set-like Operations on Lists
 
 ;; list-subtract: (listof X) (listof X) (X X -> boolean) -> (listof X)
 ;; ASSUME lists are sorted
@@ -220,7 +210,7 @@
 ;; better-move-schema: tile-spec trans-spec -> (list int int int)
 ;; a better-move-schema (better-ms) is a list:
 ;; first:   bit-rep of space preconditions
-;; second:  xor of space preconditions and space postconditions
+;; second:  xor of space preconditions and space postconditions ("changed-blanks": all that change)
 ;; third:   xor of current location and translated location (origin) of the piece
 ;; fourth:  new location of the moved tile's origin
 (define (better-move-schema tile trans)
@@ -295,10 +285,22 @@
           [else (vec-member? v x compare? (add1 mid) high)])))
 
 
+(define (make-new-move position mv-schema piece-type)
+  (let ((new-vec (vector-copy position)))                          ; build the new position
+    ;; update piece
+    (vector-set! new-vec piece-type
+                 (bitwise-xor (vector-ref new-vec piece-type)
+                              (third mv-schema)))
+    ;; update spaces
+    (vector-set! new-vec 0
+                 (bitwise-xor (vector-ref new-vec 0)
+                              (second mv-schema)))
+    new-vec))
+
 ;; bw-1pc-1step: int int bw-position (setof loc) -> (setof (list loc bw-position))
 ;; for a given piece, identified by piece-type and location, generate all next-positions obtained by moving one-step (only)
 ;; but for each next-position, return a tile-loc/position pair for the given piece just moved
-(define (bw-1pc-1step piece-type piece-loc position prior-pos)
+(define (bw-1pc-1step piece-type piece-loc position prior-pos [check-dupes #f])
   (let ([mv-schema empty])
     (for/set ([dir-trans *prim-move-translations*]
               [dir-i (in-range (length *prim-move-translations*))]
@@ -306,18 +308,8 @@
                             (and mv-schema
                                  (not (set-member? prior-pos (fourth mv-schema)))
                                  (bw-valid-move? (vector-ref position 0) (first mv-schema)))))
-      (list
-       (fourth mv-schema)      ; new location of the moved tile that gives rise to this position
-       (let ((new-vec (vector-copy position)))                          ; build the new position
-         ;; update piece
-         (vector-set! new-vec piece-type
-                      (bitwise-xor (vector-ref new-vec piece-type)
-                                   (third mv-schema)))
-         ;; update spaces
-         (vector-set! new-vec 0
-                      (bitwise-xor (vector-ref new-vec 0)
-                                   (second mv-schema)))
-         new-vec)))))
+      (list (fourth mv-schema)      ; new location of the moved tile that gives rise to this position
+            (make-new-move position mv-schema piece-type)))))
 
 ;; expand-piece: int int bw-position -> (setof bw-position)
 ;; for a given piece (identified by piece-type and location of tile of that type),

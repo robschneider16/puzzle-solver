@@ -17,21 +17,12 @@
   (set! *bh* nrow)
   (set! *bw* ncol)
   (set! *bsz* (* nrow ncol))
-  (set! *num-piece-types* (vector-length ptv)) ;; must come before positionify/(pre-compress)
+  (set! *num-piece-types* (vector-length ptv)) ;; must come before bw-positionify/(pre-compress)
   (set! *piece-types* (for/vector ([cell-specs ptv])
                                   (list->set cell-specs)));****
-  ;(set! *start* (positionify s))
   (set! *start* (bw-positionify s))
   (set! *target* (for/list ([tile-spec t]) (list (first tile-spec) (list-to-bwrep (list (cell-to-loc (cdr tile-spec)))))))
   )
-
-;; positionify: pre-position -> position
-;; create a 'position' representation of a board state based on the given start-list pre-position format
-(define (positionify pre-position)
-  (for/vector ([pspec (sort (pre-compress pre-position) < #:key first)]
-               [i (in-range *num-piece-types*)])
-    (unless (= i (first pspec)) (error 'positionify "mis-matched piece-type in vector representation of position"))
-    (sort (map cell-to-loc (cdr pspec)) <)))
 
 ;; bw-positionify: pre-position -> bw-position
 ;; create a bitwise-'position' representation of a board state based on the given start-list pre-position format

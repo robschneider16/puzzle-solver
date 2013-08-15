@@ -418,12 +418,8 @@
       ;; else call distributed-expand, which will farm out to workers
       (distributed-expand-fringe pf-spec cf-spec depth)))
 
-;; vectorize-set: (setof position) -> (vectorof position)
-;; convert a set of positions into a vector for easy/efficient partitioning
-(define (vectorize-set f)
-  (let ([new-vec (for/vector #:length (set-count f) ([p f]) p)])
-    (vector-sort! position<? new-vec)
-    new-vec))
+;; vectorize-list: (listof position) -> (vectorof position)
+;; convert a list of positions into a vector for easy/efficient partitioning
 (define (vectorize-list f)
   (let ([new-vec (list->vector f)])
     (vector-sort! position<? new-vec)
