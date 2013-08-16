@@ -11,8 +11,8 @@
 ;; fringe-file-search: [file(listof position)] [file(listof position)] int -> ...
 ;; using file for storing fringes, perform a fringe BFS starting at the given state until depth is 0
 (define (fringe-file-search depth [found-goal? #f] [npos 1])
-  (let ([prev-fringe (list->set (read-fringe-from-gzfile "prev-fringe.gz"))]
-        [current-fringe (list->set (read-fringe-from-gzfile "current-fringe.gz"))]) ; current fringe is a FILE
+  (let ([prev-fringe (list->set (read-fringe-from-file "prev-fringe"))]
+        [current-fringe (list->set (read-fringe-from-file "current-fringe"))]) ; current fringe is a FILE
     ;;(printf "current-fringe: ~a~%" current-fringe)
     (cond [(or (set-empty? current-fringe) (> depth *max-depth*)) 
            (printf "exhausted the space after ~a positions~%" npos) #f]
@@ -33,10 +33,8 @@
                                             (stringify p))
                                           string<?)])
                              (printf "~a~%" s)))|#
-                           
-                         (rename-file-or-directory "current-fringe.gz" "prev-fringe.gz" #t)
-                         (write-fringe-to-disk (set->list new-fringe) "current-fringe.gz")
-                         ;(write-fringe-to-disk (set->list new-fringe) "current-fringe.gz")
+                         (rename-file-or-directory "current-fringe" "prev-fringe" #t)
+                         (write-fringe-to-disk (set->list new-fringe) "current-fringe")
                          (fringe-file-search (add1 depth) found-goal? (+ npos (set-count new-fringe))))])])))
 
 ;; fringe-mem-search: (setof position) (setof positions) int -> #f or position
@@ -59,13 +57,13 @@
                        (fringe-mem-search current-fringe new-fringe (add1 depth) found-goal? (+ npos (set-count new-fringe))))])]))
 
 
-;(block10-init)
-(climb12-init)
+(block10-init)
+;(climb12-init)
 ;(climb15-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
-(write-fringe-to-disk empty "prev-fringe.gz")
-(write-fringe-to-disk (list *start*) "current-fringe.gz")
+(write-fringe-to-disk empty "prev-fringe")
+(write-fringe-to-disk (list *start*) "current-fringe")
 
 (time (fringe-file-search 1))
 ;(time (fringe-mem-search (set) (set *start*) 1))

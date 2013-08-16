@@ -1,14 +1,15 @@
 #lang racket
 
 (require (planet gcr/riot))
-(require (planet soegaard/gzip:2:2))
+;(require (planet soegaard/gzip:2:2))
+(require file/gzip)
+(require file/gunzip)
 (require rnrs/sorting-6)
 (require data/heap)
 (require srfi/1)
 (require racket/fixnum)
 (require racket/set)
 (require mzlib/string) ;; supposedly depricated but seems to need the require for 5.3.5
-(require file/gzip)
 
 (require "stp-init.rkt")
 (require "stp-solve-base.rkt")
@@ -25,7 +26,7 @@
 (define *n-processors* 4)
 (define *expand-multiplier* 1)
 (define *diy-threshold* 1000)
-(define *pre-proto-fringe-size* 5000)
+(define *pre-proto-fringe-size* 500)
 
 (define *most-positive-fixnum* 0)
 (define *most-negative-fixnum* 0)
@@ -53,9 +54,9 @@
 ;; returning the number of positions in the newly expanded and merged fringe
 ;; ASSUME: current-fringe-vec is sorted.
 (define (expand-fringe-self pf-spec cf-spec depth)
-  (let* ([prev-fringe-set (list->set (read-fringe-from-gzfile (first pf-spec)))]
-         [current-fringe-vec (vectorize-list (read-fringe-from-gzfile (first cf-spec)))]
-         [new-cf-name (format "current-fringe-d~a.gz" depth)]
+  (let* ([prev-fringe-set (list->set (read-fringe-from-file (first pf-spec)))]
+         [current-fringe-vec (vectorize-list (read-fringe-from-file (first cf-spec)))]
+         [new-cf-name (format "current-fringe-d~a" depth)]
          [res (for/list ([p (for/fold ([expansions (set)])
                               ([p-to-expand current-fringe-vec])
                               (set-union expansions
@@ -68,7 +69,7 @@
     (for ([p res])
       (printf "pos: ~a~%~a~%" (stringify p) p))|#
     (delete-file (first pf-spec))
-    (rename-file-or-directory (first cf-spec) (format "prev-fringe-d~a.gz" depth) #t)
+    (rename-file-or-directory (first cf-spec) (format "prev-fringe-d~a" depth) #t)
     (write-fringe-to-disk (sort res position<?) new-cf-name)
     (list new-cf-name (length res) (file-size new-cf-name))))
 
@@ -114,7 +115,7 @@
          [heap-o-fheads (let ([lheap (make-heap (lambda (fh1 fh2) (position<? (fringehead-next fh1) (fringehead-next fh2))))])
                           (heap-add-all! lheap lo-effh)
                           lheap)]
-         [expand-out (open-output-gz-file (string->path ofile-name) #:replace #t)]
+         [expand-out (open-output-file ofile-name #:exists 'replace)]
          [unique-expansions 0]
          [sample-stats (vector 0 *most-positive-fixnum* *most-negative-fixnum* empty #f ofile-name 0)]
          )
@@ -132,17 +133,17 @@
         (advance-fhead! an-fhead)
         (unless (fhdone? an-fhead) ;;(eof-object? (peek-byte (fringehead-iprt an-fhead) 1))
           (heap-add! heap-o-fheads an-fhead))))
-    (vector-set! sample-stats 0 unique-expansions)
-    (vector-set! sample-stats 6 (file-size ofile-name))
     ;(printf "remote-expand-part-fringe: HAVE EXPANSIONS:~%")
     ;(for ([p resv]) (displayln p))
     (for-each (lambda (fh) (close-input-port (fringehead-iprt fh))) (cons pffh (cons cffh lo-effh))) 
     (close-output-port expand-out)
+    (vector-set! sample-stats 0 unique-expansions)
+    (vector-set! sample-stats 6 (file-size ofile-name))
     (for ([efspec lo-expand-fspec]) (delete-file (first efspec)))
     (when (file-exists? (string-append "/tmp/" (car pfspec))) (delete-file (string-append "/tmp/" (car pfspec))))
-    (unless (file-exists? (format "/tmp/prev-fringe-d~a.gz" depth))
+    (unless (file-exists? (format "/tmp/prev-fringe-d~a" depth))
       (rename-file-or-directory (car cfspec) 
-                                (format "/tmp/prev-fringe-d~a.gz" depth)))
+                                (format "/tmp/prev-fringe-d~a" depth)))
     #|(printf "remove-dupes: starting w/ ~a positions, expansion has ~a/~a positions~%"
             (second expand-fspec) unique-expansions (position-count-in-file ofile-name))|#
     #|(unless (check-sorted-fringe? ofile-name)
@@ -155,7 +156,7 @@
 ;; returning the file name to which the proto-fringe was written
 (define (process-proto-fringe sop pre-ofile-template pre-ofile-counter pre-ofiles)
   (cons (let ([resv (for/vector #:length (set-count sop) ([p sop]) p)]
-              [f (format "~a~a.gz" pre-ofile-template pre-ofile-counter)])
+              [f (format "~a~a" pre-ofile-template pre-ofile-counter)])
           (vector-sort! position<? resv)
           ;(set! resv (vector-sort position<? resv))
           (write-fringe-to-disk resv f)
@@ -205,7 +206,7 @@
              (format "only expanded ~a of the assigned ~a (~a-~a) positions" expanded-phase1 assignment-count start end)))
     (close-input-port (fringehead-iprt cffh))
     ;; PHASE 2: now pass through the expansion file as well as prev-fringe and current-fringe to remove duplicates
-    (remove-dupes pf-spec cf-spec pre-ofiles (string-append (substring pre-ofile-template 5) ".gz") depth)))
+    (remove-dupes pf-spec cf-spec pre-ofiles (substring pre-ofile-template 5) depth)))
 
 
 ;; remote-expand-fringe: (listof (list fixnum fixnum)) fspec fspec int -> (listof sampling-stat)
@@ -246,10 +247,10 @@
 (define (remote-merge-expansions my-range expand-files-specs depth ofile-name)
   (let* (;[prev-fringe-fh (fh-from-fspec pf-spec)]
          ;[current-fringe-fh (fh-from-fspec cf-spec)]
-         [mrg-segment-oport (open-output-gz-file ofile-name)]
+         [mrg-segment-oport (open-output-file ofile-name)]
          [to-merge-ports 
           (for/list ([i (in-range (length expand-files-specs))])
-            (open-input-gz-file (string->path (format "partial-expansion~a.gz" (~a i #:left-pad-string "0" #:width 2 #:align 'right)))))]
+            (open-input-file (string->path (format "partial-expansion~a" (~a i #:left-pad-string "0" #:width 2 #:align 'right)))))]
          [fastforwarded-fheads
           (filter-not (lambda (fh) (eof-object? (fringehead-next fh)))
                       (for/list ([iprt to-merge-ports]
@@ -300,7 +301,7 @@
          (for/work ([merge-range merge-ranges] ;; merged results should come back in order of merge-ranges assignments
                     [i (in-range (length merge-ranges))])
                    (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end"))
-                   (let* ([ofile-name (format "partial-merge~a.gz" (~a i #:left-pad-string "0" #:width 2 #:align 'right))]
+                   (let* ([ofile-name (format "partial-merge~a" (~a i #:left-pad-string "0" #:width 2 #:align 'right))]
                           [merged-resp-rng-size (remote-merge-expansions merge-range expand-files-specs depth ofile-name)]
                           )
                      ;;(printf "distributed-expand-fringe: merge-range = ~a~%~a~%" merge-range merged-responsibility-range)
@@ -387,18 +388,16 @@
                                    [len sef-lengths]
                                    #:unless (= len (position-count-in-file f)))
                          (error 'distributed-expand-fringe (format "err-chk2: partial-merges do not match up for ~a which should be ~a" f len)))]|#
-         [new-cf-name (format "current-fringe-d~a.gz" depth)]
+         [new-cf-name (format "current-fringe-d~a" depth)]
          )
     (rename-file-or-directory (first cf-spec)
-                              (format "prev-fringe-d~a.gz" depth) #t) ;;(system "mv current-fringe prev-fringe")
+                              (format "prev-fringe-d~a" depth) #t) ;;(system "mv current-fringe prev-fringe")
     (for ([f sorted-expansion-files])
       ;(printf "distributed-expand-fringe: concatenating ~a~%" f)
-      (system (format "zcat ~a >> current-fringe-d~a" f depth)))
-    (gzip (format "current-fringe-d~a" depth))
+      (system (format "cat ~a >> current-fringe-d~a" f depth)))
     #|(unless (check-sorted-fringe? new-cf-name)
       (error 'distributed-expand-fringe "concatenated merge files do not make a sorted fringe"))|#
     (delete-file (first pf-spec))
-    (delete-file (format "current-fringe-d~a" depth))
     (system "rm partial-expansion* partial-merge*")
     (printf "distributed-expand-fringe: file manipulation ~a, and total at depth ~a: ~a~%" 
             (~r (/ (- (current-seconds) merge-end) 60.0) #:precision 4) depth (~r (/ (- (current-seconds) expand-start) 60.0) #:precision 4))
@@ -449,21 +448,21 @@
                 (printf "At depth ~a: current-fringe has ~a positions (and new-fringe ~a)~%" 
                         depth (second cf-spec) (second new-fringe-spec))
                 ;;(for ([p current-fringe]) (displayln p))
-                (cfs-file (cons (format "prev-fringe-d~a.gz" depth) (cdr cf-spec))
+                (cfs-file (cons (format "prev-fringe-d~a" depth) (cdr cf-spec)) ;; use current-fringe as prev-fringe at next level
                           new-fringe-spec
                           (add1 depth)))]))
 
 (define (start-cluster-fringe-search start-position)
   ;; initialization of fringe files
-  (write-fringe-to-disk empty "prev-fringe-d0.gz")
-  (write-fringe-to-disk (list start-position) "current-fringe-d0.gz")
-  (cfs-file (list "prev-fringe-d0.gz" 0 (file-size "prev-fringe-d0.gz"))
-            (list "current-fringe-d0.gz" 1 (file-size "current-fringe-d0.gz"))
+  (write-fringe-to-disk empty "prev-fringe-d0")
+  (write-fringe-to-disk (list start-position) "current-fringe-d0")
+  (cfs-file (list "prev-fringe-d0" 0 (file-size "prev-fringe-d0"))
+            (list "current-fringe-d0" 1 (file-size "current-fringe-d0"))
             1))
   
 
-;(block10-init)
-(climb12-init)
+(block10-init)
+;(climb12-init)
 ;(climb15-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 

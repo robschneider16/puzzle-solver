@@ -1,6 +1,8 @@
 #lang racket
 
-(require (planet soegaard/gzip:2:2))
+;(require (planet soegaard/gzip:2:2))
+(require file/gzip)
+(require file/gunzip)
 (require srfi/25) ;; multi-dimensional arrays
 (require "stp-init.rkt")
 (require racket/fixnum)
@@ -52,26 +54,30 @@
 
 ;; write-fringe-to-disk: (listof or vectorof position) string -> void
 ;; writes the positions from the given fringe (whether list or vector) into a file with given file-name.
-;; If file-name has .gz extension, writes a gzipped file.
-(define (write-fringe-to-disk fringe file-name (compress #t))
-  (let ([my-output (if (string=? ".gz" (substring file-name (- (string-length file-name) 3)))
-                       (open-output-gz-file (string->path file-name) #:replace #t)
-                       (open-output-file file-name #:exists 'replace))])
+(define (write-fringe-to-disk fringe file-name)
+  (let ([my-output (open-output-file file-name #:exists 'replace)])
     (for ([position fringe])
       (fprintf my-output "~a~%" position))
     (flush-output my-output)
     (close-output-port my-output)))
 
-;; read-fringe-from-gzfile: string -> (listof position)
+;; read-fringe-from-file: string -> (listof position)
 ;; reads a file from a file path (if you are in the current directory just simply the file-name)
 ;; and returns the fringe that was in that file.
-(define (read-fringe-from-gzfile file-name)
-  (port->list read (open-input-gz-file (string->path file-name))))
+(define (read-fringe-from-file file-name)
+  (let* ([iport (open-input-file file-name)]
+         [the-fringe (port->list read iport)])
+    (close-input-port iport)
+    the-fringe))
 
 ;; position-count-in-file: string -> number
 ;; reports the number of positions in the given fringe file assuming the file was written with write-fringe-to-disk
 (define (position-count-in-file f)
-  (read-from-string (with-output-to-string (lambda () (system (format "gunzip -c ~a | wc -l" f))))))
+  (read-from-string (with-output-to-string 
+                     (lambda () (system (if (string=? (substring f (- (string-length f) 3)) ".gz")
+                                            (format "zcat ~a | wc -l" f)
+                                            (format "wc -l ~a" f)))))))
+                    
 
 ;; touch: string -> void
 ;; create the file with given name
@@ -103,7 +109,7 @@
 ;; check-sorted-fringe?: string -> boolean
 ;; check to see that a given fringe file is indeed sorted
 (define (check-sorted-fringe? f)
-  (let* ([myin (open-input-gz-file (string->path f))]
+  (let* ([myin (open-input-file f)]
          [prevpos (read myin)]
          [bool-res (for/and ([pos (in-port read myin)])
                      (let ([res (position<? prevpos pos)])
@@ -157,7 +163,7 @@
 ;; create a fringehead from a given fspec
 ;; *** the open port must be closed by the requestor of this fringehead
 (define (fh-from-fspec fs)
-  (let ([inprt (open-input-gz-file (string->path (first fs)))])
+  (let ([inprt (open-input-file (first fs))])
     (fringehead (read inprt) inprt 1 (second fs))))
 
 
