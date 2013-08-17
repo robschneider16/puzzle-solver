@@ -20,13 +20,13 @@
 (provide (all-defined-out))
 
 (define *master-name* "the name of the host where the master process is running")
-;(set! *master-name* "localhost")
-(set! *master-name* "wcp")
-(define *n-processors* 31)
-;(define *n-processors* 4)
+(set! *master-name* "localhost")
+;(set! *master-name* "wcp")
+;(define *n-processors* 31)
+(define *n-processors* 4)
 (define *expand-multiplier* 1)
-(define *diy-threshold* 1000)
-(define *pre-proto-fringe-size* 3000)
+(define *diy-threshold* 5000)
+(define *min-pre-proto-fringe-size* 3000)
 
 (define *most-positive-fixnum* 0)
 (define *most-negative-fixnum* 0)
@@ -186,7 +186,7 @@
   (let* ([pre-ofile-template (format "/tmp/partial-expansion~a" (~a process-id #:left-pad-string "0" #:width 2 #:align 'right))]
          [pre-ofile-counter 0]
          [pre-ofiles empty]
-         
+         [dynamic-proto-fringe-size (max *min-pre-proto-fringe-size* (/ (second cf-spec) 500))]
          [start (first ipair)]
          [end (second ipair)]
          [assignment-count (- end start)]
@@ -195,6 +195,7 @@
                     [fh (fh-from-fspec cf-spec)])
                  ((>= i start) fh)
                  (advance-fhead! fh))])
+    ;; compute the current 
     ;; do the actual expansions
     (do ([i 1 (add1 i)]
          [expansions (expand (fringehead-next cffh)) (set-union expansions (expand (fringehead-next cffh)))])
@@ -203,7 +204,8 @@
              (process-proto-fringe expansions pre-ofile-template pre-ofile-counter pre-ofiles)))
       (when (fhdone? cffh) 
         (error 'remote-expand-part-fringe (format "hit end of cur-fringe after ~a of ~a expansions" expanded-phase1 assignment-count)))
-      (when (> (set-count expansions) *pre-proto-fringe-size*)
+      ;; *** Dynamically choose the size of the pre-proto-fringes to keep the number of files below 500 ***
+      (when (> (set-count expansions) dynamic-proto-fringe-size)
         (set! pre-ofiles
               (process-proto-fringe expansions pre-ofile-template pre-ofile-counter pre-ofiles))
         (set! pre-ofile-counter (add1 pre-ofile-counter))
@@ -508,9 +510,9 @@
             1))
   
 
-(block10-init)
+;(block10-init)
 ;(climb12-init)
-;(climb15-init)
+(climb15-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
 ;;#|

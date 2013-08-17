@@ -32,5 +32,8 @@
         (gzip "test-out")))
   |#        
            
-
-        
+#| Tested fine at 500, when trying for 1000 it failed after 993
+(define how-many-open-files (for/list ([i 00])
+                              (displayln i)
+                              (open-output-file (format "gak~a" i))))
+|#
