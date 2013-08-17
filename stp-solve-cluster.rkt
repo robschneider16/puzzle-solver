@@ -28,8 +28,8 @@
 ;(define *n-processors* 31)
 ;(set! *local-store* "/state/partition1/")
 (define *expand-multiplier* 1)
-(define *diy-threshold* 5000)
-(define *min-pre-proto-fringe-size* 3000)
+(define *diy-threshold* 1000)
+(define *min-pre-proto-fringe-size* 500)
 
 (define *most-positive-fixnum* 0)
 (define *most-negative-fixnum* 0)
@@ -146,11 +146,13 @@
     (for-each (lambda (fh) (close-input-port (fringehead-iprt fh))) (cons pffh (cons cffh lo-effh))) 
     (close-output-port expand-out)
     ;; compress and copy the partial-expansion file from /tmp to home for other processes to have when merging
-    (gzip ofile-name)
-    (copy-file (string-append ofile-name ".gz") (string-append (substring ofile-name 5) ".gz"))
+    ;; but do it in one swell foop
+    (let ([iprt (open-input-file ofile-name)]
+          [oprt (open-output-file (string-append (substring ofile-name 5) ".gz"))])
+      (gzip-through-ports iprt oprt #f (file-or-directory-modify-seconds ofile-name)))
     ;; complete the sampling-stat
     (vector-set! sample-stats 0 unique-expansions)
-    (vector-set! sample-stats 6 (file-size (string-append ofile-name ".gz")))
+    (vector-set! sample-stats 6 (file-size (string-append (substring ofile-name 5) ".gz")))
     ;; move local copy of current-fringe to local prev-fringe of next depth, unless we're on same machine as master
     (unless (string=? *master-name* "localhost")
       (rename-file-or-directory (car cfspec) 
@@ -261,19 +263,20 @@
 
 ;; bring-local-partial-expansions: int -> void
 ;; copy the gzipped partial expansions from the shared disk to our local /tmp, uncompress the copy and delete the gzipped version
+;; TODO:
+;; 1. replace the copy-and-uncompress combination with a gunzip-through-ports single call to save disk space (and time?)
+;; 2. this obviates the deletion of the compressed version in the local space -- remove that
 (define (bring-local-partial-expansions n)
   (for ([i (in-range n)])
-    (let ([tmp-partexp-gz-name (format "/tmp/partial-expansion~a.gz" (~a i #:left-pad-string "0" #:width 2 #:align 'right))])
-      ;; copy the gzipped files to local disk -- unless this process id is here from expansion
-      (unless (file-exists? tmp-partexp-gz-name)
-        (copy-file (format "partial-expansion~a.gz" (~a i #:left-pad-string "0" #:width 2 #:align 'right))
-                   tmp-partexp-gz-name))
-      ;; uncompress them
-      (unless (file-exists? (substring tmp-partexp-gz-name 0 (- (string-length tmp-partexp-gz-name) 3)))
-        (gunzip tmp-partexp-gz-name
-                (lambda (dest boflag) (build-path "/tmp/" dest))))
-      ;; delete the compressed version
-      (delete-file tmp-partexp-gz-name))))
+    (let ([tmp-partexp-name (format "/tmp/partial-expansion~a" (~a i #:left-pad-string "0" #:width 2 #:align 'right))])
+      (unless (file-exists? tmp-partexp-name) ; unless this process id is here from expansion
+        (let* ([shared-gz-name (string-append (substring tmp-partexp-name 5) ".gz")]
+               [iprt (open-input-file shared-gz-name)]
+               [oprt (open-output-file tmp-partexp-name)])
+          ;; copy the gzipped files to local disk while unzipping in one swell foop
+          (gunzip-through-ports iprt oprt
+                                tmp-partexp-name
+                                (file-or-directory-modify-seconds shared-gz-name)))))))
 
 ;; merge-expansions: (list int int) (listof fspec) int string -> (list string number)
 ;; given a specification of a range of _position-hash-codes_ to consider,
