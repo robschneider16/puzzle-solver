@@ -44,6 +44,11 @@
 
 ;; a fspec is a list: (list string int int)
 ;; where the string is the file-name-(path), count of positions, and file-size in bytes
+;; NOTE: an fspec must be a list or vector because they are passed over the riot layer
+;; TODO:
+;; 1. convert fspec to vector
+;; 2. add interface-layer instead of explicit vector-ref
+;; 3. separate file-name into two fields: filename and base-path
 
 ;; ******************************************************************************
 

@@ -20,10 +20,13 @@
 (provide (all-defined-out))
 
 (define *master-name* "the name of the host where the master process is running")
+(define *local-store* "the root portion of path to where workers can store temporary fringe files")
 (set! *master-name* "localhost")
+(set! *local-store* "/space/fringefiles/")
 (define *n-processors* 4)
 ;(set! *master-name* "wcp")
 ;(define *n-processors* 31)
+;(set! *local-store* "/state/partition1/")
 (define *expand-multiplier* 1)
 (define *diy-threshold* 5000)
 (define *min-pre-proto-fringe-size* 3000)
@@ -509,9 +512,9 @@
             1))
   
 
-;(block10-init)
+(block10-init)
 ;(climb12-init)
-(climb15-init)
+;(climb15-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
 ;;#|
