@@ -21,15 +21,16 @@
 
 (define *master-name* "the name of the host where the master process is running")
 (define *local-store* "the root portion of path to where workers can store temporary fringe files")
-(set! *master-name* "localhost")
-(set! *local-store* "/space/fringefiles/")
-(define *n-processors* 4)
-;(set! *master-name* "wcp")
-;(define *n-processors* 31)
-;(set! *local-store* "/state/partition1/")
+;(set! *master-name* "localhost")
+;(set! *local-store* "/space/fringefiles/")
+;(define *n-processors* 4)
+(set! *master-name* "wcp")
+(set! *local-store* "/state/partition1/fringefiles/")
+(define *n-processors* 31)
+
 (define *expand-multiplier* 1)
-(define *diy-threshold* 1000)
-(define *min-pre-proto-fringe-size* 500)
+(define *diy-threshold* 3000)
+(define *min-pre-proto-fringe-size* 2000)
 
 (define *most-positive-fixnum* 0)
 (define *most-negative-fixnum* 0)
@@ -148,9 +149,7 @@
     (close-output-port expand-out)
     ;; compress and copy the partial-expansion file from /tmp to home for other processes to have when merging
     ;; but do it in one swell foop
-    (let ([iprt (open-input-file (string-append *local-store* ofile-name))]
-          [oprt (open-output-file (string-append ofile-name ".gz"))])
-      (gzip-through-ports iprt oprt #f (file-or-directory-modify-seconds (string-append *local-store* ofile-name))))
+    (gzip (string-append *local-store* ofile-name) (string-append ofile-name ".gz"))
     ;; complete the sampling-stat
     (vector-set! sample-stats 0 unique-expansions)
     (vector-set! sample-stats 6 (file-size (string-append ofile-name ".gz")))
@@ -249,19 +248,14 @@
 ;; ------------------------------------------------------------------------------------------
 ;; MERGING .....
 
-;; bring-local-partial-expansions: int -> void
+;; bring-local-partial-expansions: (listof fspec) -> void
 ;; copy the gzipped partial expansions from the shared disk to our local /tmp, uncompress the copy and delete the gzipped version
-;; TODO:
-(define (bring-local-partial-expansions n)
-  (for ([i (in-range n)])
-    (let* ([base-fname (format "partial-expansion~a" (~a i #:left-pad-string "0" #:width 2 #:align 'right))]
-           [tmp-partexp-name (string-append *local-store* base-fname)])
+(define (bring-local-partial-expansions lo-expand-specs)
+  (for ([fs lo-expand-specs])
+    (let* ([base-fname (fspec-fname fs)] ; has .gz extension
+           [tmp-partexp-name (string-append *local-store* (substring base-fname 0 (- (string-length base-fname) 3)))])
       (unless (file-exists? tmp-partexp-name) ; unless this process id is here from expansion
-        (let* ([shared-gz-name (string-append base-fname ".gz")]
-               [iprt (open-input-file shared-gz-name)]
-               [oprt (open-output-file tmp-partexp-name)])
-          ;; copy the gzipped files to local disk while unzipping in one swell foop
-          (gunzip-through-ports iprt oprt))))))
+        (gunzip base-fname (lambda (a b) (string->path tmp-partexp-name)))))))
                                 
 
 ;; merge-expansions: (list int int) (listof fspec) int string -> (list string number)
@@ -277,7 +271,7 @@
          [copy-partial-expansions-to-local-disk ;; but only if not sharing host with master
           (unless (string=? *master-name* "localhost")
             ;; copy shared-drive expansions to *local-store*, uncompress, and delete compressed version
-            (bring-local-partial-expansions (length expand-files-specs)))]
+            (bring-local-partial-expansions expand-files-specs))]
          [to-merge-ports 
           (for/list ([i (in-range (length expand-files-specs))])
             (open-input-file (format "~apartial-expansion~a" *local-store* (~a i #:left-pad-string "0" #:width 2 #:align 'right))))]
@@ -316,12 +310,9 @@
     (close-output-port mrg-segment-oport)
     (for ([iprt to-merge-ports]) (close-input-port iprt))
     ;; arrange to move a compressed version of ofile-name to the shared disk
-    (gzip (string-append *local-store* ofile-name))
-    ;; copy compressed /tmp/partial-mergeDD.gz file to shared disk
-    (copy-file (string-append *local-store* ofile-name ".gz") (string-append ofile-name ".gz"))
+    (gzip (string-append *local-store* ofile-name) (string-append ofile-name ".gz"))
     ;(printf "remote-merge-expansions: about to try deleting ofile-name, ~a (and w/ .gz extension)~%" ofile-name)
     (delete-file (string-append *local-store* ofile-name))
-    (delete-file (string-append *local-store* ofile-name ".gz"))
     (unless (string=? *master-name* "localhost")
       (for ([fspc expand-files-specs]) 
         (delete-file (string-append *local-store* (substring (fspec-fname fspc) 0 (- (string-length (fspec-fname fspc)) 3)))))) ;remove the local uncompressed expansions
@@ -330,7 +321,7 @@
 ;; remote-merge: (listof (list fixnum fixnum)) (listof fspec) int -> (listof string int)
 (define (remote-merge merge-ranges expand-files-specs depth)
   (when (string=? *master-name* "localhost")
-    (bring-local-partial-expansions (length expand-files-specs)))
+    (bring-local-partial-expansions expand-files-specs))
   (let ([merge-results
          (for/work ([merge-range merge-ranges] ;; merged results should come back in order of merge-ranges assignments
                     [i (in-range (length merge-ranges))])
