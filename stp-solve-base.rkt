@@ -42,9 +42,15 @@
 ;; a bw-position is a (vector int)
 ;; where each int is a bitwise representation of the locations of the pieces of that type
 
-;; a fspec is a list: (list string int int)
-;; where the string is the file-name-(path), count of positions, and file-size in bytes
+;; a fspec is a vector: (vector string string int int)
+;; where the strings are the file-name and the base path to the file, the count of positions, and file-size in bytes
 ;; NOTE: an fspec must be a list or vector because they are passed over the riot layer
+(define (make-fspec fname fbase pcount fsize) (vector fname fbase pcount fsize))
+(define (fspec-fname an-fs) (vector-ref an-fs 0))
+(define (fspec-fbase an-fs) (vector-ref an-fs 1))
+(define (fspec-fullpath an-fs) (string-append (fspec-fbase an-fs) (fspec-fname an-fs)))
+(define (fspec-pcount an-fs) (vector-ref an-fs 2))
+(define (fspec-fsize an-fs) (vector-ref an-fs 3))
 ;; TODO:
 ;; 1. convert fspec to vector
 ;; 2. add interface-layer instead of explicit vector-ref
@@ -91,24 +97,24 @@
 ;; fringe-file-not-ready?: fspec [check-alt-flag #f] -> boolean
 ;; determine if the file exists on disk and has the appropriate size
 ;; with optional check-alt-flag will look on the nfs share and copy if found
-(define (fringe-file-not-ready? spec-triple [check-alt-flag #f])
+(define (fringe-file-not-ready? fspec [check-alt-flag #f])
   (when (and check-alt-flag
-             (not (file-exists? (first spec-triple)))
-             (file-exists? (substring (car spec-triple) 5)))
-    (copy-file (substring (car spec-triple) 5) (car spec-triple))) ;; YUCK!
-  (or (not (file-exists? (first spec-triple)))
-      (< (file-size (first spec-triple)) (third spec-triple))))
+             (not (file-exists? (fspec-fullpath fspec)))
+             (file-exists? (fspec-fname fspec))) ;; check working (shared) directory
+    (copy-file (fspec-fname fspec) (fspec-fullpath fspec))) ;; YUCK!
+  (or (not (file-exists? (fspec-fullpath fspec)))
+      (< (file-size (fspec-fullpath fspec)) (fspec-fsize fspec))))
       
 
 ;; wait-for-files: (listof fspec) [check-alt-flag #f] -> 'ready
-;; given a list of fringe-specs (list filename num-positions compressed-size), wait until the file is present on the local machine
-;; with the specified size.  if check-alt-flag is true, then drop the /tmp/ and see if the file is available via NFS (copy if so!)
+;; given a list of fringe-specs, wait until the file is present in the specified location
+;; with the specified size.  if check-alt-flag is true, then drop the fbase and see if the file is available via NFS (copy if so!)
 (define (wait-for-files lo-fspecs [check-alt-flag #f])
   (do ([fspecs (filter (lambda (fspec) (fringe-file-not-ready? fspec check-alt-flag)) lo-fspecs)
                (filter (lambda (fspec) (fringe-file-not-ready? fspec check-alt-flag)) fspecs)]
        [sleep-time 0.01 (* sleep-time 2)])
     ((empty? fspecs) 'ready)
-    (printf "wait-for-files: waiting for ~a files such as ~a ... and sleeping ~a~%" (length fspecs) (first (first fspecs)) sleep-time)
+    (printf "wait-for-files: waiting for ~a files such as ~a ... and sleeping ~a~%" (length fspecs) (fspec-fullpath (first fspecs)) sleep-time)
     (sleep sleep-time)))
 
 ;; check-sorted-fringe?: string -> boolean
@@ -168,8 +174,8 @@
 ;; create a fringehead from a given fspec
 ;; *** the open port must be closed by the requestor of this fringehead
 (define (fh-from-fspec fs)
-  (let ([inprt (open-input-file (first fs))])
-    (fringehead (read inprt) inprt 1 (second fs))))
+  (let ([inprt (open-input-file (fspec-fullpath fs))])
+    (fringehead (read inprt) inprt 1 (fspec-pcount fs))))
 
 
 ;; Set-like Operations on Lists

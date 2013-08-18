@@ -31,7 +31,22 @@
           (close-output-port oprt))
         (gzip "test-out")))
   |#        
-           
+
+;#| g(un)zip-through-ports: For *ntimes* = 50, takes 2 minutes, 39 seconds
+(time (for ([i *ntimes*])
+        (let ([iprt (open-input-file "current-fringeC12d59.gz")]
+              [oprt (open-output-file "test-out" #:exists 'replace)])
+          (gunzip-through-ports iprt oprt)
+          (close-input-port iprt)
+          (close-output-port oprt))
+        (delete-file "test-out")
+        ))
+(time (for ([i *ntimes*])
+        (gunzip "current-fringeC12d59.gz" (lambda (f b) (string->path "test-out")))
+        ;(displayln (system "wc -l test-out"))
+        (delete-file "test-out")))
+;  |#        
+
 #| Tested fine at 500, when trying for 1000 it failed after 993
 (define how-many-open-files (for/list ([i 00])
                               (displayln i)

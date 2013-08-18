@@ -57,8 +57,8 @@
 ;; returning the number of positions in the newly expanded and merged fringe
 ;; ASSUME: current-fringe-vec is sorted.
 (define (expand-fringe-self pf-spec cf-spec depth)
-  (let* ([prev-fringe-set (list->set (read-fringe-from-file (first pf-spec)))]
-         [current-fringe-vec (vectorize-list (read-fringe-from-file (first cf-spec)))]
+  (let* ([prev-fringe-set (list->set (read-fringe-from-file (fspec-fname pf-spec)))] ; pf- and cf-spec's in expand-fringe-self should have empty fbase
+         [current-fringe-vec (vectorize-list (read-fringe-from-file (fspec-fname cf-spec)))]
          [new-cf-name (format "current-fringe-d~a" depth)]
          [res (for/list ([p (for/fold ([expansions (set)])
                               ([p-to-expand current-fringe-vec])
@@ -71,10 +71,10 @@
     #|(printf "Finished the work packet generating a set of ~a positions~%" (set-count res))
     (for ([p res])
       (printf "pos: ~a~%~a~%" (stringify p) p))|#
-    (delete-file (first pf-spec))
-    (rename-file-or-directory (first cf-spec) (format "prev-fringe-d~a" depth) #t)
+    (delete-file (fspec-fname pf-spec))
+    (rename-file-or-directory (fspec-fname cf-spec) (format "prev-fringe-d~a" depth) #t)
     (write-fringe-to-disk (sort res position<?) new-cf-name)
-    (list new-cf-name (length res) (file-size new-cf-name))))
+    (make-fspec new-cf-name "" (length res) (file-size new-cf-name))))
 
 ;;----------------------------------------------------------------------------------------
 ;; DISTRIBUTED EXPANSION AND MERGING OF FRINGES
@@ -106,25 +106,26 @@
 
 ;; remove-dupes: fspec fspec (listof fspec) string int -> sampling-stat
 ;; Remove duplicate positions from the list of expand-fspec files, for any positions that also appear in the prev- or current-fringes.
-;; Write the non-duplicate positions to a local /tmp/partial-expansionDD file, but get a gzipped copy to the working directory.
-;; Accordingly, the sampling-stat has a filename pointing to the working directory with a .gz extension.
+;; Write the non-duplicate positions to a "partial-expansionDD" file in a *local-store* folder, but get a gzipped copy to the working directory.
+;; Accordingly, the sampling-stat return value has a filename pointing to the working directory with a .gz extension.
 (define (remove-dupes pfspec cfspec lo-expand-fspec ofile-name depth)
+  ;; the ofile-name is just the file-name -- no *local-store* path where needed
   #|(printf "EXPAND PHASE 2 (REMOVE DUPLICATES) pfspec: ~a~%cfspec: ~a~%first of lo-expand-fspec: ~a~%ofile-name: ~a~%depth: ~a~%"
           pfspec cfspec (first lo-expand-fspec) ofile-name depth)|#
   ;; EXPAND PHASE 2 (REMOVE DUPLICATES)
-  (let* ([pffh (cond [(file-exists? (string-append "/tmp/" (car pfspec))) ;; moved to this from current-fringe during prev depth
-                      (fh-from-fspec (cons (string-append "/tmp/" (car pfspec)) (cdr pfspec)))]
-                     [else (copy-file (car pfspec) (string-append "/tmp/" (car pfspec)))
-                           (fh-from-fspec (cons (string-append "/tmp/" (car pfspec)) (cdr pfspec)))])]
+  (let* ([pffh (cond [(file-exists? (string-append *local-store* (fspec-fname pfspec))) ;; moved to this from current-fringe during prev depth
+                      (fh-from-fspec (make-fspec (fspec-fname pfspec) *local-store* (fspec-pcount pfspec) (fspec-fsize pfspec)))]
+                     [else (copy-file (fspec-fname pfspec) (string-append *local-store* (fspec-fname pfspec)))
+                           (fh-from-fspec (make-fspec (fspec-fname pfspec) *local-store* (fspec-pcount pfspec) (fspec-fsize pfspec)))])]
          [cffh (fh-from-fspec cfspec)]
          [lo-effh (for/list ([an-fspec lo-expand-fspec]) (fh-from-fspec an-fspec))]
          [heap-o-fheads (let ([lheap (make-heap (lambda (fh1 fh2) (position<? (fringehead-next fh1) (fringehead-next fh2))))])
                           (heap-add-all! lheap lo-effh)
                           lheap)]
-         [expand-out (open-output-file ofile-name #:exists 'replace)]
+         [expand-out (open-output-file (string-append *local-store* ofile-name) #:exists 'replace)]
          [unique-expansions 0]
          [sample-stats 
-          (vector 0 *most-positive-fixnum* *most-negative-fixnum* empty #f (string-append (substring ofile-name 5) ".gz") 0)]
+          (vector 0 *most-positive-fixnum* *most-negative-fixnum* empty #f (string-append ofile-name ".gz") 0)]
          )
     ;; locally merge the pre-proto-fringes, removing duplicates from prev- and current-fringes
     (for ([an-fhead (in-heap/consume! heap-o-fheads)])
@@ -147,36 +148,37 @@
     (close-output-port expand-out)
     ;; compress and copy the partial-expansion file from /tmp to home for other processes to have when merging
     ;; but do it in one swell foop
-    (let ([iprt (open-input-file ofile-name)]
-          [oprt (open-output-file (string-append (substring ofile-name 5) ".gz"))])
-      (gzip-through-ports iprt oprt #f (file-or-directory-modify-seconds ofile-name)))
+    (let ([iprt (open-input-file (string-append *local-store* ofile-name))]
+          [oprt (open-output-file (string-append ofile-name ".gz"))])
+      (gzip-through-ports iprt oprt #f (file-or-directory-modify-seconds (string-append *local-store* ofile-name))))
     ;; complete the sampling-stat
     (vector-set! sample-stats 0 unique-expansions)
-    (vector-set! sample-stats 6 (file-size (string-append (substring ofile-name 5) ".gz")))
+    (vector-set! sample-stats 6 (file-size (string-append ofile-name ".gz")))
     ;; move local copy of current-fringe to local prev-fringe of next depth, unless we're on same machine as master
     (unless (string=? *master-name* "localhost")
-      (rename-file-or-directory (car cfspec) 
-                                (format "/tmp/prev-fringe-d~a" depth)))
+      (rename-file-or-directory (fspec-fullpath cfspec)
+                                (format "~aprev-fringe-d~a" *local-store* depth)))
     ;; delete files that are no longer needed
-    (for ([efspec lo-expand-fspec]) (delete-file (first efspec)))
-    (when (file-exists? (string-append "/tmp/" (car pfspec))) (delete-file (string-append "/tmp/" (car pfspec))))
+    (for ([efspec lo-expand-fspec]) (delete-file (fspec-fullpath efspec)))
+    (when (file-exists? (string-append *local-store* (fspec-fname pfspec))) (delete-file (string-append *local-store* (fspec-fname pfspec))))
     #|(printf "remove-dupes: starting w/ ~a positions, expansion has ~a/~a positions~%"
-            (second expand-fspec) unique-expansions (position-count-in-file ofile-name))|#
+            (fspec-pcount expand-fspec) unique-expansions (position-count-in-file ofile-name))|#
     #|(unless (check-sorted-fringe? ofile-name)
       (error 'remove-dupes "phase 2: failed to generate a sorted fringe file ~a" ofile-name))|#
     sample-stats))
 
 
-;; process-proto-fringe: (setof position) string string (listof fspec) -> (listof fspec)
+;; process-proto-fringe: (setof position) string int (listof fspec) -> (listof fspec)
 ;; convert set to vector, sort it and write the sorted vector to the given filename,
 ;; returning the file name to which the proto-fringe was written
 (define (process-proto-fringe sop pre-ofile-template pre-ofile-counter pre-ofiles)
-  (cons (let ([resv (for/vector #:length (set-count sop) ([p sop]) p)]
-              [f (format "~a~a" pre-ofile-template pre-ofile-counter)])
+  (cons (let* ([resv (for/vector #:length (set-count sop) ([p sop]) p)] ;; convert set to vector
+               [f (format "~a~a" pre-ofile-template pre-ofile-counter)]
+               [fullpath (string-append *local-store* f)])
           (vector-sort! position<? resv)
           ;(set! resv (vector-sort position<? resv))
-          (write-fringe-to-disk resv f)
-          (list f (vector-length resv) (file-size f)))
+          (write-fringe-to-disk resv fullpath)
+          (make-fspec f *local-store* (vector-length resv) (file-size fullpath)))
         pre-ofiles))
                         
 
@@ -188,11 +190,11 @@
   ;; prev-fringe spec points to default directory; current-fringe spec points to /tmp folder
   ;(printf "remote-expand-part-fringe: pf-spec: ~a, and cf-spec: ~a~%" pf-spec cf-spec)
   ;; EXPAND PHASE 1
-  (let* ([pre-ofile-template (format "/tmp/partial-expansion~a" (~a process-id #:left-pad-string "0" #:width 2 #:align 'right))]
+  (let* ([pre-ofile-template-fname (format "partial-expansion~a" (~a process-id #:left-pad-string "0" #:width 2 #:align 'right))]
          [pre-ofile-counter 0]
          [pre-ofiles empty]
          ;; *** Dynamically choose the size of the pre-proto-fringes to keep the number of files below 500 ***
-         [dynamic-proto-fringe-size (max *min-pre-proto-fringe-size* (/ (second cf-spec) 500))]
+         [dynamic-proto-fringe-size (max *min-pre-proto-fringe-size* (/ (fspec-pcount cf-spec) 500))]
          [start (first ipair)]
          [end (second ipair)]
          [assignment-count (- end start)]
@@ -206,12 +208,12 @@
          [expansions (expand (fringehead-next cffh)) (set-union expansions (expand (fringehead-next cffh)))])
       ((>= i assignment-count)
        (set! pre-ofiles
-             (process-proto-fringe expansions pre-ofile-template pre-ofile-counter pre-ofiles)))
+             (process-proto-fringe expansions pre-ofile-template-fname pre-ofile-counter pre-ofiles)))
       (when (fhdone? cffh) 
         (error 'remote-expand-part-fringe (format "hit end of cur-fringe after ~a of ~a expansions" expanded-phase1 assignment-count)))
       (when (> (set-count expansions) dynamic-proto-fringe-size)
         (set! pre-ofiles
-              (process-proto-fringe expansions pre-ofile-template pre-ofile-counter pre-ofiles))
+              (process-proto-fringe expansions pre-ofile-template-fname pre-ofile-counter pre-ofiles))
         (set! pre-ofile-counter (add1 pre-ofile-counter))
         (set! expansions (set)))
       (advance-fhead! cffh)
@@ -223,38 +225,24 @@
              (format "only expanded ~a of the assigned ~a (~a-~a) positions" expanded-phase1 assignment-count start end)))
     (close-input-port (fringehead-iprt cffh))
     ;; PHASE 2: now pass through the proto-fringe expansion file(s) as well as prev-fringe and current-fringe to remove duplicates
-    (remove-dupes pf-spec cf-spec pre-ofiles pre-ofile-template depth)))
+    (remove-dupes pf-spec cf-spec pre-ofiles pre-ofile-template-fname depth)))
 
 
 ;; remote-expand-fringe: (listof (list fixnum fixnum)) fspec fspec int -> (listof sampling-stat)
 ;; trigger the distributed expansion according to the given ranges
-;; The master should provide a cf-spec that points to a "/tmp" copy of the current-fringe, where the copy is provided by master also
+;; The master should provide a cf-spec that points to a *local-store* copy of the current-fringe, where the copy is provided by master also
 (define (remote-expand-fringe ranges pf-spec cf-spec depth)
   ;;(printf "remote-expand-fringe: current-fringe of ~a split as: ~a~%" cur-fringe-size (map (lambda (pr) (- (second pr) (first pr))) ranges))
   (let* ([distrib-results (for/work ([range-pair ranges]
                                      [i (in-range (length ranges))])
                                     (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end")) ;;prevent riot cache-failure
                                     (wait-for-files (list pf-spec cf-spec) #t)
-                                    #|(cond [(file-exists? (format "/tmp/current-fringe-d~a.gz" (sub1 depth)))
-                                           (rename-file-or-directory (format "/tmp/current-fringe-d~a.gz" (sub1 depth))
-                                                                     (format "/tmp/prev-fringe-d~a.gz" (sub1 depth)) #t)]
-                                          [else (copy-file (format "current-fringe-d~a.gz" (sub1 depth))
-                                                           (format "/tmp/prev-fringe-d~a.gz" (sub1 depth)))])
-                                    (copy-file (format "current-fringe-d~a.gz" (sub1 depth))
-                                               (format "/tmp/current-fringe-d~a.gz" (sub1 depth)))|#
-                                      
-                                    #|(printf "rem-exp-frng_for/work: about to call remote-expand-part-fringe w/ pf=~a and cf=~a~%"
-                                            (cons (string-append "/tmp/" (first pf-spec)) (cdr pf-spec))
-                                            (cons (string-append "/tmp/" (first cf-spec)) (cdr cf-spec)))|#
-                                    #|(remote-expand-part-fringe range-pair i 
-                                                               (cons (string-append "/tmp/" (first pf-spec)) (cdr pf-spec))
-                                                               (cons (string-append "/tmp/" (first cf-spec)) (cdr cf-spec)))|#
                                     (remote-expand-part-fringe range-pair i pf-spec cf-spec depth))])
     ;(printf "remote-expand-fringe: respective expansion counts: ~a~%" (map (lambda (ssv) (vector-ref ssv 0)) distrib-results))
     ;; when workers on same host as master, move /tmp/current-fringeX to /tmp/prev-fringeX+1
     (when (string=? *master-name* "localhost")
-      (rename-file-or-directory (car cf-spec) 
-                                (format "/tmp/prev-fringe-d~a" depth)))
+      (rename-file-or-directory (fspec-fullpath cf-spec)
+                                (format "~aprev-fringe-d~a" *local-store* depth)))
     distrib-results))
 
 
@@ -264,41 +252,39 @@
 ;; bring-local-partial-expansions: int -> void
 ;; copy the gzipped partial expansions from the shared disk to our local /tmp, uncompress the copy and delete the gzipped version
 ;; TODO:
-;; 1. replace the copy-and-uncompress combination with a gunzip-through-ports single call to save disk space (and time?)
-;; 2. this obviates the deletion of the compressed version in the local space -- remove that
 (define (bring-local-partial-expansions n)
   (for ([i (in-range n)])
-    (let ([tmp-partexp-name (format "/tmp/partial-expansion~a" (~a i #:left-pad-string "0" #:width 2 #:align 'right))])
+    (let* ([base-fname (format "partial-expansion~a" (~a i #:left-pad-string "0" #:width 2 #:align 'right))]
+           [tmp-partexp-name (string-append *local-store* base-fname)])
       (unless (file-exists? tmp-partexp-name) ; unless this process id is here from expansion
-        (let* ([shared-gz-name (string-append (substring tmp-partexp-name 5) ".gz")]
+        (let* ([shared-gz-name (string-append base-fname ".gz")]
                [iprt (open-input-file shared-gz-name)]
                [oprt (open-output-file tmp-partexp-name)])
           ;; copy the gzipped files to local disk while unzipping in one swell foop
-          (gunzip-through-ports iprt oprt
-                                tmp-partexp-name
-                                (file-or-directory-modify-seconds shared-gz-name)))))))
+          (gunzip-through-ports iprt oprt))))))
+                                
 
 ;; merge-expansions: (list int int) (listof fspec) int string -> (list string number)
 ;; given a specification of a range of _position-hash-codes_ to consider,
-;; a list of specs (filename, pos-count, file-size), and the counts on prev and current fringes,
+;; a list of specs, and the counts on prev and current fringes,
 ;; go through all the partial-expansions and merge the positions (removing duplicates) in that range into a single collection.
 ;; write the results to a local /tmp file, then finally gzip it, copy to the home directory (NFS share), and delete the files.
 ;; Return a list with the merged filename and the size of that segment
 (define (remote-merge-expansions my-range expand-files-specs depth ofile-name)
   ;; expand-files-specs are of pattern: "partial-expansionDD.gz", pointing to working (shared) directory 
-  ;; ofile-name is of pattern: "/tmp/partial-mergeDD", where the DD is a process identifier
-  (let* ([mrg-segment-oport (open-output-file ofile-name)]
+  ;;NEW: ofile-name is of pattern: "partial-mergeDD", where the DD is a process identifier
+  (let* ([mrg-segment-oport (open-output-file (string-append *local-store* ofile-name))]
          [copy-partial-expansions-to-local-disk ;; but only if not sharing host with master
           (unless (string=? *master-name* "localhost")
-            ;; copy shared-drive expansions to /tmp, uncompress, and delete compressed version
+            ;; copy shared-drive expansions to *local-store*, uncompress, and delete compressed version
             (bring-local-partial-expansions (length expand-files-specs)))]
          [to-merge-ports 
           (for/list ([i (in-range (length expand-files-specs))])
-            (open-input-file (format "/tmp/partial-expansion~a" (~a i #:left-pad-string "0" #:width 2 #:align 'right))))]
+            (open-input-file (format "~apartial-expansion~a" *local-store* (~a i #:left-pad-string "0" #:width 2 #:align 'right))))]
          [fastforwarded-fheads
           (filter-not (lambda (fh) (eof-object? (fringehead-next fh)))
                       (for/list ([iprt to-merge-ports]
-                                 [partial-expansion-size (map second expand-files-specs)])
+                                 [partial-expansion-size (map fspec-pcount expand-files-specs)])
                         (let* ([fhead (fringehead (read iprt) iprt 1 partial-expansion-size)]
                                [fhpos (fringehead-next fhead)])
                           (cond [(or (eof-object? fhpos)
@@ -329,17 +315,17 @@
     ;(printf "remote-merge-expansions: merged-expns-length=~a~%" (length sorted-merged-expansions))
     (close-output-port mrg-segment-oport)
     (for ([iprt to-merge-ports]) (close-input-port iprt))
-    (gzip ofile-name)
+    ;; arrange to move a compressed version of ofile-name to the shared disk
+    (gzip (string-append *local-store* ofile-name))
     ;; copy compressed /tmp/partial-mergeDD.gz file to shared disk
-    (copy-file (string-append ofile-name ".gz") (string-append (substring ofile-name 5) ".gz"))
+    (copy-file (string-append *local-store* ofile-name ".gz") (string-append ofile-name ".gz"))
     ;(printf "remote-merge-expansions: about to try deleting ofile-name, ~a (and w/ .gz extension)~%" ofile-name)
-    (delete-file ofile-name)
-    (delete-file (string-append ofile-name ".gz"))
+    (delete-file (string-append *local-store* ofile-name))
+    (delete-file (string-append *local-store* ofile-name ".gz"))
     (unless (string=? *master-name* "localhost")
-      (for ([f expand-files-specs]) 
-        ;(delete-file (string-append "/tmp/" (first f))) ; these should have been deleted by bring-local-partial-expansions -- unless multi-core machine
-        (delete-file (string-append "/tmp/" (substring (first f) 0 (- (string-length (first f)) 3)))))) ;remove the local uncompressed expansions
-    (list (string-append (substring ofile-name 5) ".gz") segment-size)))
+      (for ([fspc expand-files-specs]) 
+        (delete-file (string-append *local-store* (substring (fspec-fname fspc) 0 (- (string-length (fspec-fname fspc)) 3)))))) ;remove the local uncompressed expansions
+    (list (string-append ofile-name ".gz") segment-size)))
 
 ;; remote-merge: (listof (list fixnum fixnum)) (listof fspec) int -> (listof string int)
 (define (remote-merge merge-ranges expand-files-specs depth)
@@ -349,7 +335,7 @@
          (for/work ([merge-range merge-ranges] ;; merged results should come back in order of merge-ranges assignments
                     [i (in-range (length merge-ranges))])
                    (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end"))
-                   (let* ([ofile-name (format "/tmp/partial-merge~a" (~a i #:left-pad-string "0" #:width 2 #:align 'right))]
+                   (let* ([ofile-name (format "partial-merge~a" (~a i #:left-pad-string "0" #:width 2 #:align 'right))]
                           [merged-fname-and-resp-rng-size (remote-merge-expansions merge-range expand-files-specs depth ofile-name)]
                           )
                      ;;(printf "distributed-expand-fringe: merge-range = ~a~%~a~%" merge-range merged-responsibility-range)
@@ -359,7 +345,7 @@
     (when (string=? *master-name* "localhost")
       (for ([f expand-files-specs])
         ;(delete-file (first f)) ; these should have been deleted before the call to for/work
-        (delete-file (string-append "/tmp/" (substring (first f) 0 (- (string-length (first f)) 3))))))
+        (delete-file (string-append *local-store* (substring (fspec-fname f) 0 (- (string-length (fspec-fname f)) 3))))))
     merge-results))
 
 
@@ -392,12 +378,12 @@
           depth pf-spec cf-spec)|#
   ;; push newest fringe (current-fringe) to all workers
   (cond [(string=? *master-name* "localhost")
-         (copy-file (car cf-spec) (format "/tmp/~a" (car cf-spec)))]
-        [else (gzip (car cf-spec))
-              (system (format "rocks run host compute 'scp wcp:puzzle-solver/~a.gz /tmp; gunzip /tmp/~a.gz'" (car cf-spec) (car cf-spec)))])
+         (copy-file (fspec-fullpath cf-spec) (format "~a~a" *local-store* (fspec-fname cf-spec)))]
+        [else (gzip (fspec-fullpath cf-spec))
+              (system (format "rocks run host compute 'scp wcp:puzzle-solver/~a.gz ~a; gunzip ~a~a.gz'" (fspec-fname cf-spec) *local-store* *local-store* (fspec-fname cf-spec)))])
   (let* (;; EXPAND
-         [ranges (make-vector-ranges (second cf-spec))]
-         [rcf-spec (cons (string-append "/tmp/" (car cf-spec)) (cdr cf-spec))]
+         [ranges (make-vector-ranges (fspec-pcount cf-spec))]
+         [rcf-spec (make-fspec (fspec-fname cf-spec) *local-store* (fspec-pcount cf-spec) (fspec-fsize cf-spec))]
          ;; --- Distribute the actual expansion work ------------------------
          [infomsg1 (printf "starting expand, ... ")]
          [expand-start (current-seconds)]
@@ -411,7 +397,8 @@
          [expand-files-specs (for/list ([ss sampling-stats])
                                #|(printf "exp-spec: ~a should have ~a postions: seeing ~a of expected ~a~%" 
                                        (vector-ref ss 5) (vector-ref ss 0) (file-size (vector-ref ss 5)) (vector-ref ss 6))|#
-                               (list (vector-ref ss 5) (vector-ref ss 0) (vector-ref ss 6)))]
+                               (list (vector-ref ss 5) (vector-ref ss 0) (vector-ref ss 6))
+                               (make-fspec (vector-ref ss 5) "" (vector-ref ss 0) (vector-ref ss 6)))]
          ;; need to wait for write to complete -- i.e., all data to appear on master
          [wait-for-partial-expansions (wait-for-files expand-files-specs)]
          #|[error-check1 (for/first ([i (in-range (length sampling-stats))]
@@ -444,19 +431,19 @@
          [new-cf-name (format "current-fringe-d~a" depth)]
          )
     ;; move current current-fringe to prev-fringe of appropriate depth
-    (rename-file-or-directory (first cf-spec)
+    (rename-file-or-directory (fspec-fullpath cf-spec)
                               (format "prev-fringe-d~a" depth) #t) ;;(system "mv current-fringe prev-fringe")
     ;; create the _new_ current-fringe
     (for ([f sorted-expansion-files])
       ;(printf "distributed-expand-fringe: concatenating ~a~%" f)
       (system (format "zcat ~a >> current-fringe-d~a" f depth)))
     ;; delete files we don't need anymore
-    (delete-file (first pf-spec))
+    (delete-file (fspec-fullpath pf-spec))
     (system "rm partial-expansion* partial-merge*")
-    (unless (string=? *master-name* "localhost") (delete-file (string-append (first cf-spec) ".gz")))
+    (unless (string=? *master-name* "localhost") (delete-file (string-append (fspec-fname cf-spec) ".gz")))
     (printf "distributed-expand-fringe: file manipulation ~a, and total at depth ~a: ~a~%" 
             (~r (/ (- (current-seconds) merge-end) 60.0) #:precision 4) depth (~r (/ (- (current-seconds) expand-start) 60.0) #:precision 4))
-    (list new-cf-name (foldl + 0 sef-lengths) (file-size new-cf-name))))
+    (make-fspec new-cf-name "" (foldl + 0 sef-lengths) (file-size new-cf-name))))
 
 
 ;;----------------------------------------------------------------------------------------
@@ -465,7 +452,7 @@
 ;; Given the size of the current fringe to expand, and the current depth of search,
 ;; do the expansions and merges as appropriate, returning the fringe-spec of the new fringe
 (define (expand-fringe pf-spec cf-spec depth)
-  (if (< (second cf-spec) *diy-threshold*)
+  (if (< (fspec-pcount cf-spec) *diy-threshold*)
       ;; do it myself
       (expand-fringe-self pf-spec cf-spec depth)
       ;; else call distributed-expand, which will farm out to workers
@@ -494,15 +481,15 @@
 ;; perform a file-based cluster-fringe-search at given depth
 ;; using previous and current fringes stored in corresponding fringe-specs 
 (define (cfs-file pf-spec cf-spec depth)
-  (cond [(or (zero? (second cf-spec)) (> depth *max-depth*)) #f]
+  (cond [(or (zero? (fspec-pcount cf-spec)) (> depth *max-depth*)) #f]
         [*found-goal*
          (print "found goal")
          *found-goal*]
         [else (let ([new-fringe-spec (expand-fringe pf-spec cf-spec depth)])
                 (printf "At depth ~a: current-fringe has ~a positions (and new-fringe ~a)~%" 
-                        depth (second cf-spec) (second new-fringe-spec))
+                        depth (fspec-pcount cf-spec) (fspec-pcount new-fringe-spec))
                 ;;(for ([p current-fringe]) (displayln p))
-                (cfs-file (cons (format "prev-fringe-d~a" depth) (cdr cf-spec)) ;; use current-fringe as prev-fringe at next level
+                (cfs-file (make-fspec (format "prev-fringe-d~a" depth) "" (fspec-pcount cf-spec) (fspec-fsize cf-spec)) ;; use current-fringe as prev-fringe at next level
                           new-fringe-spec
                           (add1 depth)))]))
 
@@ -510,13 +497,13 @@
   ;; initialization of fringe files
   (write-fringe-to-disk empty "prev-fringe-d0")
   (write-fringe-to-disk (list start-position) "current-fringe-d0")
-  (cfs-file (list "prev-fringe-d0" 0 (file-size "prev-fringe-d0"))
-            (list "current-fringe-d0" 1 (file-size "current-fringe-d0"))
+  (cfs-file (make-fspec "prev-fringe-d0" "" 0 (file-size "prev-fringe-d0"))
+            (make-fspec "current-fringe-d0" "" 1 (file-size "current-fringe-d0"))
             1))
   
 
-(block10-init)
-;(climb12-init)
+;(block10-init)
+(climb12-init)
 ;(climb15-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
