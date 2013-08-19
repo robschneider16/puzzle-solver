@@ -21,16 +21,20 @@
 
 (define *master-name* "the name of the host where the master process is running")
 (define *local-store* "the root portion of path to where workers can store temporary fringe files")
-;(set! *master-name* "localhost")
-;(set! *local-store* "/space/fringefiles/")
-;(define *n-processors* 4)
-(set! *master-name* "wcp")
-(set! *local-store* "/state/partition1/fringefiles/")
-(define *n-processors* 31)
+(set! *master-name* "localhost")
+(set! *local-store* "/space/fringefiles/")
+(define *n-processors* 4)
+;(define *n-processors* 8)
+;(set! *master-name* "wcp")
+;(set! *local-store* "/state/partition1/fringefiles/")
+;(define *n-processors* 31)
 
 (define *expand-multiplier* 1)
-(define *diy-threshold* 3000)
-(define *min-pre-proto-fringe-size* 2000)
+(define *diy-threshold* 10000)
+
+(define *min-pre-proto-fringe-size* 5000) ; to be replaced by *max-size-...*
+(define *max-size-pre-proto-fringes* 500)
+(define *max-num-pre-proto-fringes* 500)
 
 (define *most-positive-fixnum* 0)
 (define *most-negative-fixnum* 0)
@@ -198,9 +202,10 @@
          [end (second ipair)]
          [assignment-count (- end start)]
          [expanded-phase1 1];; technically, not yet, but during initialization in pre-resv do loop
+         ;; advance the fringehead for the current-fringe to the beginning of our expansion assignment
          [cffh (do ([i 0 (add1 i)]
                     [fh (fh-from-fspec cf-spec)])
-                 ((>= i start) fh)
+                 ((= i start) fh)
                  (advance-fhead! fh))])
     ;; do the actual expansions
     (do ([i 1 (add1 i)]
@@ -210,11 +215,15 @@
              (process-proto-fringe expansions pre-ofile-template-fname pre-ofile-counter pre-ofiles)))
       (when (fhdone? cffh) 
         (error 'remote-expand-part-fringe (format "hit end of cur-fringe after ~a of ~a expansions" expanded-phase1 assignment-count)))
+      ;; When we have collected the max number of expansions, create another pre-proto-fringe file
       (when (> (set-count expansions) dynamic-proto-fringe-size)
         (set! pre-ofiles
               (process-proto-fringe expansions pre-ofile-template-fname pre-ofile-counter pre-ofiles))
         (set! pre-ofile-counter (add1 pre-ofile-counter))
         (set! expansions (set)))
+      ;; When we have created too many pre-proto-fringes, merge them now
+      #|(when (> (length pre-ofiles) *max-num-pre-proto-fringes*) 
+        'merge-them-down-to-a-single-file)|#
       (advance-fhead! cffh)
       (set! expanded-phase1 (add1 expanded-phase1)))
     #|(printf "remote-exp-part-fring: PHASE 1: expanding ~a positions yielding ~a/~a positions~%" 
