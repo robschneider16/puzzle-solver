@@ -30,9 +30,9 @@
 ;(define *n-processors* 31)
 
 (define *expand-multiplier* 1)
-(define *diy-threshold* 10000)
+(define *diy-threshold* 1000)
 
-(define *min-pre-proto-fringe-size* 5000) ; to be replaced by *max-size-...*
+(define *min-pre-proto-fringe-size* 500) ; to be replaced by *max-size-...*
 (define *max-size-pre-proto-fringes* 500)
 (define *max-num-pre-proto-fringes* 500)
 
@@ -275,7 +275,7 @@
 ;; Return a list with the merged filename and the size of that segment
 (define (remote-merge-expansions my-range expand-files-specs depth ofile-name)
   ;; expand-files-specs are of pattern: "partial-expansionDD.gz", pointing to working (shared) directory 
-  ;;NEW: ofile-name is of pattern: "partial-mergeDD", where the DD is a process identifier
+  ;;NEW: ofile-name is of pattern: "partial-merge-dX-DD", where the X is the depth and the DD is a process identifier
   (let* ([mrg-segment-oport (open-output-file (string-append *local-store* ofile-name))]
          [copy-partial-expansions-to-local-disk ;; but only if not sharing host with master
           (unless (string=? *master-name* "localhost")
@@ -335,7 +335,7 @@
          (for/work ([merge-range merge-ranges] ;; merged results should come back in order of merge-ranges assignments
                     [i (in-range (length merge-ranges))])
                    (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end"))
-                   (let* ([ofile-name (format "partial-merge~a" (~a i #:left-pad-string "0" #:width 2 #:align 'right))]
+                   (let* ([ofile-name (format "partial-merge-d~a-~a" depth (~a i #:left-pad-string "0" #:width 2 #:align 'right))]
                           [merged-fname-and-resp-rng-size (remote-merge-expansions merge-range expand-files-specs depth ofile-name)]
                           )
                      ;;(printf "distributed-expand-fringe: merge-range = ~a~%~a~%" merge-range merged-responsibility-range)
@@ -489,21 +489,21 @@
                 (printf "At depth ~a: current-fringe has ~a positions (and new-fringe ~a)~%" 
                         depth (fspec-pcount cf-spec) (fspec-pcount new-fringe-spec))
                 ;;(for ([p current-fringe]) (displayln p))
-                (cfs-file (make-fspec (format "prev-fringe-d~a" depth) "" (fspec-pcount cf-spec) (fspec-fsize cf-spec)) ;; use current-fringe as prev-fringe at next level
+                (cfs-file cf-spec ;; use current-fringe as prev-fringe at next level
                           new-fringe-spec
                           (add1 depth)))]))
 
 (define (start-cluster-fringe-search start-position)
   ;; initialization of fringe files
-  (write-fringe-to-disk empty "prev-fringe-d0")
-  (write-fringe-to-disk (list start-position) "current-fringe-d0")
-  (cfs-file (make-fspec "prev-fringe-d0" "" 0 (file-size "prev-fringe-d0"))
-            (make-fspec "current-fringe-d0" "" 1 (file-size "current-fringe-d0"))
+  (write-fringe-to-disk empty "fringe-d-1")
+  (write-fringe-to-disk (list start-position) "fringe-d0")
+  (cfs-file (make-fspec "fringe-d-1" "" 0 (file-size "fringe-d-1"))
+            (make-fspec "fringe-d0" "" 1 (file-size "fringe-d0"))
             1))
   
 
-;(block10-init)
-(climb12-init)
+(block10-init)
+;(climb12-init)
 ;(climb15-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
