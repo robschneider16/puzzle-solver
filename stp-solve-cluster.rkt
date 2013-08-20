@@ -64,7 +64,7 @@
 (define (expand-fringe-self pf-spec cf-spec depth)
   (let* ([prev-fringe-set (list->set (read-fringe-from-file (fspec-fname pf-spec)))] ; pf- and cf-spec's in expand-fringe-self should have empty fbase
          [current-fringe-vec (vectorize-list (read-fringe-from-file (fspec-fname cf-spec)))]
-         [new-cf-name (format "current-fringe-d~a" depth)]
+         [new-cf-name (format "fringe-d~a" depth)]
          [res (for/list ([p (for/fold ([expansions (set)])
                               ([p-to-expand current-fringe-vec])
                               (set-union expansions
@@ -77,7 +77,6 @@
     (for ([p res])
       (printf "pos: ~a~%~a~%" (stringify p) p))|#
     (delete-file (fspec-fname pf-spec))
-    (rename-file-or-directory (fspec-fname cf-spec) (format "prev-fringe-d~a" depth) #t)
     (write-fringe-to-disk (sort res position<?) new-cf-name)
     (make-fspec new-cf-name "" (length res) (file-size new-cf-name))))
 
@@ -157,12 +156,9 @@
     ;; complete the sampling-stat
     (vector-set! sample-stats 0 unique-expansions)
     (vector-set! sample-stats 6 (file-size (string-append ofile-name ".gz")))
-    ;; move local copy of current-fringe to local prev-fringe of next depth, unless we're on same machine as master
-    (unless (string=? *master-name* "localhost")
-      (rename-file-or-directory (fspec-fullpath cfspec)
-                                (format "~aprev-fringe-d~a" *local-store* depth)))
     ;; delete files that are no longer needed
     (for ([efspec lo-expand-fspec]) (delete-file (fspec-fullpath efspec)))
+    ;;**** THIS STRIKES ME AS DANGEROUS: IF ONE PROCESS ON MULTI-CORE MACHINE FINISHES FIRST ....
     (when (file-exists? (string-append *local-store* (fspec-fname pfspec))) (delete-file (string-append *local-store* (fspec-fname pfspec))))
     #|(printf "remove-dupes: starting w/ ~a positions, expansion has ~a/~a positions~%"
             (fspec-pcount expand-fspec) unique-expansions (position-count-in-file ofile-name))|#
@@ -247,10 +243,6 @@
                                     (wait-for-files (list pf-spec cf-spec) #t)
                                     (remote-expand-part-fringe range-pair i pf-spec cf-spec depth))])
     ;(printf "remote-expand-fringe: respective expansion counts: ~a~%" (map (lambda (ssv) (vector-ref ssv 0)) distrib-results))
-    ;; when workers on same host as master, move /tmp/current-fringeX to /tmp/prev-fringeX+1
-    (when (string=? *master-name* "localhost")
-      (rename-file-or-directory (fspec-fullpath cf-spec)
-                                (format "~aprev-fringe-d~a" *local-store* depth)))
     distrib-results))
 
 
@@ -428,15 +420,12 @@
                                    [len sef-lengths]
                                    #:unless (= len (position-count-in-file f)))
                          (error 'distributed-expand-fringe (format "err-chk2: partial-merges do not match up for ~a which should be ~a" f len)))]|#
-         [new-cf-name (format "current-fringe-d~a" depth)]
+         [new-cf-name (format "fringe-d~a" depth)]
          )
-    ;; move current current-fringe to prev-fringe of appropriate depth
-    (rename-file-or-directory (fspec-fullpath cf-spec)
-                              (format "prev-fringe-d~a" depth) #t) ;;(system "mv current-fringe prev-fringe")
     ;; create the _new_ current-fringe
     (for ([f sorted-expansion-files])
       ;(printf "distributed-expand-fringe: concatenating ~a~%" f)
-      (system (format "zcat ~a >> current-fringe-d~a" f depth)))
+      (system (format "zcat ~a >> fringe-d~a" f depth)))
     ;; delete files we don't need anymore
     (delete-file (fspec-fullpath pf-spec))
     (system "rm partial-expansion* partial-merge*")
