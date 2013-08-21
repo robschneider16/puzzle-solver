@@ -334,15 +334,15 @@
 (define (expand-piece piece-type piece-loc position)
   (let ([loc-places (set piece-loc)]); piece-history is the set of locations that we've already checked for this piece
     (do ([return-positions (set)
-                           (set-union (for/set ([p new-positions]) (second p)) return-positions)]
+                           (set-union return-positions (for/set ([p new-positions]) (second p)))]
          ;; new-positions is a set of (list piece-loc bw-position) for this piece
          [new-positions (bw-1pc-1step piece-type piece-loc position (set))
                         (for/fold ([new-add (set)])
                           ([ts-pos new-positions]
                            #:unless (set-member? loc-places (first ts-pos)))
                           (set! loc-places (set-add loc-places (first ts-pos)))
-                          (set-union (bw-1pc-1step piece-type (first ts-pos) (second ts-pos) loc-places)
-                                     new-add))])
+                          (set-union new-add
+                                     (bw-1pc-1step piece-type (first ts-pos) (second ts-pos) loc-places)))])
       ;; until no further moves of this piece
       ((set-empty? new-positions)
        ;(set-remove return-positions position)
@@ -353,11 +353,12 @@
 (define (expand s)
   (for/fold ([all-moves (set)])
     ([piece-type (in-range 1 *num-piece-types*)])
-    (set-union (for/fold ([new-moves (set)])
+    (set-union all-moves
+               (for/fold ([new-moves (set)])
                  ([piece-loc (bwrep-to-list (vector-ref s piece-type))])
-                 (set-union (expand-piece piece-type piece-loc s)
-                            new-moves))
-               all-moves)))
+                 (set-union new-moves
+                            (expand-piece piece-type piece-loc s))))))
+               
 
 
 
