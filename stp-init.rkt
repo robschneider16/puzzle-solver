@@ -9,7 +9,7 @@
 (define *bw* 0)
 (define *bh* 0)
 (define *bsz* 0)
-
+(define *piecelocvec* (vector))
 
 ;; set-em!: piece-type-vector pre-position-list target int int -> void
 ;; generic setter for use by puzzle-specific initialization functions
@@ -17,6 +17,7 @@
   (set! *bh* nrow)
   (set! *bw* ncol)
   (set! *bsz* (* nrow ncol))
+  (set! *piecelocvec* (make-vector *bsz* #f))
   (set! *num-piece-types* (vector-length ptv)) ;; must come before bw-positionify/(pre-compress)
   (set! *piece-types* (for/vector ([cell-specs ptv])
                                   (list->set cell-specs)));****

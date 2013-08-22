@@ -301,7 +301,8 @@
           [(compare? x (vector-ref v mid)) (vec-member? v x compare? low mid)]
           [else (vec-member? v x compare? (add1 mid) high)])))
 
-
+;; make-new-move: position move-schema int -> position
+;; create a new position from an existing position and a move schema
 (define (make-new-move position mv-schema piece-type)
   (let ((new-vec (vector-copy position)))                          ; build the new position
     ;; update piece
@@ -314,50 +315,50 @@
                               (second mv-schema)))
     new-vec))
 
-;; bw-1pc-1step: int int bw-position (setof loc) -> (setof (list loc bw-position))
+;; bw-1pc-1step: int int bw-position (vectorof loc) -> (listof (pair loc bw-position))
 ;; for a given piece, identified by piece-type and location, generate all next-positions obtained by moving one-step (only)
 ;; but for each next-position, return a tile-loc/position pair for the given piece just moved
-(define (bw-1pc-1step piece-type piece-loc position prior-pos [check-dupes #f])
+(define (bw-1pc-1step piece-type piece-loc position prior-locs [check-dupes #f])
   (let ([mv-schema empty])
-    (for/set ([dir-trans *prim-move-translations*]
-              [dir-i (in-range (length *prim-move-translations*))]
-              #:when (begin (set! mv-schema (array-ref *ms-array* piece-type piece-loc dir-i))
-                            (and mv-schema
-                                 (not (set-member? prior-pos (fourth mv-schema)))
-                                 (bw-valid-move? (vector-ref position 0) (first mv-schema)))))
-      (list (fourth mv-schema)      ; new location of the moved tile that gives rise to this position
-            (make-new-move position mv-schema piece-type)))))
+    (for/list ([dir-trans *prim-move-translations*]
+               [dir-i (in-range (length *prim-move-translations*))]
+               #:when (begin (set! mv-schema (array-ref *ms-array* piece-type piece-loc dir-i))
+                             (and mv-schema
+                                  (not (vector-ref prior-locs (fourth mv-schema)))
+                                  (bw-valid-move? (vector-ref position 0) (first mv-schema)))))
+             (vector-set! prior-locs (fourth mv-schema) #t)
+             (cons (fourth mv-schema)      ; new location of the moved tile that gives rise to this position
+                   (make-new-move position mv-schema piece-type)))))
 
-;; expand-piece: int int bw-position -> (setof bw-position)
+;; expand-piece: int int bw-position -> (listof bw-position)
 ;; for a given piece (identified by piece-type and location of tile of that type),
 ;; return the list or set of all new positions reachable by moving the given piece starting in the given position
 (define (expand-piece piece-type piece-loc position)
-  (let ([loc-places (set piece-loc)]); piece-history is the set of locations that we've already checked for this piece
-    (do ([return-positions (set)
-                           (set-union return-positions (for/set ([p new-positions]) (second p)))]
-         ;; new-positions is a set of (list piece-loc bw-position) for this piece
-         [new-positions (bw-1pc-1step piece-type piece-loc position (set))
-                        (for/fold ([new-add (set)])
-                          ([ts-pos new-positions]
-                           #:unless (set-member? loc-places (first ts-pos)))
-                          (set! loc-places (set-add loc-places (first ts-pos)))
-                          (set-union new-add
-                                     (bw-1pc-1step piece-type (first ts-pos) (second ts-pos) loc-places)))])
-      ;; until no further moves of this piece
-      ((set-empty? new-positions)
-       ;(set-remove return-positions position)
-       return-positions))))
+  (vector-set! *piecelocvec* piece-loc #t)
+  (do ([return-positions empty (for/fold ([rp return-positions])
+                                 ([p new-positions])
+                                 (cons (cdr p) rp))]
+       ;; new-positions is a set of (list piece-loc bw-position) for this piece
+       [new-positions (bw-1pc-1step piece-type piece-loc position *piecelocvec*)
+                      (for/fold ([new-add empty])
+                        ([ts-pos new-positions])
+                        (append (bw-1pc-1step piece-type (car ts-pos) (cdr ts-pos) *piecelocvec*)
+                                new-add))])
+    ;; until no further moves of this piece
+    ((empty? new-positions)  return-positions)))
 
 ;; expand: bw-position -> (setof bw-position)
 ;; generate next states from this one
 (define (expand s)
-  (for/fold ([all-moves (set)])
-    ([piece-type (in-range 1 *num-piece-types*)])
-    (set-union all-moves
-               (for/fold ([new-moves (set)])
-                 ([piece-loc (bwrep-to-list (vector-ref s piece-type))])
-                 (set-union new-moves
-                            (expand-piece piece-type piece-loc s))))))
+  (list->set
+   (for/fold ([all-moves empty])
+     ([piece-type (in-range 1 *num-piece-types*)])
+     (append (for/fold ([new-moves empty])
+               ([piece-loc (bwrep-to-list (vector-ref s piece-type))])
+               (vector-fill! *piecelocvec* #f) ;reset for the next piece
+               (append (expand-piece piece-type piece-loc s)
+                       new-moves))
+             all-moves))))
                
 
 
@@ -389,5 +390,6 @@
               #:when (is-goal? pos))
     pos))
 
-;(compile-ms-array! *piece-types* *bh* *bw*)
+(block10-init)
+(compile-ms-array! *piece-types* *bh* *bw*)
 ;(test)

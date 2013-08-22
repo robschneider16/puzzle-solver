@@ -66,4 +66,4 @@
 (write-fringe-to-disk (list *start*) "current-fringe")
 
 ;(time (fringe-file-search 1))
-;(time (fringe-mem-search (set) (set *start*) 1))
+(time (fringe-mem-search (set) (set *start*) 1))
