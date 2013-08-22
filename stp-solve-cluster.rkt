@@ -30,9 +30,9 @@
 ;(define *n-processors* 31)
 
 (define *expand-multiplier* 1)
-(define *diy-threshold* 1000)
+(define *diy-threshold* 5000)
 
-(define *min-pre-proto-fringe-size* 500) ; to be replaced by *max-size-...*
+(define *min-pre-proto-fringe-size* 3000) ; to be replaced by *max-size-...*
 (define *max-size-pre-proto-fringes* 500)
 (define *max-num-pre-proto-fringes* 500)
 
@@ -148,7 +148,7 @@
     ;(printf "remote-expand-part-fringe: HAVE EXPANSIONS:~%")
     ;(for ([p resv]) (displayln p))
     ;; close input and output ports
-    (for-each (lambda (fh) (close-input-port (fringehead-iprt fh))) (cons pffh (cons cffh lo-effh))) 
+    (for ([fh (cons pffh (cons cffh lo-effh))]) (close-input-port (fringehead-iprt fh)))
     (close-output-port expand-out)
     ;; compress and copy the partial-expansion file from /tmp to home for other processes to have when merging
     ;; but do it in one swell foop
@@ -295,8 +295,8 @@
          [segment-size (let ([last-pos (void)]
                              [keep-pos (void)]
                              [num-written 0])
-                         (for/list ([an-fhead (in-heap/consume! heap-o-fheads)]
-                                    #:break (fx>= (equal-hash-code (fringehead-next an-fhead)) (second my-range)))
+                         (for ([an-fhead (in-heap/consume! heap-o-fheads)]
+                               #:break (fx>= (equal-hash-code (fringehead-next an-fhead)) (second my-range)))
                            (set! keep-pos (fringehead-next an-fhead))
                            (advance-fhead! an-fhead)
                            (unless (fhdone? an-fhead) ;;(eof-object? (peek-byte (fringehead-iprt an-fhead) 1))

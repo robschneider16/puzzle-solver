@@ -9,7 +9,8 @@
 (define *bw* 0)
 (define *bh* 0)
 (define *bsz* 0)
-(define *piecelocvec* (vector))
+(define *piecelocvec* (vector));; a (vectorof int)
+(define *expandpos* (vector))  ;; a (vectorof position)
 
 ;; set-em!: piece-type-vector pre-position-list target int int -> void
 ;; generic setter for use by puzzle-specific initialization functions
@@ -21,6 +22,7 @@
   (set! *num-piece-types* (vector-length ptv)) ;; must come before bw-positionify/(pre-compress)
   (set! *piece-types* (for/vector ([cell-specs ptv])
                                   (list->set cell-specs)));****
+  (set! *expandpos* (make-vector (* 4 (for/sum ([pt *piece-types*]) (set-count pt))) #f)) ;; any position can never have more than the 4 x the number of pieces (when 4 spaces)
   (set! *start* (bw-positionify s))
   (set! *target* (for/list ([tile-spec t]) (list (first tile-spec) (list-to-bwrep (list (cell-to-loc (cdr tile-spec)))))))
   )
