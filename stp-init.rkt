@@ -35,7 +35,7 @@
   )
 
 ;; charify: bw-position -> bytearray
-;; want char->integer and integer->char (or not)
+;; convert a bitwise represented position into a series of bytes
 (define (charify bw-p)
   (let ([locp (old-positionify bw-p)]
         [bytearray (make-bytes *num-pieces*)]
@@ -48,7 +48,7 @@
     bytearray))
 
 ;; decharify: bytearray -> bw-position
-;; for reading from file
+;; for the inverse of charify
 (define (decharify ba)
   (if (eof-object? ba)
       ba

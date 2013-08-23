@@ -81,6 +81,12 @@
     (close-input-port iport)
     the-fringe))
 
+;; read-pos: input-port -> bw-position
+;; read the (probably byte representation of a) position from the file attatched to the given input port
+;; ASSUMES: fringe-file format is one position per line with bytes
+(define (read-pos iprt)
+  (decharify (read-bytes-line iprt)))
+
 ;; position-count-in-file: string -> number
 ;; reports the number of positions in the given fringe file assuming the file was written with write-fringe-to-disk
 (define (position-count-in-file f)
@@ -121,8 +127,8 @@
 ;; check to see that a given fringe file is indeed sorted
 (define (check-sorted-fringe? f)
   (let* ([myin (open-input-file f)]
-         [prevpos (read myin)]
-         [bool-res (for/and ([pos (in-port read myin)])
+         [prevpos (read-pos myin)]
+         [bool-res (for/and ([pos (in-port read-pos myin)])
                      (let ([res (position<? prevpos pos)])
                        (set! prevpos pos)
                        res))])
@@ -155,7 +161,7 @@
       ((not (eof-object? (peek-bytes 1 1 (fringehead-iprt fh)))) 'proceed)
       (sleep sleep-time)))
   (unless (fhdone? fh)
-    (set-fringehead-next! fh (read (fringehead-iprt fh)))
+    (set-fringehead-next! fh (read-pos (fringehead-iprt fh)))
     (set-fringehead-readcount! fh (add1 (fringehead-readcount fh)))
     (fringehead-next fh)))
 
@@ -175,7 +181,7 @@
 ;; *** the open port must be closed by the requestor of this fringehead
 (define (fh-from-fspec fs)
   (let ([inprt (open-input-file (fspec-fullpath fs))])
-    (fringehead (read inprt) inprt 1 (fspec-pcount fs))))
+    (fringehead (read-pos inprt) inprt 1 (fspec-pcount fs))))
 
 
 ;; Set-like Operations on Lists

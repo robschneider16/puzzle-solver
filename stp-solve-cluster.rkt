@@ -136,7 +136,7 @@
       (let ([efpos (fringehead-next an-fhead)])
         (unless (or (position-in-fhead? efpos pffh)
                     (position-in-fhead? efpos cffh))
-          (fprintf expand-out "~a~%" efpos)
+          (fprintf expand-out "~a~%" (charify efpos))
           (when (is-goal? efpos) (vector-set! sample-stats 4 efpos))
           (vector-set! sample-stats 1 (fxmin (vector-ref sample-stats 1) (equal-hash-code efpos)))
           (vector-set! sample-stats 2 (fxmax (vector-ref sample-stats 2) (equal-hash-code efpos)))
@@ -280,7 +280,7 @@
           (filter-not (lambda (fh) (eof-object? (fringehead-next fh)))
                       (for/list ([iprt to-merge-ports]
                                  [partial-expansion-size (map fspec-pcount expand-files-specs)])
-                        (let* ([fhead (fringehead (read iprt) iprt 1 partial-expansion-size)]
+                        (let* ([fhead (fringehead (read-pos iprt) iprt 1 partial-expansion-size)]
                                [fhpos (fringehead-next fhead)])
                           (cond [(or (eof-object? fhpos)
                                      (fx>= (equal-hash-code fhpos) (first my-range)))
@@ -302,7 +302,7 @@
                            (unless (fhdone? an-fhead) ;;(eof-object? (peek-byte (fringehead-iprt an-fhead) 1))
                              (heap-add! heap-o-fheads an-fhead))
                            (unless (equal? keep-pos last-pos)
-                             (fprintf mrg-segment-oport "~a~%" keep-pos)
+                             (fprintf mrg-segment-oport "~a~%" (charify keep-pos))
                              (set! num-written (add1 num-written)))
                            (set! last-pos keep-pos))
                          num-written)])
@@ -372,7 +372,8 @@
   (cond [(string=? *master-name* "localhost")
          (copy-file (fspec-fullpath cf-spec) (format "~a~a" *local-store* (fspec-fname cf-spec)))]
         [else (gzip (fspec-fullpath cf-spec))
-              (system (format "rocks run host compute 'scp wcp:puzzle-solver/~a.gz ~a; gunzip ~a~a.gz'" (fspec-fname cf-spec) *local-store* *local-store* (fspec-fname cf-spec)))])
+              (system (format "sync; rocks run host compute 'sync; scp wcp:puzzle-solver/~a.gz ~a; gunzip ~a~a.gz'" 
+                              (fspec-fname cf-spec) *local-store* *local-store* (fspec-fname cf-spec)))])
   (let* (;; EXPAND
          [ranges (make-vector-ranges (fspec-pcount cf-spec))]
          [rcf-spec (make-fspec (fspec-fname cf-spec) *local-store* (fspec-pcount cf-spec) (fspec-fsize cf-spec))]
@@ -492,7 +493,7 @@
   
 
 (block10-init)
-;(climb12-init)
+(climb12-init)
 ;(climb15-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
