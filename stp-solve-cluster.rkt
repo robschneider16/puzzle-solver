@@ -57,13 +57,19 @@
 ;;----------------------------------------------------------------------------------------
 
 
-;; expand-fringe-self: (setof position) (vectorof position) int -> fspec
+;; expand-fringe-self: fringe-index fringe-index int -> fringe-index
 ;; expand just the portion of the sorted-fringe-vector specified by the indices in the given range-pair,
 ;; returning the number of positions in the newly expanded and merged fringe
 ;; ASSUME: current-fringe-vec is sorted.
-(define (expand-fringe-self pf-spec cf-spec depth)
-  (let* ([prev-fringe-set (list->set (read-fringe-from-file (fspec-fname pf-spec)))] ; pf- and cf-spec's in expand-fringe-self should have empty fbase
-         [current-fringe-vec (vectorize-list (read-fringe-from-file (fspec-fname cf-spec)))]
+(define (expand-fringe-self pf-findex cf-findex depth)
+  (let* ([prev-fringe-set (for/fold ([the-fringe (set)])
+                            ([sgmnt pf-findex])
+                            (set-union the-fringe
+                                       (list->set (read-fringe-from-file (fspec-fname (segment-fspec sgmnt))))))] ; pf- and cf-spec's in expand-fringe-self should have empty fbase
+         [current-fringe-vec 
+          (vectorize-list (for/fold ([the-fringe empty])
+                            ([sgmnt (sort cf-findex < #:key first)])
+                            (append (read-fringe-from-file (fspec-fname (segment-fspec sgmnt))) the-fringe)))]
          [new-cf-name (format "fringe-d~a" depth)]
          [res (for/list ([p (for/fold ([expansions (set)])
                               ([p-to-expand current-fringe-vec])
@@ -76,9 +82,9 @@
     #|(printf "Finished the work packet generating a set of ~a positions~%" (set-count res))
     (for ([p res])
       (printf "pos: ~a~%~a~%" (stringify p) p))|#
-    (delete-file (fspec-fname pf-spec))
+    (for ([sgmnt pf-findex]) (delete-file (fspec-fname (segment-fspec sgmnt))))
     (write-fringe-to-disk (sort res position<?) new-cf-name)
-    (make-fspec new-cf-name "" (length res) (file-size new-cf-name))))
+    (list (list *most-negative-fixnum* *most-positive-fixnum* (make-fspec new-cf-name "" (length res) (file-size new-cf-name))))))
 
 ;;----------------------------------------------------------------------------------------
 ;; DISTRIBUTED EXPANSION AND MERGING OF FRINGES
@@ -438,15 +444,15 @@
 
 ;;----------------------------------------------------------------------------------------
 
-;; expand-fringe: int (list string int int) int -> (list string int int)
+;; expand-fringe: fringe-index fringe-index int -> fringe-index
 ;; Given the size of the current fringe to expand, and the current depth of search,
 ;; do the expansions and merges as appropriate, returning the fringe-spec of the new fringe
-(define (expand-fringe pf-spec cf-spec depth)
-  (if (< (fspec-pcount cf-spec) *diy-threshold*)
+(define (expand-fringe pf-findex cf-findex depth)
+  (if (< (findex-pcount cf-findex) *diy-threshold*)
       ;; do it myself
-      (expand-fringe-self pf-spec cf-spec depth)
+      (expand-fringe-self pf-findex cf-findex depth)
       ;; else call distributed-expand, which will farm out to workers
-      (distributed-expand-fringe pf-spec cf-spec depth)))
+      (distributed-expand-fringe pf-findex cf-findex depth)))
 
 ;; vectorize-list: (listof position) -> (vectorof position)
 ;; convert a list of positions into a vector for easy/efficient partitioning
@@ -465,34 +471,35 @@
         [else (cons (first l2) (fringe-merge l1 (rest l2)))]))
 
 
-(define *max-depth* 10)(set! *max-depth* 105)
+(define *max-depth* 10)(set! *max-depth* 15)
 
-;; cfs-file: fspec fspec int -> position
+;; cfs-file: fringe-index fringe-index int -> position
 ;; perform a file-based cluster-fringe-search at given depth
-;; using previous and current fringes stored in corresponding fringe-specs 
-(define (cfs-file pf-spec cf-spec depth)
-  (cond [(or (zero? (fspec-pcount cf-spec)) (> depth *max-depth*)) #f]
+;; using previous and current fringes described in corresponding fringe-index's 
+(define (cfs-file pf-findex cf-findex depth)
+  (cond [(or (zero? (findex-pcount cf-findex)) (> depth *max-depth*)) #f]
         [*found-goal*
          (print "found goal")
          *found-goal*]
-        [else (let ([new-fringe-spec (expand-fringe pf-spec cf-spec depth)])
+        [else (let ([new-findex (expand-fringe pf-findex cf-findex depth)])
                 (printf "At depth ~a: current-fringe has ~a positions (and new-fringe ~a)~%" 
-                        depth (fspec-pcount cf-spec) (fspec-pcount new-fringe-spec))
+                        depth (findex-pcount cf-findex) (findex-pcount new-findex))
                 ;;(for ([p current-fringe]) (displayln p))
-                (cfs-file cf-spec ;; use current-fringe as prev-fringe at next level
-                          new-fringe-spec
+                (cfs-file cf-findex ;; use current-fringe as prev-fringe at next level
+                          new-findex
                           (add1 depth)))]))
 
+;; start-cluster-fringe-search: bw-position -> ...
 (define (start-cluster-fringe-search start-position)
   ;; initialization of fringe files
   (write-fringe-to-disk empty "fringe-d-1")
   (write-fringe-to-disk (list start-position) "fringe-d0")
-  (cfs-file (make-fspec "fringe-d-1" "" 0 (file-size "fringe-d-1"))
-            (make-fspec "fringe-d0" "" 1 (file-size "fringe-d0"))
+  (cfs-file (list (list *most-negative-fixnum* *most-positive-fixnum* (make-fspec "fringe-d-1" "" 0 (file-size "fringe-d-1"))))
+            (list (list *most-negative-fixnum* *most-positive-fixnum* (make-fspec "fringe-d0" "" 1 (file-size "fringe-d0"))))
             1))
   
 
-(block10-init)
+;(block10-init)
 (climb12-init)
 ;(climb15-init)
 (compile-ms-array! *piece-types* *bh* *bw*)

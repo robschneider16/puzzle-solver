@@ -51,10 +51,17 @@
 (define (fspec-fullpath an-fs) (string-append (fspec-fbase an-fs) (fspec-fname an-fs)))
 (define (fspec-pcount an-fs) (vector-ref an-fs 2))
 (define (fspec-fsize an-fs) (vector-ref an-fs 3))
-;; TODO:
-;; 1. convert fspec to vector
-;; 2. add interface-layer instead of explicit vector-ref
-;; 3. separate file-name into two fields: filename and base-path
+
+;; a fringe-index is a (listof (list number number fspec),
+;; each tripple in a fringe-index describes one segment of the fringe, where the two numbers are the hash-codes
+;; of the min and max position found in a segment-file identified by the fspec given in the third item
+(define (segment-fspec a-findex-seg) (third a-findex-seg))
+(define (segment-min-hc a-findex-seg) (first a-findex-seg))
+(define (segment-max-hc a-findex-seg) (second a-findex-seg))
+;; findex-pcount: fringe-index -> int
+;; report the number of positions in the fringe represented by the given index
+(define (findex-pcount a-fndx) (for/sum ([sgmnt a-fndx]) (fspec-pcount (segment-fspec sgmnt))))
+
 
 ;; ******************************************************************************
 
