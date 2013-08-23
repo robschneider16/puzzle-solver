@@ -4,7 +4,10 @@
 
 (define *num-piece-types* 0)
 (define *piece-types* empty)
+(define *num-pieces* 0)
+(define *charbytes* #"")
 (define *start* empty)
+(define *piece-type-template* (vector))
 (define *target* empty)
 (define *bw* 0)
 (define *bh* 0)
@@ -22,18 +25,49 @@
   (set! *num-piece-types* (vector-length ptv)) ;; must come before bw-positionify/(pre-compress)
   (set! *piece-types* (for/vector ([cell-specs ptv])
                                   (list->set cell-specs)));****
-  (set! *expandpos* (make-vector (* 4 (for/sum ([pt *piece-types*]) (set-count pt))) #f)) ;; any position can never have more than the 4 x the number of pieces (when 4 spaces)
-  (set! *start* (bw-positionify s))
+  (set! *num-pieces* (+ (length s) -1
+                        (length (last s))))
+  (set! *charbytes* (make-bytes *num-pieces*))
+  (set! *expandpos* (make-vector (* 4 *num-pieces*) #f)) ;; any position can never have more than the 4 x the number of pieces (when 4 spaces)
+  (set! *start* (bw-positionify (pre-compress s)))
+  (set! *piece-type-template* (for/vector ([pt (old-positionify *start*)]) (length pt)))
   (set! *target* (for/list ([tile-spec t]) (list (first tile-spec) (list-to-bwrep (list (cell-to-loc (cdr tile-spec)))))))
   )
 
-;; bw-positionify: pre-position -> bw-position
+;; charify: bw-position -> bytearray
+;; want char->integer and integer->char (or not)
+(define (charify bw-p)
+  (let ([locp (old-positionify bw-p)]
+        [bytearray (make-bytes *num-pieces*)]
+        [counter 0]
+        )
+    (for ([pt bw-p])
+      (for ([loc (bwrep-to-list pt)])
+        (bytes-set! bytearray counter (+ 50 loc))
+        (set! counter (add1 counter))))
+    bytearray))
+
+;; decharify: bytearray -> bw-position
+;; for reading from file
+(define (decharify ba)
+  (if (eof-object? ba)
+      ba
+      (let ([in (open-input-bytes ba)])
+        (for/vector ([num-of-pt *piece-type-template*])
+          (list-to-bwrep (for/list ([b (in-bytes (read-bytes num-of-pt in))]) (- b 50)))))))
+
+;; bw-positionify: old-position -> bw-position
 ;; create a bitwise-'position' representation of a board state based on the given start-list pre-position format
-(define (bw-positionify pre-position)
-  (for/vector ([pspec (pre-compress pre-position)]
+(define (bw-positionify old-position)
+  (for/vector ([pspec old-position]
                [i (in-range *num-piece-types*)])
     (unless (= i (first pspec)) (error 'positionify "mis-matched piece-type in vector representation of position"))
     (list-to-bwrep (map cell-to-loc (cdr pspec)))))
+
+;; old-positionify: bw-position -> old-position
+(define (old-positionify bw-position)
+  (for/vector ([bwrep bw-position])
+    (bwrep-to-list bwrep)))
 
 ;; list-to-bwrep: (listof loc) -> int
 ;; convert the list of locations into a bitwise representation

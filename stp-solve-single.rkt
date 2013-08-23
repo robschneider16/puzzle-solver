@@ -57,13 +57,13 @@
                        (fringe-mem-search current-fringe new-fringe (add1 depth) found-goal? (+ npos (set-count new-fringe))))])]))
 
 
-;(block10-init)
-(climb12-init)
+(block10-init)
+;(climb12-init)
 ;(climb15-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
 (write-fringe-to-disk empty "prev-fringe")
 (write-fringe-to-disk (list *start*) "current-fringe")
 
-;(time (fringe-file-search 1))
-(time (fringe-mem-search (set) (set *start*) 1))
+(time (fringe-file-search 1))
+;(time (fringe-mem-search (set) (set *start*) 1))

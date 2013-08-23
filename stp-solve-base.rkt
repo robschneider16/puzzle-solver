@@ -35,7 +35,7 @@
 
 ;; a pre-position is a (append (listof tile-spec) (listof cell))
 
-;; a position is a (vectorof (listof int))
+;; a old-position is a (vectorof (listof int))
 ;; where the index of the top-level vectors reflect the piece-type as given in the init,
 ;; and the ints in the secondary vectors are the SORTED locations of the pieces of that type
 
@@ -68,7 +68,7 @@
 (define (write-fringe-to-disk fringe file-name)
   (let ([my-output (open-output-file file-name #:exists 'replace)])
     (for ([position fringe])
-      (fprintf my-output "~a~%" position))
+      (fprintf my-output "~a~%" (charify position)))
     (flush-output my-output)
     (close-output-port my-output)))
 
@@ -77,7 +77,7 @@
 ;; and returns the fringe that was in that file.
 (define (read-fringe-from-file file-name)
   (let* ([iport (open-input-file file-name)]
-         [the-fringe (port->list read iport)])
+         [the-fringe (port->list (lambda (in) (decharify (read-bytes-line in))) iport)])
     (close-input-port iport)
     the-fringe))
 
@@ -387,6 +387,7 @@
               #:when (is-goal? pos))
     pos))
 
-(block10-init)
+;(block10-init)
+(climb12-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 ;(test)
