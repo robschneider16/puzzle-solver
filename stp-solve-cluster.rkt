@@ -366,25 +366,33 @@
 ;; ------------------------------------------------------------------------------------------
 ;; DISTRIBUTED EXPAND AND MERGE
 
-;; distributed-expand-fringe: fspec fspec int -> (list string int int)
+;; distributed-expand-fringe: fringe-index fringe-index int -> (list string int int)
 ;; Distributed version of expand-fringe
 ;; given prev and current fringe-specs and the present depth, expand and merge the current fringe,
 ;; returning the fringe-spec of the newly expanded and merged fringe.
-(define (distributed-expand-fringe pf-spec cf-spec depth)
+(define (distributed-expand-fringe pf-findex cf-findex depth)
   #|(printf "distributed-expand-fringe: at depth ~a, pf-spec: ~a; cf-spec: ~a~%" 
           depth pf-spec cf-spec)|#
   ;; push newest fringe (current-fringe) to all workers
   (cond [(string=? *master-name* "localhost")
-         (copy-file (fspec-fullpath cf-spec) (format "~a~a" *local-store* (fspec-fname cf-spec)))]
-        [else (system (format "sync; rocks run host compute 'sync; scp wcp:puzzle-solver/~a ~a'" 
-                              (fspec-fname cf-spec) *local-store*))])
+         (for ([fsegment cf-findex])
+           (copy-file (fspec-fullpath (segment-fspec fsegment)) (format "~a~a" *local-store* (fspec-fname (segment-fspec fsegment)))))]
+        [else 
+         (for ([fsegment cf-findex])
+           (system (format "sync; rocks run host compute 'sync; scp wcp:puzzle-solver/~a ~a'" 
+                           (fspec-fname (segment-fspec fsegment)) *local-store*)))])
   (let* (;; EXPAND
-         [ranges (make-vector-ranges (fspec-pcount cf-spec))]
-         [rcf-spec (make-fspec (fspec-fname cf-spec) *local-store* (fspec-pcount cf-spec) (fspec-fsize cf-spec))]
+         [ranges (make-vector-ranges (findex-pcount cf-findex))]
+         ;;make remote fringe-index
+         ;[rcf-spec (make-fspec (fspec-fname cf-spec) *local-store* (fspec-pcount cf-spec) (fspec-fsize cf-spec))]
+         [rcf-findex (for/list ([seg cf-findex]) 
+                       (let ([seg-fspec (segment-fspec seg)])
+                         (list (segment-min-hc seg) (segment-max-hc seg)
+                               (make-fspec (fspec-fname seg-fspec) *local-store* (fspec-pcount seg-fspec) (fspec-fsize seg-fspec)))))]
          ;; --- Distribute the actual expansion work ------------------------
          [infomsg1 (printf "starting expand, ... ")]
          [expand-start (current-seconds)]
-         [sampling-stats (remote-expand-fringe ranges pf-spec rcf-spec depth)]
+         [sampling-stats (remote-expand-fringe ranges pf-findex rcf-findex depth)]
          [expand-time-msg (printf "expand time: ~a~%" (~r (/ (- (current-seconds) expand-start) 60.0) #:precision 4))]
          ;; -----------------------------------------------------------------
          [check-for-goal (for/first ([ss sampling-stats]
@@ -431,13 +439,17 @@
     (for ([f sorted-expansion-files])
       ;(printf "distributed-expand-fringe: concatenating ~a~%" f)
       (system (format "cat ~a >> fringe-d~a" f depth)))
-    ;; delete files we don't need anymore
+    ;;--- delete files we don't need anymore
+    ;; delete previous fringe-index
     (delete-file (fspec-fullpath pf-spec))
-    (system "rm partial-expansion* partial-merge*")
+
+    ;(system "rm partial-expansion* partial-merge*")
     (unless (string=? *master-name* "localhost") (delete-file (fspec-fname cf-spec)))
     (printf "distributed-expand-fringe: file manipulation ~a, and total at depth ~a: ~a~%" 
             (~r (/ (- (current-seconds) merge-end) 60.0) #:precision 4) depth (~r (/ (- (current-seconds) expand-start) 60.0) #:precision 4))
-    (make-fspec new-cf-name "" (foldl + 0 sef-lengths) (file-size new-cf-name))))
+    ;; make the new fringe-index to return
+    (make-fspec new-cf-name "" (foldl + 0 sef-lengths) (file-size new-cf-name))
+    ))
 
 
 ;;----------------------------------------------------------------------------------------
