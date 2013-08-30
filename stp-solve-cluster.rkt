@@ -319,6 +319,7 @@
     (copy-file (string-append *local-store* ofile-name) ofile-name)
     ;(printf "remote-merge-expansions: about to try deleting ofile-name, ~a~%" ofile-name)
     (delete-file (string-append *local-store* ofile-name))
+    ;;**** maybe not remove this as would be the prev-fringe on the next cycle ****????
     (unless (string=? *master-name* "localhost")
       (for ([fspc expand-files-specs]) 
         (delete-file (string-append *local-store* (fspec-fname fspc))))) ;remove the local expansions
@@ -416,6 +417,7 @@
          ;; --- Distribute the merging work ----------
          [infomsg2 (printf "starting merge, ... ")]
          [merge-start (current-seconds)]
+         ;; modify this to be sorted-expansion-fspecs
          [sorted-expansion-files-lengths
           (let ([merged-expansion-files-lens (remote-merge merge-ranges expand-files-specs depth)]
                 )
@@ -439,16 +441,21 @@
     (for ([f sorted-expansion-files])
       ;(printf "distributed-expand-fringe: concatenating ~a~%" f)
       (system (format "cat ~a >> fringe-d~a" f depth)))
-    ;;--- delete files we don't need anymore
+    ;;--- delete files we don't need anymore ---------
     ;; delete previous fringe-index
-    (delete-file (fspec-fullpath pf-spec))
+    (for ([seg pf-findex])
+      (delete-file (fspec-fullpath (segment-fspec seg))))
 
     ;(system "rm partial-expansion* partial-merge*")
-    (unless (string=? *master-name* "localhost") (delete-file (fspec-fname cf-spec)))
+    ;(unless (string=? *master-name* "localhost") (delete-file (fspec-fname cf-spec)))
     (printf "distributed-expand-fringe: file manipulation ~a, and total at depth ~a: ~a~%" 
             (~r (/ (- (current-seconds) merge-end) 60.0) #:precision 4) depth (~r (/ (- (current-seconds) expand-start) 60.0) #:precision 4))
     ;; make the new fringe-index to return
     (make-fspec new-cf-name "" (foldl + 0 sef-lengths) (file-size new-cf-name))
+    (for/list ([mrg-range merge-ranges]
+               ;[fspec merge-file-fspecs]
+               )
+      (list (first mrg-range) (second mrg-range) #|fspec|#))
     ))
 
 
