@@ -9,6 +9,7 @@
 (require racket/set)
 (require mzlib/string)
 (require test-engine/racket-tests)
+(require racket/generator)
 
 (provide (all-defined-out))
 
@@ -62,6 +63,32 @@
 ;; report the number of positions in the fringe represented by the given index
 (define (findex-pcount a-fndx) (for/sum ([sgmnt a-fndx]) (fspec-pcount (segment-fspec sgmnt))))
 
+;; make-findex-seq-reader: findex -> (sequenceof position)
+;; given a fringe-index, create a sequence that will produce all of the positions in the list of fspecs
+;; appearing in the fringe-index, in the order in which they appear.
+;;*** WILL WE RUN INTO PROBLEMS WITH THE LAST OPEN-INPUT-FILE PORT LEFT OPEN ??????????
+(define (make-findex-seq-reader findex)
+  (in-generator 
+   (for ([segment findex])
+     (let* ([fspec (segment-fspec segment)]
+            [iprt (open-input-file (fspec-fullpath fspec))])
+       (for ([p (in-port (lambda (in) (decharify (read-bytes-line in))) iprt)])
+         (yield p))
+       (close-input-port iprt)))))
+
+;; make-primed-findex-seq-reader: int fringe-index -> (sequence position)
+;; given the assigned start, create a findex-seq-reader and advance it so the next position is first of the assigned range
+(define (make-primed-findex-seq-reader start findex)
+  (do ([pcounter start (- pcounter (fspec-pcount (segment-fspec (car segments))))]
+       [segments findex (cdr segments)])
+    ((< pcounter (fspec-pcount (segment-fspec (car segments))))
+     ;; make the seq-reader and advance it
+     (let*-values ([(fsr) (make-findex-seq-reader segments)]
+                   [(more? next) (sequence-generate fsr)])
+       (for ([i pcounter]) (next))
+       fsr))
+    ))
+    
 
 ;; ******************************************************************************
 

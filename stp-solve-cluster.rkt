@@ -11,6 +11,7 @@
 (require racket/set)
 (require mzlib/string) ;; supposedly depricated but seems to need the require for 5.3.5
 
+
 (require "stp-init.rkt")
 (require "stp-solve-base.rkt")
 ;(require profile)
@@ -186,67 +187,64 @@
         pre-ofiles))
                         
 
-;; remote-expand-part-fringe: (list int int) int fspec fspec int -> sampling-stat
+;; remote-expand-part-fringe: (list int int) int fringe-index fringe-index int -> sampling-stat
 ;; given a pair of indices into the current-fringe that should be expanded by this process, a process-id,
 ;; and the fspecs for the prev- and current-fringes, ...
 ;; expand the positions in the indices range, ignoring duplicates other than within the new fringe being constructed.
-(define (remote-expand-part-fringe ipair process-id pf-spec cf-spec depth)
-  ;; prev-fringe spec points to default directory; current-fringe spec points to /tmp folder
+(define (remote-expand-part-fringe ipair process-id pf-findex cf-findex depth)
+  ;; prev-fringe spec points to default shared directory; current-fringe spec points to *local-store* folder
   ;(printf "remote-expand-part-fringe: pf-spec: ~a, and cf-spec: ~a~%" pf-spec cf-spec)
   ;; EXPAND PHASE 1
   (let* ([pre-ofile-template-fname (format "partial-expansion~a" (~a process-id #:left-pad-string "0" #:width 2 #:align 'right))]
          [pre-ofile-counter 0]
          [pre-ofiles empty]
          ;; *** Dynamically choose the size of the pre-proto-fringes to keep the number of files below 500 ***
-         [dynamic-proto-fringe-size (max *min-pre-proto-fringe-size* (/ (fspec-pcount cf-spec) 500))]
+         [dynamic-proto-fringe-size (max *min-pre-proto-fringe-size* (/ (findex-pcount cf-findex) 500))]
          [start (first ipair)]
          [end (second ipair)]
          [assignment-count (- end start)]
-         [expanded-phase1 1];; technically, not yet, but during initialization in pre-resv do loop
-         ;; advance the fringehead for the current-fringe to the beginning of our expansion assignment
-         [cffh (do ([i 0 (add1 i)]
-                    [fh (fh-from-fspec cf-spec)])
-                 ((= i start) fh)
-                 (advance-fhead! fh))])
+         [expanded-phase1 0];; technically, not yet, but during initialization in pre-resv do loop
+         ;; make the findex-seq-reader and advance to the right place
+         [cf-fringe-seq-reader (make-primed-findex-seq-reader start cf-findex)]
+         )
     ;; do the actual expansions
     (do ([i 1 (add1 i)]
-         [expansions (expand (fringehead-next cffh)) (set-union expansions (expand (fringehead-next cffh)))])
+         [expansions (expand (sequence-ref cf-fringe-seq-reader 0))
+                     (set-union expansions (sequence-ref cf-fringe-seq-reader 0))])
       ((>= i assignment-count)
        (set! pre-ofiles
              (process-proto-fringe expansions pre-ofile-template-fname pre-ofile-counter pre-ofiles)))
-      (when (fhdone? cffh) 
-        (error 'remote-expand-part-fringe (format "hit end of cur-fringe after ~a of ~a expansions" expanded-phase1 assignment-count)))
       ;; When we have collected the max number of expansions, create another pre-proto-fringe file
       (when (> (set-count expansions) dynamic-proto-fringe-size)
         (set! pre-ofiles
               (process-proto-fringe expansions pre-ofile-template-fname pre-ofile-counter pre-ofiles))
         (set! pre-ofile-counter (add1 pre-ofile-counter))
         (set! expansions (set)))
-      ;; When we have created too many pre-proto-fringes, merge them now
-      #|(when (> (length pre-ofiles) *max-num-pre-proto-fringes*) 
-        'merge-them-down-to-a-single-file)|#
-      (advance-fhead! cffh)
       (set! expanded-phase1 (add1 expanded-phase1)))
     #|(printf "remote-exp-part-fring: PHASE 1: expanding ~a positions yielding ~a/~a positions~%" 
             expanded-phase1 (vector-length pre-resv) (position-count-in-file pre-ofile-name))|#
     (when (< expanded-phase1 assignment-count)
       (error 'remote-expand-part-fringe
              (format "only expanded ~a of the assigned ~a (~a-~a) positions" expanded-phase1 assignment-count start end)))
-    (close-input-port (fringehead-iprt cffh))
+    ;(close-input-port (fringehead-iprt cffh))
     ;; PHASE 2: now pass through the proto-fringe expansion file(s) as well as prev-fringe and current-fringe to remove duplicates
-    (remove-dupes pf-spec cf-spec pre-ofiles pre-ofile-template-fname depth)))
+    (remove-dupes pf-findex cf-findex pre-ofiles pre-ofile-template-fname depth)))
 
 
-;; remote-expand-fringe: (listof (list fixnum fixnum)) fspec fspec int -> (listof sampling-stat)
+;; remote-expand-fringe: (listof (list fixnum fixnum)) fring-index fringe-index int -> (listof sampling-stat)
 ;; trigger the distributed expansion according to the given ranges
-;; The master should provide a cf-spec that points to a *local-store* copy of the current-fringe, where the copy is provided by master also
-(define (remote-expand-fringe ranges pf-spec cf-spec depth)
+;; The master should provide a fringe-index with cf-specs that point to a *local-store* copy of the current-fringe,
+;; where the copy is arranged-for by the master also
+(define (remote-expand-fringe ranges pf-findex cf-findex depth)
   ;;(printf "remote-expand-fringe: current-fringe of ~a split as: ~a~%" cur-fringe-size (map (lambda (pr) (- (second pr) (first pr))) ranges))
   (let* ([distrib-results (for/work ([range-pair ranges]
                                      [i (in-range (length ranges))])
                                     (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end")) ;;prevent riot cache-failure
-                                    (wait-for-files (list pf-spec cf-spec) #t)
-                                    (remote-expand-part-fringe range-pair i pf-spec cf-spec depth))])
+                                    ;; need alternate version of wait-for-files that just checks on the assigned range
+                                    ;; but for now, just append the fspecs
+                                    (wait-for-files (append (map (lambda (seg) (segment-fspec seg)) pf-findex)
+                                                            (map (lambda (seg) (segment-fspec seg)) cf-findex)) #t)
+                                    (remote-expand-part-fringe range-pair i pf-findex cf-findex depth))])
     ;(printf "remote-expand-fringe: respective expansion counts: ~a~%" (map (lambda (ssv) (vector-ref ssv 0)) distrib-results))
     distrib-results))
 
@@ -380,7 +378,9 @@
            (copy-file (fspec-fullpath (segment-fspec fsegment)) (format "~a~a" *local-store* (fspec-fname (segment-fspec fsegment)))))]
         [else 
          (for ([fsegment cf-findex])
-           (system (format "sync; rocks run host compute 'sync; scp wcp:puzzle-solver/~a ~a'" 
+           (system 
+            ;(format "sync; rocks run host compute 'sync; scp wcp:puzzle-solver/~a ~a'" ; net-copy using scp
+            (format "sync; rocks run host compute 'sync; cp puzzle-solver/~a ~a'"      ; just copy from shared drive to local
                            (fspec-fname (segment-fspec fsegment)) *local-store*)))])
   (let* (;; EXPAND
          [ranges (make-vector-ranges (findex-pcount cf-findex))]
