@@ -82,9 +82,10 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
       (sleep sleep-time)))
   (unless (fhdone? fh)
     (when (eof-object? (fringehead-next fh)) ; advance to next segment
-      (set-fringehead-filespecs! fh (cdr (fringehead-filespecs fh)))
+      (set-fringehead-filespecs! fh (rest (fringehead-filespecs fh)))
       (close-input-port (fringehead-iprt fh))
-      (set-fringehead-iprt! fh (open-input-file (string-append (fringehead-fbase fh) (filespec-fname (car (fringehead-filespecs fh)))))))
+      (set-fringehead-iprt! fh (open-input-file (filespec-fullpathname (first (fringehead-filespecs)))))
+      (set-fringehead-readcount! fh (sub1 (fringehead-readcount fh))))
     (set-fringehead-next! fh (read-pos (fringehead-iprt fh)))
     (set-fringehead-readcount! fh (add1 (fringehead-readcount fh)))
     (fringehead-next fh)))
@@ -100,16 +101,24 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
          (not (position<? fhp p))) 
      (equal? fhp p))))
 
-;; fh-from-fspec: fringe [int 0] -> fringehead
+;; fh-from-fringe: fringe [int 0] -> fringehead
 ;; create a fringehead from a given fringe and advance it to the requested start
 ;; *** the open port must be closed by the requestor of this fringehead
 (define (fh-from-fringe f [start 0])
-  (let* ([firstfullpathname (string-append (fringe-fbase f) (filespec-fname (first (fringe-segments f))))]
+  (printf "fh-from-fringe: starting~%")
+  (let* ([firstfullpathname (filespec-fullpathname (first (fringe-segments f)))]
          [inprt (open-input-file firstfullpathname)]
          [new-fh (fringehead (read-pos inprt) inprt (fringe-segments f) 1 (fringe-pcount f) (fringe-fbase f))])
     (for ([i start]) (advance-fhead! new-fh))
+    (printf "fh-from-fringe: leaving, w/ fh-readcount = ~a, after asked to advance to ~a~%" (fringehead-readcount new-fh) start)
     new-fh))
 
+;; fh-from-filespec: filespec -> fringehead
+;; create a simple fringehead for a single filespec.  create a dummy fringe wrapper and use fh-from-fringe
+(define (fh-from-filespec fspec)
+  (fh-from-fringe (make-fringe (filespec-fbase fspec)
+                               (list fspec)
+                               (filespec-pcount fspec))))
 
 ;; -----------------------------------------------------------------------------------
 ;; --- BULK FRINGE READING/WRITING ---------------------------------------------------

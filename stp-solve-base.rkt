@@ -1,17 +1,20 @@
 #lang racket
 
-;(require (planet soegaard/gzip:2:2))
-(require file/gzip)
-(require file/gunzip)
-(require srfi/25) ;; multi-dimensional arrays
-(require "stp-init.rkt")
-(require racket/fixnum)
-(require racket/set)
-(require mzlib/string)
-(require test-engine/racket-tests)
-(require racket/generator)
+(require
+ srfi/25 ;; multi-dimensional arrays
+ racket/fixnum
+ racket/set
+ test-engine/racket-tests
+ racket/generator
+ "stp-init.rkt"
+ )
+                  
 
-(provide (all-defined-out))
+(provide compile-ms-array!
+         position<?
+         position-in-vec?
+         expand
+         is-goal?)
 
 
 ;; INITIALIZE STUFF FOR SLIDING-TILE-SOLVER
@@ -43,179 +46,11 @@
 ;; a bw-position is a (vector int)
 ;; where each int is a bitwise representation of the locations of the pieces of that type
 
-;; a fspec is a vector: (vector string string int int)
-;; where the strings are the file-name and the base path to the file, the count of positions, and file-size in bytes
-;; NOTE: an fspec must be a list or vector because they are passed over the riot layer
-(define (make-fspec fname fbase pcount fsize) (vector fname fbase pcount fsize))
-(define (fspec-fname an-fs) (vector-ref an-fs 0))
-(define (fspec-fbase an-fs) (vector-ref an-fs 1))
-(define (fspec-fullpath an-fs) (string-append (fspec-fbase an-fs) (fspec-fname an-fs)))
-(define (fspec-pcount an-fs) (vector-ref an-fs 2))
-(define (fspec-fsize an-fs) (vector-ref an-fs 3))
-
-;; a fringe-index is a (listof (list number number fspec),
-;; each tripple in a fringe-index describes one segment of the fringe, where the two numbers are the hash-codes
-;; of the min and max position found in a segment-file identified by the fspec given in the third item
-(define (segment-fspec a-findex-seg) (third a-findex-seg))
-(define (segment-min-hc a-findex-seg) (first a-findex-seg))
-(define (segment-max-hc a-findex-seg) (second a-findex-seg))
-;; findex-pcount: fringe-index -> int
-;; report the number of positions in the fringe represented by the given index
-(define (findex-pcount a-fndx) (for/sum ([sgmnt a-fndx]) (fspec-pcount (segment-fspec sgmnt))))
-
-;; make-findex-seq-reader: findex -> (sequenceof position)
-;; given a fringe-index, create a sequence that will produce all of the positions in the list of fspecs
-;; appearing in the fringe-index, in the order in which they appear.
-;;*** WILL WE RUN INTO PROBLEMS WITH THE LAST OPEN-INPUT-FILE PORT LEFT OPEN ??????????
-(define (make-findex-seq-reader findex)
-  (in-generator 
-   (for ([segment findex])
-     (let* ([fspec (segment-fspec segment)]
-            [iprt (open-input-file (fspec-fullpath fspec))])
-       (for ([p (in-port (lambda (in) (decharify (read-bytes-line in))) iprt)])
-         (yield p))
-       (close-input-port iprt)))))
-
-;; make-primed-findex-seq-reader: int fringe-index -> (sequence position)
-;; given the assigned start, create a findex-seq-reader and advance it so the next position is first of the assigned range
-(define (make-primed-findex-seq-reader start findex)
-  (do ([pcounter start (- pcounter (fspec-pcount (segment-fspec (car segments))))]
-       [segments findex (cdr segments)])
-    ((< pcounter (fspec-pcount (segment-fspec (car segments))))
-     ;; make the seq-reader and advance it
-     (let*-values ([(fsr) (make-findex-seq-reader segments)]
-                   [(more? next) (sequence-generate fsr)])
-       (for ([i pcounter]) (next))
-       fsr))
-    ))
-    
 
 ;; ******************************************************************************
 
 ;;-------------------------------------------------------------------------------
 ;; COMMON UTILITIES TO BOTH GENERIC FRINGE-SEARCH AND CLUSTER-FRINGE-SEARCH
-
-;; Fringe Writing/Reading 
-
-;; write-fringe-to-disk: (listof or vectorof position) string -> void
-;; writes the positions from the given fringe (whether list or vector) into a file with given file-name.
-(define (write-fringe-to-disk fringe file-name)
-  (let ([my-output (open-output-file file-name #:exists 'replace)])
-    (for ([position fringe])
-      (fprintf my-output "~a~%" (charify position)))
-    (flush-output my-output)
-    (close-output-port my-output)))
-
-;; read-fringe-from-file: string -> (listof position)
-;; reads a file from a file path (if you are in the current directory just simply the file-name)
-;; and returns the fringe that was in that file.
-(define (read-fringe-from-file file-name)
-  (let* ([iport (open-input-file file-name)]
-         [the-fringe (port->list (lambda (in) (decharify (read-bytes-line in))) iport)])
-    (close-input-port iport)
-    the-fringe))
-
-;; read-pos: input-port -> bw-position
-;; read the (probably byte representation of a) position from the file attatched to the given input port
-;; ASSUMES: fringe-file format is one position per line with bytes
-(define (read-pos iprt)
-  (decharify (read-bytes-line iprt)))
-
-;; position-count-in-file: string -> number
-;; reports the number of positions in the given fringe file assuming the file was written with write-fringe-to-disk
-(define (position-count-in-file f)
-  (read-from-string (with-output-to-string 
-                     (lambda () (system (if (string=? (substring f (- (string-length f) 3)) ".gz")
-                                            (format "zcat ~a | wc -l" f)
-                                            (format "wc -l ~a" f)))))))
-                    
-
-;; touch: string -> void
-;; create the file with given name
-(define (touch fname) (display-to-file "" fname))
-
-;; fringe-file-not-ready?: fspec [check-alt-flag #f] -> boolean
-;; determine if the file exists on disk and has the appropriate size
-;; with optional check-alt-flag will look on the nfs share and copy if found
-(define (fringe-file-not-ready? fspec [check-alt-flag #f])
-  (when (and check-alt-flag
-             (not (file-exists? (fspec-fullpath fspec)))
-             (file-exists? (fspec-fname fspec))) ;; check working (shared) directory
-    (copy-file (fspec-fname fspec) (fspec-fullpath fspec))) ;; YUCK!
-  (or (not (file-exists? (fspec-fullpath fspec)))
-      (< (file-size (fspec-fullpath fspec)) (fspec-fsize fspec))))
-      
-
-;; wait-for-files: (listof fspec) [check-alt-flag #f] -> 'ready
-;; given a list of fringe-specs, wait until the file is present in the specified location
-;; with the specified size.  if check-alt-flag is true, then drop the fbase and see if the file is available via NFS (copy if so!)
-(define (wait-for-files lo-fspecs [check-alt-flag #f])
-  (do ([fspecs (filter (lambda (fspec) (fringe-file-not-ready? fspec check-alt-flag)) lo-fspecs)
-               (filter (lambda (fspec) (fringe-file-not-ready? fspec check-alt-flag)) fspecs)]
-       [sleep-time 0.01 (* sleep-time 2)])
-    ((empty? fspecs) 'ready)
-    (printf "wait-for-files: waiting for ~a files such as ~a ... and sleeping ~a~%" (length fspecs) (fspec-fullpath (first fspecs)) sleep-time)
-    (sleep sleep-time)))
-
-;; check-sorted-fringe?: string -> boolean
-;; check to see that a given fringe file is indeed sorted
-(define (check-sorted-fringe? f)
-  (let* ([myin (open-input-file f)]
-         [prevpos (read-pos myin)]
-         [bool-res (for/and ([pos (in-port read-pos myin)])
-                     (let ([res (position<? prevpos pos)])
-                       (set! prevpos pos)
-                       res))])
-    (close-input-port myin)
-    bool-res))
-
-;;---- fringehead structs and utilities
-
-;; a fringehead in a struct
-;; where next is a position, iprt is an input port, readcount is the number of positions read from this fringehead
-;; and total is the number of positions expected to be able to read
-(struct fringehead (next iprt readcount total) #:mutable)
-
-;; fhdone?: fringehead -> boolean
-;; #t if readcount >= total for the given fringehead -- that is, this fringehead is exhausted.
-;; Note: readcount starts at 1, 
-(define (fhdone? fh)
-  (when (and (eof-object? (fringehead-next fh)) (<= (fringehead-readcount fh) (fringehead-total fh)))
-    ;; try to reset 
-    (error 'fhdone? "hit end of file before the appropriate number of positions had been read"))
-  ;(> (fringehead-readcount fh) (fringehead-total fh))
-  (eof-object? (fringehead-next fh))
-  )
-
-;; advance-fhead!: fringehead -> position OR void
-;; move to the next position, but check to make sure something is available if expected
-(define (advance-fhead! fh)
-  (when (< (fringehead-readcount fh) (fringehead-total fh))
-    (do ([sleep-time 0.01 (* sleep-time 2)])
-      ((not (eof-object? (peek-bytes 1 1 (fringehead-iprt fh)))) 'proceed)
-      (sleep sleep-time)))
-  (unless (fhdone? fh)
-    (set-fringehead-next! fh (read-pos (fringehead-iprt fh)))
-    (set-fringehead-readcount! fh (add1 (fringehead-readcount fh)))
-    (fringehead-next fh)))
-
-;; position-in-fhead?: position fringehead -> boolean
-;; determines if given position is present in the fringe headed by the given fringehead
-;; side-effect: advances the fringehead, assuming no position _less-than_ thi given position will subsequently be queried
-;; if the given position is less than the head of the fringe, then we'll not find it further in the fringe
-;; that is, advance the fh while it is strictly less-than the given position
-(define (position-in-fhead? p fh)
-  (do ([fhp (fringehead-next fh) (advance-fhead! fh)])
-    ((or (fhdone? fh)
-         (not (position<? fhp p))) 
-     (equal? fhp p))))
-
-;; fh-from-fspec: fspec -> fringehead
-;; create a fringehead from a given fspec
-;; *** the open port must be closed by the requestor of this fringehead
-(define (fh-from-fspec fs)
-  (let ([inprt (open-input-file (fspec-fullpath fs))])
-    (fringehead (read-pos inprt) inprt 1 (fspec-pcount fs))))
 
 
 ;; Set-like Operations on Lists
@@ -275,10 +110,10 @@
          [current-loc-list (sort (map cell-to-loc current-cell-list) <)]
          [cell-list-to (translate-piece current-cell-list trans)]
          [loc-list-to (sort (map cell-to-loc cell-list-to) <)])
-    (list (list-to-bwrep (list-subtract loc-list-to  current-loc-list <))
-          (bitwise-xor (list-to-bwrep (list-subtract loc-list-to  current-loc-list <))
-                       (list-to-bwrep (list-subtract current-loc-list loc-list-to <)))
-          (list-to-bwrep (list (cell-to-loc (cdr tile))
+    (list (list->bwrep (list-subtract loc-list-to  current-loc-list <))
+          (bitwise-xor (list->bwrep (list-subtract loc-list-to  current-loc-list <))
+                       (list->bwrep (list-subtract current-loc-list loc-list-to <)))
+          (list->bwrep (list (cell-to-loc (cdr tile))
                                (cell-to-loc (translate-cell (cdr tile) trans))))
           (cell-to-loc (translate-cell (cdr tile) trans)))))
 
@@ -392,7 +227,7 @@
   (let ([expand-count (box 0)])
     (vector-fill! *expandpos* #f)
     (for ([piece-type (in-range 1 *num-piece-types*)])
-      (for ([piece-loc (bwrep-to-list (vector-ref s piece-type))])
+      (for ([piece-loc (bwrep->list (vector-ref s piece-type))])
         (vector-fill! *piecelocvec* #f) ;reset for the next piece
         (expand-piece piece-type piece-loc s expand-count)))
     (for/set ([i (unbox expand-count)])

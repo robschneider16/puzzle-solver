@@ -1,6 +1,17 @@
 #lang racket
 
-(provide (all-defined-out))
+(provide *num-piece-types* *piece-types*
+         *target* *bw* *bh* *bsz*
+         *piecelocvec* *expandpos* *start*
+         charify
+         decharify
+         list->bwrep
+         bwrep->list
+         cell-to-loc
+         loc-to-cell
+         block10-init
+         climb12-init
+         climb15-init)
 
 (define *num-piece-types* 0)
 (define *piece-types* empty)
@@ -31,7 +42,7 @@
   (set! *expandpos* (make-vector (* 4 *num-pieces*) #f)) ;; any position can never have more than the 4 x the number of pieces (when 4 spaces)
   (set! *start* (bw-positionify (pre-compress s)))
   (set! *piece-type-template* (for/vector ([pt (old-positionify *start*)]) (length pt)))
-  (set! *target* (for/list ([tile-spec t]) (list (first tile-spec) (list-to-bwrep (list (cell-to-loc (cdr tile-spec)))))))
+  (set! *target* (for/list ([tile-spec t]) (list (first tile-spec) (list->bwrep (list (cell-to-loc (cdr tile-spec)))))))
   )
 
 ;; charify: bw-position -> bytearray
@@ -42,7 +53,7 @@
         [counter 0]
         )
     (for ([pt bw-p])
-      (for ([loc (bwrep-to-list pt)])
+      (for ([loc (bwrep->list pt)])
         (bytes-set! bytearray counter (+ 50 loc))
         (set! counter (add1 counter))))
     bytearray))
@@ -54,7 +65,7 @@
       ba
       (let ([in (open-input-bytes ba)])
         (for/vector ([num-of-pt *piece-type-template*])
-          (list-to-bwrep (for/list ([b (in-bytes (read-bytes num-of-pt in))]) (- b 50)))))))
+          (list->bwrep (for/list ([b (in-bytes (read-bytes num-of-pt in))]) (- b 50)))))))
 
 ;; bw-positionify: old-position -> bw-position
 ;; create a bitwise-'position' representation of a board state based on the given start-list pre-position format
@@ -62,24 +73,24 @@
   (for/vector ([pspec old-position]
                [i (in-range *num-piece-types*)])
     (unless (= i (first pspec)) (error 'positionify "mis-matched piece-type in vector representation of position"))
-    (list-to-bwrep (map cell-to-loc (cdr pspec)))))
+    (list->bwrep (map cell-to-loc (cdr pspec)))))
 
 ;; old-positionify: bw-position -> old-position
 (define (old-positionify bw-position)
   (for/vector ([bwrep bw-position])
-    (bwrep-to-list bwrep)))
+    (bwrep->list bwrep)))
 
-;; list-to-bwrep: (listof loc) -> int
+;; list->bwrep: (listof loc) -> int
 ;; convert the list of locations into a bitwise representation
-(define (list-to-bwrep lo-loc)
+(define (list->bwrep lo-loc)
   (foldl (lambda (a-loc bwint)
            (+ (arithmetic-shift 1 a-loc) bwint))
          0
          lo-loc))
 
-;; bwrep-to-list: int -> (listof loc)
+;; bwrep->list: int -> (listof loc)
 ;; extract the locs encoded in the given int
-(define (bwrep-to-list n)
+(define (bwrep->list n)
   (for/list ([i (in-range (integer-length n))]
              #:when (bitwise-bit-set? n i))
     i))    
@@ -172,6 +183,7 @@
 
 (define (climb12-init)
   (set-em! *climb12-piece-types* *climb12-start* *climb12-target* 6 5))
+
 ;;------------------------------------------------------------------------------------------------------
 ;; CLIMB-15 PUZZLE INIT
 ;; (variation 1: 104 moves)
@@ -210,4 +222,10 @@
 (define (climb15-init)
   (set-em! *climb15-piece-types* *climb15-start* *climb15-target* 8 5))
 
-;(block10-init)
+;;------------------------------------------------------------------------------------------------------
+;; CLIMB-24-PRO PUZZLE INIT
+;; 22x moves
+
+
+;;------------------------------------------------------------------------------------------------------
+;(block10-init) ; for local testing
