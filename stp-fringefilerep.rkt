@@ -58,37 +58,40 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 ;; --- FRINGEHEAD --------------------------------------------------------------------
 
 ;; a fringehead in a struct
-(struct fringehead (next iprt filespecs readcount total fbase) #:mutable)
+(struct fringehead (next iprt filespecs readcount total) #:mutable)
 ;; where next is a position, iprt is the current input-port, filespecs is the list of filespecs for the segments making up this fringe
 ;; with the first corresponding to the current intput-port, readcount is the number of positions read from this fringehead
-;; total is the number of positions expected to be able to read, and basepath is the path to the files in the filespecs
+;; and total is the number of positions expected to be able to read
+;; NOTE on readcounts: A readcount value of 'n' should imply that the current fringehead-next value is the n'th position in the fringe
 
 ;; fhdone?: fringehead -> boolean
 ;; #t if readcount >= total for the given fringehead -- that is, this fringehead is exhausted.
 ;; Note: readcount starts at 1, 
 (define (fhdone? fh)
-  (when (and (eof-object? (fringehead-next fh)) (<= (fringehead-readcount fh) (fringehead-total fh)))
+  (when (and (eof-object? (fringehead-next fh)) (empty? (rest (fringehead-filespecs fh))) (<= (fringehead-readcount fh) (fringehead-total fh)))
     ;; try to reset 
-    (error 'fhdone? "hit end of file before the appropriate number of positions had been read"))
+    (error 'fhdone? (format "hit end of fringe reading only ~a of ~a positions~%" (fringehead-readcount fh) (fringehead-total fh))))
   (and (eof-object? (fringehead-next fh))
        (empty? (rest (fringehead-filespecs fh)))))
 
-;; advance-fhead!: fringehead -> position OR void
+;; advance-fhead!: fringehead -> position OR eof
 ;; move to the next position, but check to make sure something is available if expected
 (define (advance-fhead! fh)
-  (when (< (fringehead-readcount fh) (fringehead-total fh))
+  (when (< (fringehead-readcount fh) (filespec-pcount (first (fringehead-filespecs fh))))
     (do ([sleep-time 0.01 (* sleep-time 2)])
       ((not (eof-object? (peek-bytes 1 1 (fringehead-iprt fh)))) 'proceed)
+      (printf "advance-fhead!: sleeping while waiting on ~a after reading ~a of ~a positions~%" 
+              (filespec-fullpathname (first (fringehead-filespecs fh))) (fringehead-readcount fh) (fringehead-total fh))
       (sleep sleep-time)))
   (unless (fhdone? fh)
     (when (eof-object? (fringehead-next fh)) ; advance to next segment
       (set-fringehead-filespecs! fh (rest (fringehead-filespecs fh)))
       (close-input-port (fringehead-iprt fh))
-      (set-fringehead-iprt! fh (open-input-file (filespec-fullpathname (first (fringehead-filespecs)))))
+      (set-fringehead-iprt! fh (open-input-file (filespec-fullpathname (first (fringehead-filespecs fh)))))
       (set-fringehead-readcount! fh (sub1 (fringehead-readcount fh))))
     (set-fringehead-next! fh (read-pos (fringehead-iprt fh)))
-    (set-fringehead-readcount! fh (add1 (fringehead-readcount fh)))
-    (fringehead-next fh)))
+    (set-fringehead-readcount! fh (add1 (fringehead-readcount fh))))
+  (fringehead-next fh))
 
 ;; position-in-fhead?: position fringehead -> boolean
 ;; determines if given position is present in the fringe headed by the given fringehead
@@ -106,11 +109,13 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 ;; *** the open port must be closed by the requestor of this fringehead
 (define (fh-from-fringe f [start 0])
   (printf "fh-from-fringe: starting~%")
-  (let* ([firstfullpathname (filespec-fullpathname (first (fringe-segments f)))]
-         [inprt (open-input-file firstfullpathname)]
-         [new-fh (fringehead (read-pos inprt) inprt (fringe-segments f) 1 (fringe-pcount f) (fringe-fbase f))])
-    (for ([i start]) (advance-fhead! new-fh))
-    (printf "fh-from-fringe: leaving, w/ fh-readcount = ~a, after asked to advance to ~a~%" (fringehead-readcount new-fh) start)
+  (let*-values ([(active-fspecs dropped) (drop-some-maybe (fringe-segments f) start)]
+                [(firstfullpathname) (filespec-fullpathname (first active-fspecs))]
+                [(inprt) (open-input-file firstfullpathname)]
+                [(new-fh) (fringehead (read-pos inprt) inprt active-fspecs (add1 dropped) (fringe-pcount f))])
+    (for ([i (- start dropped)]) (advance-fhead! new-fh))
+    (printf "fh-from-fringe: leaving, looking at ~a w/ fh-next = ~a, fh-readcount = ~a, asked to advance to ~a~%" 
+            (filespec-fullpathname (first (fringehead-filespecs new-fh))) (fringehead-next new-fh) (fringehead-readcount new-fh) start)
     new-fh))
 
 ;; fh-from-filespec: filespec -> fringehead
@@ -119,6 +124,15 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
   (fh-from-fringe (make-fringe (filespec-fbase fspec)
                                (list fspec)
                                (filespec-pcount fspec))))
+
+;; drop-some-maybe: (listof filespec) int -> (listof filespec)
+;; drop leading filespecs in the fringe that would be skipped over to start at start
+(define (drop-some-maybe lofspec start)
+  (do ([i start (- i (filespec-pcount (car lof)))]
+       [dropped 0 (+ dropped (filespec-pcount (car lof)))]
+       [lof lofspec (cdr lofspec)]
+       )
+    ((< i (filespec-pcount (car lof))) (values lof dropped))))
 
 ;; -----------------------------------------------------------------------------------
 ;; --- BULK FRINGE READING/WRITING ---------------------------------------------------

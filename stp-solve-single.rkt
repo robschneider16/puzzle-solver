@@ -1,7 +1,8 @@
 #lang racket
 
-(require "stp-init.rkt")
-(require "stp-solve-base.rkt")
+(require "stp-init.rkt"
+         "stp-solve-base.rkt"
+         "stp-fringefilerep.rkt")
 
 
 (define *max-depth* 10)(set! *max-depth* 61)

@@ -248,7 +248,7 @@
 ;; where the copy is arranged-for by the master also
 (define (remote-expand-fringe ranges pf cf depth)
   ;;(printf "remote-expand-fringe: current-fringe of ~a split as: ~a~%" cur-fringe-size (map (lambda (pr) (- (second pr) (first pr))) ranges))
-  (let* ([distrib-results (for/work ([range-pair ranges]
+  (let* ([distrib-results (for/list #|work|# ([range-pair ranges]
                                      [i (in-range (length ranges))])
                                     (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end")) ;;prevent riot cache-failure
                                     ;; need alternate version of wait-for-files that just checks on the assigned range
@@ -288,24 +288,20 @@
           (unless (string=? *master-name* "localhost")
             ;; copy shared-drive expansions to *local-store*, uncompress, and delete compressed version
             (bring-local-partial-expansions expand-files-specs))]
-         [to-merge-ports 
-          (for/list ([i (in-range (length expand-files-specs))])
-            (open-input-file (format "~apartial-expansion~a" *local-store* (~a i #:left-pad-string "0" #:width 2 #:align 'right))))]
-         [fastforwarded-fheads
-          (filter-not (lambda (fh) (eof-object? (fringehead-next fh)))
-                      (for/list ([iprt to-merge-ports]
-                                 [partial-expansion-size (map fringe-pcount expand-files-specs)])
-                        (let* ([fhead (fringehead (read-pos iprt) iprt 1 partial-expansion-size)]
-                               [fhpos (fringehead-next fhead)])
-                          (cond [(or (eof-object? fhpos)
-                                     (fx>= (equal-hash-code fhpos) (first my-range)))
-                                 fhead]
-                                [else (do ([lfhpos fhpos (advance-fhead! fhead)])
-                                        ((or (eof-object? lfhpos)
-                                             (fx>= (equal-hash-code lfhpos) (first my-range)))
-                                         fhead))]))))]
+         [to-merge-fheads 
+          (for/list ([exp-fspec expand-files-specs])
+            (fh-from-filespec exp-fspec))]
+         [fastforward-the-to-merge-fheads ; for the side-effect
+          (for ([fh to-merge-fheads]
+                [partial-expansion-size (map filespec-pcount expand-files-specs)])
+            (let ([fnext (fringehead-next fh)])
+              (unless (or (eof-object? fnext)
+                          (fx>= (equal-hash-code fnext) (first my-range)))
+                (do ([lfhpos fnext (advance-fhead! fh)])
+                  ((or (eof-object? lfhpos)
+                       (fx>= (equal-hash-code lfhpos) (first my-range))))))))]
          [heap-o-fheads (let ([lheap (make-heap (lambda (fh1 fh2) (position<? (fringehead-next fh1) (fringehead-next fh2))))])
-                          (heap-add-all! lheap fastforwarded-fheads)
+                          (heap-add-all! lheap (filter-not (lambda (fh) (eof-object? (fringehead-next fh))) to-merge-fheads))
                           lheap)]
          [segment-size (let ([last-pos (void)]
                              [keep-pos (void)]
@@ -324,7 +320,7 @@
     ;(printf "remote-merge-expansions: fw-lolop-lengths=~a [total ~a]~%" (map length fastforwarded-lolops) (for/sum ([l fastforwarded-lolops]) (length l)))
     ;(printf "remote-merge-expansions: merged-expns-length=~a~%" (length sorted-merged-expansions))
     (close-output-port mrg-segment-oport)
-    (for ([iprt to-merge-ports]) (close-input-port iprt))
+    (for ([fhead to-merge-fheads]) (close-input-port (fringehead-iprt fhead)))
     ;; arrange to move a compressed version of ofile-name to the shared disk
     (copy-file (string-append *local-store* ofile-name) ofile-name)
     ;(printf "remote-merge-expansions: about to try deleting ofile-name, ~a~%" ofile-name)
@@ -340,7 +336,7 @@
   (when (string=? *master-name* "localhost")
     (bring-local-partial-expansions expand-files-specs))
   (let ([merge-results
-         (for/work ([merge-range merge-ranges] ;; merged results should come back in order of merge-ranges assignments
+         (for/list #|work|# ([merge-range merge-ranges] ;; merged results should come back in order of merge-ranges assignments
                     [i (in-range (length merge-ranges))])
                    (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end"))
                    (let* ([ofile-name (format "fringe-segment-d~a-~a" depth (~a i #:left-pad-string "0" #:width 2 #:align 'right))]
@@ -411,7 +407,7 @@
          [check-for-goal (for/first ([ss sampling-stats]
                                      #:when (vector-ref ss 4))
                            (set! *found-goal* (vector-ref ss 4)))]
-         ;; make list of triples: partial-expansionDD, number of positions, file-size
+         ;; make filespecs for proto-fringe-dXX-NN the relevant data in the sampling-stats
          [expand-files-specs (for/list ([ss sampling-stats])
                                #|(printf "exp-spec: ~a should have ~a postions: seeing ~a of expected ~a~%" 
                                        (vector-ref ss 5) (vector-ref ss 0) (file-size (vector-ref ss 5)) (vector-ref ss 6))|#
@@ -449,9 +445,10 @@
          [new-cf-name (format "fringe-d~a" depth)]
          )
     ;; create the _new_ current-fringe
+    #|
     (for ([f sorted-expansion-files])
       ;(printf "distributed-expand-fringe: concatenating ~a~%" f)
-      (system (format "cat ~a >> fringe-d~a" f depth)))
+      (system (format "cat ~a >> fringe-d~a" f depth)))|#
     ;;--- delete files we don't need anymore ---------
     ;; delete previous fringe
     (delete-fringe pf)
@@ -535,7 +532,7 @@
 ;;#|
 (module+ main
   ;; Switch between these according to if using the cluster or testing on multi-core single machine
-  (connect-to-riot-server! *master-name*)
+  ;(connect-to-riot-server! *master-name*)
   (define search-result (time (start-cluster-fringe-search *start*)))
   (print search-result))
 ;;|#
