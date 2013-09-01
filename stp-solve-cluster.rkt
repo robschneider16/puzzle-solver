@@ -34,7 +34,7 @@
 (define *expand-multiplier* 1)
 (define *diy-threshold* 1000)
 
-(define *min-pre-proto-fringe-size* 500) ; to be replaced by *max-size-...*
+(define *min-pre-proto-fringe-size* 3000) ; to be replaced by *max-size-...*
 
 (define *most-positive-fixnum* 0)
 (define *most-negative-fixnum* 0)
@@ -246,7 +246,7 @@
 ;; where the copy is arranged-for by the master also
 (define (remote-expand-fringe ranges pf cf depth)
   ;;(printf "remote-expand-fringe: current-fringe of ~a split as: ~a~%" cur-fringe-size (map (lambda (pr) (- (second pr) (first pr))) ranges))
-  (let* ([distrib-results (for/list #|work|# ([range-pair ranges]
+  (let* ([distrib-results (for/work ([range-pair ranges]
                                      [i (in-range (length ranges))])
                                     (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end")) ;;prevent riot cache-failure
                                     ;; need alternate version of wait-for-files that just checks on the assigned range
@@ -334,7 +334,7 @@
   (when (string=? *master-name* "localhost")
     (bring-local-partial-expansions expand-files-specs))
   (let ([merge-results
-         (for/list #|work|# ([merge-range merge-ranges] ;; merged results should come back in order of merge-ranges assignments
+         (for/work ([merge-range merge-ranges] ;; merged results should come back in order of merge-ranges assignments
                     [i (in-range (length merge-ranges))])
                    (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end"))
                    (let* ([ofile-name (format "fringe-segment-d~a-~a" depth (~a i #:left-pad-string "0" #:width 2 #:align 'right))]
@@ -488,7 +488,7 @@
         [else (cons (first l2) (fringe-merge l1 (rest l2)))]))
 
 
-(define *max-depth* 10)(set! *max-depth* 31)
+(define *max-depth* 10)(set! *max-depth* 105)
 
 ;; cfs-file: fringe fringe int -> position
 ;; perform a file-based cluster-fringe-search at given depth
@@ -516,15 +516,15 @@
             1))
   
 
-(block10-init)
-;(climb12-init)
+;(block10-init)
+(climb12-init)
 ;(climb15-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
 ;;#|
 (module+ main
   ;; Switch between these according to if using the cluster or testing on multi-core single machine
-  ;(connect-to-riot-server! *master-name*)
+  (connect-to-riot-server! *master-name*)
   (define search-result (time (start-cluster-fringe-search *start*)))
   (print search-result))
 ;;|#

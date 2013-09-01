@@ -71,7 +71,7 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
   (when (and (eof-object? (fringehead-next fh)) (empty? (rest (fringehead-filespecs fh))) (<= (fringehead-readcount fh) (fringehead-total fh)))
     ;; try to reset 
     (error 'fhdone? (format "hit end of fringe reading only ~a of ~a positions~%" (fringehead-readcount fh) (fringehead-total fh))))
-  (or (>= (fringehead-readcount fh) (fringehead-total fh))
+  (or (> (fringehead-readcount fh) (fringehead-total fh))
       (and (eof-object? (fringehead-next fh))
            (empty? (rest (fringehead-filespecs fh))))))
 
@@ -86,12 +86,12 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
       (sleep sleep-time)))
   (unless (fhdone? fh)
     (set-fringehead-next! fh (read-pos (fringehead-iprt fh)))
-    (when (eof-object? (fringehead-next fh)) ; advance to next segment
+    (set-fringehead-readcount! fh (add1 (fringehead-readcount fh)))
+    (when (and (eof-object? (fringehead-next fh)) (not (fhdone? fh))) ; advance to next segment
       (set-fringehead-filespecs! fh (rest (fringehead-filespecs fh)))
       (close-input-port (fringehead-iprt fh))
       (set-fringehead-iprt! fh (open-input-file (filespec-fullpathname (first (fringehead-filespecs fh)))))
       (set-fringehead-next! fh (read-pos (fringehead-iprt fh))))
-    (set-fringehead-readcount! fh (add1 (fringehead-readcount fh)))
     (fringehead-next fh)))
 
 ;; position-in-fhead?: position fringehead -> boolean
