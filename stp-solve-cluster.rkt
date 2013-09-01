@@ -122,8 +122,7 @@
 ;; Accordingly, the sampling-stat return value has a filename pointing to the working directory.
 (define (remove-dupes pf cf lo-expand-fspec ofile-name depth)
   ;; the ofile-name is just the file-name -- no *local-store* path where needed
-  ;#|
-  (printf "EXPAND PHASE 2 (REMOVE DUPLICATES) pf: ~a~%cf: ~a~%all of lo-expand-fspec: ~a~%ofile-name: ~a~%depth: ~a~%"
+  #|(printf "EXPAND PHASE 2 (REMOVE DUPLICATES) pf: ~a~%cf: ~a~%all of lo-expand-fspec: ~a~%ofile-name: ~a~%depth: ~a~%"
           pf cf lo-expand-fspec ofile-name depth);|#
   ;; EXPAND PHASE 2 (REMOVE DUPLICATES)
   (let* ([pffh (cond [(fringe-exists? pf) ;; moved to this from current-fringe during prev depth
@@ -199,7 +198,7 @@
 ;; expand the positions in the indices range, ignoring duplicates other than within the new fringe being constructed.
 (define (remote-expand-part-fringe ipair process-id pf cf depth)
   ;; prev-fringe spec points to default shared directory; current-fringe spec points to *local-store* folder
-  (printf "remote-expand-part-fringe: starting with pf: ~a, and cf: ~a~%" pf cf)
+  ;(printf "remote-expand-part-fringe: starting with pf: ~a, and cf: ~a~%" pf cf)
   ;; EXPAND PHASE 1
   (let* ([pre-ofile-template-fname (format "partial-expansion~a" (~a process-id #:left-pad-string "0" #:width 2 #:align 'right))]
          [pre-ofile-counter 0]
@@ -228,8 +227,7 @@
         (set! expansions (set)))
       (advance-fhead! cffh)
       (set! expanded-phase1 (add1 expanded-phase1)))
-    ;#|
-    (printf "remote-exp-part-fringe: PHASE 1: expanding ~a positions of assigned ~a~%" 
+    #|(printf "remote-exp-part-fringe: PHASE 1: expanding ~a positions of assigned ~a~%" 
             expanded-phase1 assignment-count);|#
     (when (< expanded-phase1 assignment-count)
       (error 'remote-expand-part-fringe
@@ -382,7 +380,8 @@
           depth pf-spec cf-spec)|#
   ;; push newest fringe (current-fringe) to all workers
   (cond [(string=? *master-name* "localhost")
-         (for ([fsegment (fringe-segments cf)])
+         (for ([fsegment (fringe-segments cf)]
+               #:unless (file-exists? (format "~a~a" *local-store* (filespec-fname fsegment))))
            (copy-file (filespec-fullpathname fsegment) (format "~a~a" *local-store* (filespec-fname fsegment))))]
         [else 
          (for ([fsegment (fringe-segments cf)])
@@ -408,10 +407,10 @@
                                      #:when (vector-ref ss 4))
                            (set! *found-goal* (vector-ref ss 4)))]
          ;; make filespecs for proto-fringe-dXX-NN the relevant data in the sampling-stats
-         [expand-files-specs (for/list ([ss sampling-stats])
-                               #|(printf "exp-spec: ~a should have ~a postions: seeing ~a of expected ~a~%" 
+         [proto-fringe-fspecs (for/list ([ss sampling-stats])
+                                #|(printf "exp-spec: ~a should have ~a postions: seeing ~a of expected ~a~%" 
                                        (vector-ref ss 5) (vector-ref ss 0) (file-size (vector-ref ss 5)) (vector-ref ss 6))|#
-                               (make-filespec (vector-ref ss 1) (vector-ref ss 2) (vector-ref ss 5) (vector-ref ss 0) (vector-ref ss 6) ""))]
+                                (make-filespec (vector-ref ss 1) (vector-ref ss 2) (vector-ref ss 5) (vector-ref ss 0) (vector-ref ss 6) ""))]
          ;; need to wait for write to complete -- i.e., all data to appear on master
          ;; push this wait into the place we're trying to access the file ... [wait-for-partial-expansions (wait-for-files expand-files-specs)]
          #|[error-check1 (for/first ([i (in-range (length sampling-stats))]
@@ -419,25 +418,16 @@
                                    #:unless (= (vector-ref ss 0) (position-count-in-file (format "partial-expansion~a" (~a i #:left-pad-string "0" #:width 2 #:align 'right)))))
                          (error 'distributed-expand-fringe (format "err-chk1: partial-expansion sizes do not match up for ~a which should be ~a" i (vector-ref ss 0))))]|#
          ;; MERGE
-         ;;[merge-ranges (make-merge-ranges-from-expansions sampling-stats)]
          [merge-ranges (simple-merge-ranges sampling-stats)]
-         ;; --- Distribute the merging work ----------
          [infomsg2 (printf "starting merge, ... ")]
+         ;; --- Distribute the merging work ----------
          [merge-start (current-seconds)]
-         ;; modify this to be sorted-expansion-fspecs
-         [sorted-expansion-files-lengths
-          (let ([merged-expansion-files-lens (remote-merge merge-ranges expand-files-specs depth)]
-                )
-            #|(printf "distributed-expand-fringe: lengths = ~a [spread ~a or ~a%]~%" 
-                    expan-lengths (- max-expan min-expan) variation-percent)|#
-            ;;(error 'distributed-expand-fringe "stop to check partial files")
-            merged-expansion-files-lens
-            )]
+         [sorted-segment-fspecs (remote-merge merge-ranges proto-fringe-fspecs depth)]
          [merge-end (current-seconds)]
          [merge-time-msg (printf "merge time: ~a~%" (~r (/ (- merge-end merge-start) 60.0) #:precision 4))]
          ;; -------------------------------------------
-         [sorted-expansion-files (map first sorted-expansion-files-lengths)]
-         [sef-lengths (map second sorted-expansion-files-lengths)]
+         [sorted-expansion-files (map first sorted-segment-fspecs)]
+         [sef-lengths (map second sorted-segment-fspecs)]
          #|[error-check2 (for/first ([f sorted-expansion-files]
                                    [len sef-lengths]
                                    #:unless (= len (position-count-in-file f)))
@@ -452,7 +442,9 @@
     ;;--- delete files we don't need anymore ---------
     ;; delete previous fringe
     (delete-fringe pf)
-
+    (when (string=? *master-name* "localhost") ; delete the *local-store* prev-fringe
+      (delete-fringe pf *local-store*))
+    (for ([fspec proto-fringe-fspecs]) (delete-file (filespec-fullpathname fspec)))
     ;(system "rm partial-expansion* partial-merge*")
     ;(unless (string=? *master-name* "localhost") (delete-file (fspec-fname cf-spec)))
     (printf "distributed-expand-fringe: file manipulation ~a, and total at depth ~a: ~a~%" 
