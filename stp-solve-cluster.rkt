@@ -23,13 +23,17 @@
 
 (define *master-name* "the name of the host where the master process is running")
 (define *local-store* "the root portion of path to where workers can store temporary fringe files")
+#|
 (set! *master-name* "localhost")
 (set! *local-store* "/space/fringefiles/")
 (define *n-processors* 4)
 ;(define *n-processors* 8)
-;(set! *master-name* "wcp")
-;(set! *local-store* "/state/partition1/fringefiles/")
-;(define *n-processors* 31)
+|#
+;#|
+(set! *master-name* "wcp")
+(set! *local-store* "/state/partition1/fringefiles/")
+(define *n-processors* 32)
+;|#
 
 (define *expand-multiplier* 1)
 (define *diy-threshold* 1000)
@@ -125,21 +129,18 @@
   #|(printf "EXPAND PHASE 2 (REMOVE DUPLICATES) pf: ~a~%cf: ~a~%all of lo-expand-fspec: ~a~%ofile-name: ~a~%depth: ~a~%"
           pf cf lo-expand-fspec ofile-name depth);|#
   ;; EXPAND PHASE 2 (REMOVE DUPLICATES)
-  (let* ([pffh (cond [(fringe-exists? pf) ;; moved to this from current-fringe during prev depth
-                      (fh-from-fringe pf)]
-                     [else (error 'remove-dupes "prev-fringe missing one or more files")
-                           ;(copy-fringe (fspec-fname pfspec) (string-append *local-store* (fspec-fname pfspec)))
-                           ;(fh-from-fspec (make-fspec (fspec-fname pfspec) *local-store* (fspec-pcount pfspec) (fspec-fsize pfspec)))
-                           ])]
+  (let* (;[use-ofilename (string-append *local-store* ofile-name)]
+         [rpf (copy-fringe pf *local-store*)]
+         [pffh (fh-from-fringe rpf)]
          [cffh (fh-from-fringe cf)]
          [lo-effh (for/list ([an-fspec lo-expand-fspec]) (fh-from-filespec an-fspec))]
          [heap-o-fheads (let ([lheap (make-heap (lambda (fh1 fh2) (position<? (fringehead-next fh1) (fringehead-next fh2))))])
                           (heap-add-all! lheap lo-effh)
                           lheap)]
-         [expand-out (open-output-file ofile-name #:exists 'replace)] ; try writing directly to NFS disk
+         [expand-out (open-output-file ofile-name #:exists 'replace)] ; writing directly to NFS doesn't seem any slower than *local-store* and then copy
          [unique-expansions 0]
          [sample-stats 
-          (vector 0 *most-positive-fixnum* *most-negative-fixnum* empty #f ofile-name 0)]
+          (vector 0 *most-positive-fixnum* *most-negative-fixnum* empty #f ofile-name 0)] ;; here, use the shared ofile-name instead of *local-store*
          )
     ;; locally merge the pre-proto-fringes, removing duplicates from prev- and current-fringes
     (for ([an-fhead (in-heap/consume! heap-o-fheads)])
@@ -161,12 +162,14 @@
     (for ([fh (cons pffh (cons cffh lo-effh))]) (close-input-port (fringehead-iprt fh)))
     (close-output-port expand-out)
     ;; copy the proto-fringe file from *local-store* to shared working directory for other processes to have when merging
-    ;;(copy-file (string-append *local-store* ofile-name) ofile-name)
+    ;(copy-file use-ofilename ofile-name)
     ;; complete the sampling-stat
     (vector-set! sample-stats 0 unique-expansions)
     (vector-set! sample-stats 6 (file-size ofile-name))
     ;; delete files that are no longer needed
     (for ([efspec lo-expand-fspec]) (delete-file (filespec-fullpathname efspec)))
+    (unless (string=? *master-name* "localhost") (delete-fringe rpf))
+    ;(delete-file use-ofilename)
     ;;**** THIS STRIKES ME AS DANGEROUS: IF ONE PROCESS ON MULTI-CORE MACHINE FINISHES FIRST ....
     ;(when (file-exists? (string-append *local-store* (fspec-fname pfspec))) (delete-file (string-append *local-store* (fspec-fname pfspec))))
     #|(printf "remove-dupes: starting w/ ~a positions, expansion has ~a/~a positions~%"
@@ -254,7 +257,8 @@
                                     #| push the wait into where we're trying to access positions 
                                     (wait-for-files (append (map (lambda (seg) (segment-fspec seg)) pf-findex)
                                                             (map (lambda (seg) (segment-fspec seg)) cf-findex)) #t)|#
-                                    (remote-expand-part-fringe range-pair i pf cf depth))])
+                                    (remote-expand-part-fringe range-pair i pf cf depth)
+                                    )])
     ;(printf "remote-expand-fringe: respective expansion counts: ~a~%" (map (lambda (ssv) (vector-ref ssv 0)) distrib-results))
     distrib-results))
 
@@ -281,7 +285,8 @@
 (define (remote-merge-proto-fringes my-range expand-files-specs depth ofile-name)
   ;; expand-files-specs are of pattern: "proto-fringe-dXX-NN" for depth XX and proc-id NN, pointing to working (shared) directory 
   ;;NEW: ofile-name is of pattern: "fringe-segment-dX-NN", where the X is the depth and the NN is a process identifier
-  (let* ([mrg-segment-oport (open-output-file (string-append *local-store* ofile-name))]
+  (let* (;[mrg-segment-oport (open-output-file (string-append *local-store* ofile-name))]
+         [mrg-segment-oport (open-output-file ofile-name)] ; try writing directly to NFS
          [copy-partial-expansions-to-local-disk ;; but only if not sharing host with master
           (unless (string=? *master-name* "localhost")
             ;; copy shared-drive expansions to *local-store*, uncompress, and delete compressed version
@@ -320,9 +325,9 @@
     (close-output-port mrg-segment-oport)
     (for ([fhead to-merge-fheads]) (close-input-port (fringehead-iprt fhead)))
     ;; arrange to move a compressed version of ofile-name to the shared disk
-    (copy-file (string-append *local-store* ofile-name) ofile-name)
+    ;(copy-file (string-append *local-store* ofile-name) ofile-name)
     ;(printf "remote-merge-expansions: about to try deleting ofile-name, ~a~%" ofile-name)
-    (delete-file (string-append *local-store* ofile-name))
+    ;(delete-file (string-append *local-store* ofile-name))
     ;;**** maybe not remove this as would be the prev-fringe on the next cycle ****????
     (unless (string=? *master-name* "localhost")
       (for ([fspc expand-files-specs]) 
@@ -383,12 +388,11 @@
          (for ([fsegment (fringe-segments cf)]
                #:unless (file-exists? (format "~a~a" *local-store* (filespec-fname fsegment))))
            (copy-file (filespec-fullpathname fsegment) (format "~a~a" *local-store* (filespec-fname fsegment))))]
-        [else 
-         (for ([fsegment (fringe-segments cf)])
-           (system 
-            ;(format "sync; rocks run host compute 'sync; scp wcp:puzzle-solver/~a ~a'" ; net-copy using scp
-            (format "sync; rocks run host compute 'sync; cp puzzle-solver/~a ~a'"      ; just copy from shared drive to local
-                           (filespec-fname fsegment) *local-store*)))])
+        [else (system (format "sync; rocks run host compute 'sync; cp ~a ~a'"      ; just copy from shared drive to local
+                              (for/fold ([filesstring ""])
+                                ([fspec (fringe-segments cf)])
+                                (string-append filesstring " puzzle-solver/" (filespec-fname fspec)))
+                              *local-store*))])
   (let* (;; EXPAND
          [ranges (make-vector-ranges (fringe-pcount cf))]
          ;;make remote fringe

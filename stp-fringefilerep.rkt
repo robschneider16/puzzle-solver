@@ -52,6 +52,7 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 (define (filespec-fsize fs) (vector-ref fs 4))
 (define (filespec-fbase fs) (vector-ref fs 5))
 (define (filespec-fullpathname fs) (string-append (filespec-fbase fs) (filespec-fname fs)))
+(define (rebase-filespec fs newbase) (let ([copyfs (vector-copy fs)]) (vector-set! copyfs 5 newbase) copyfs))
 
 
 ;; -----------------------------------------------------------------------------------
@@ -172,6 +173,26 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 (define (fringe-exists? f)
   (for/and ([segment (fringe-segments f)])
     (file-exists? (filespec-fullpathname segment))))
+
+;; rebase-fringe: fringe string -> fringe
+;; replace the fbase for all segments (and the fringe itself)
+(define (rebase-fringe f newbase)
+  (make-fringe newbase
+               (for/list ([fspec (fringe-segments f)])
+                 (rebase-filespec fspec newbase))
+               (fringe-pcount f)))
+
+;; copy-fringe: fringe string -> fringe
+;; copy the files in the given fringe to the target, returning a new fringe
+(define (copy-fringe f target)
+  (make-fringe target
+               (for/list ([fspec (fringe-segments f)])
+                 (let ([remote-name  (string-append target (filespec-fullpathname fspec))])
+                   (unless (file-exists? remote-name)
+                     (copy-file (filespec-fullpathname fspec) remote-name))
+                   (rebase-filespec fspec target)))
+               (fringe-pcount f)))
+                 
 
 ;; delete-fringe: fringe -> void
 ;; remove all the files that make up the given fringe
