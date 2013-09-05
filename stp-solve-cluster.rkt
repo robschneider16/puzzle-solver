@@ -291,12 +291,13 @@
           (unless (string=? *master-name* "localhost")
             ;; copy shared-drive expansions to *local-store*, uncompress, and delete compressed version
             (bring-local-partial-expansions expand-files-specs))]
+         [local-protofringe-fspecs (for/list ([fs expand-files-specs]) (rebase-filespec fs *local-store*))]
          [to-merge-fheads 
-          (for/list ([exp-fspec expand-files-specs])
+          (for/list ([exp-fspec local-protofringe-fspecs])
             (fh-from-filespec exp-fspec))]
          [fastforward-the-to-merge-fheads ; for the side-effect
           (for ([fh to-merge-fheads]
-                [partial-expansion-size (map filespec-pcount expand-files-specs)])
+                [partial-expansion-size (map filespec-pcount local-protofringe-fspecs)])
             (let ([fnext (fringehead-next fh)])
               (unless (or (eof-object? fnext)
                           (fx>= (equal-hash-code fnext) (first my-range)))
@@ -330,8 +331,8 @@
     ;(delete-file (string-append *local-store* ofile-name))
     ;;**** maybe not remove this as would be the prev-fringe on the next cycle ****????
     (unless (string=? *master-name* "localhost")
-      (for ([fspc expand-files-specs]) 
-        (delete-file (string-append *local-store* (filespec-fname fspc))))) ;remove the local expansions
+      (for ([fspc local-protofringe-fspecs]) 
+        (delete-file (filespec-fullpathname fspc)))) ;remove the local expansions *** but revisit when we reduce work packet size for load balancing
     (list ofile-name segment-size)))
 
 ;; remote-merge: (listof (list fixnum fixnum)) (listof fspec) int -> (listof string int)
@@ -521,8 +522,8 @@
   
 
 ;(block10-init)
-(climb12-init)
-;(climb15-init)
+;(climb12-init)
+(climb15-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
 ;;#|

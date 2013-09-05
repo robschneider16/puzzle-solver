@@ -53,6 +53,7 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 (define (filespec-fbase fs) (vector-ref fs 5))
 (define (filespec-fullpathname fs) (string-append (filespec-fbase fs) (filespec-fname fs)))
 (define (rebase-filespec fs newbase) (let ([copyfs (vector-copy fs)]) (vector-set! copyfs 5 newbase) copyfs))
+(define (rebase-filespec! fs newbase) (vector-set! fs 5 newbase) fs)
 
 
 ;; -----------------------------------------------------------------------------------
