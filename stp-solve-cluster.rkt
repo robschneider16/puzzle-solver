@@ -181,7 +181,7 @@
 
 ;; process-proto-fringe: (setof position) string int (listof fspec) -> (listof fspec)
 ;; convert set to vector, sort it and write the sorted vector to the given filename,
-;; returning the file name to which the proto-fringe was written
+;; returning the list of filespecs augmented with the fspec for the newly written file
 (define (process-proto-fringe sop pre-ofile-template pre-ofile-counter pre-ofiles)
   (cons (let* ([resv (for/vector #:length (set-count sop) ([p sop]) p)] ;; convert set to vector
                [f (format "~a~a" pre-ofile-template pre-ofile-counter)]
@@ -384,17 +384,21 @@
 (define (distributed-expand-fringe pf cf depth)
   #|(printf "distributed-expand-fringe: at depth ~a, pf-spec: ~a; cf-spec: ~a~%" 
           depth pf-spec cf-spec)|#
-  ;; push newest fringe (current-fringe) to all workers
-  (cond [(string=? *master-name* "localhost")
-         (for ([fsegment (fringe-segments cf)]
-               #:unless (file-exists? (format "~a~a" *local-store* (filespec-fname fsegment))))
-           (copy-file (filespec-fullpathname fsegment) (format "~a~a" *local-store* (filespec-fname fsegment))))]
-        [else (system (format "sync; rocks run host compute 'sync; cp ~a ~a'"      ; just copy from shared drive to local
-                              (for/fold ([filesstring ""])
-                                ([fspec (fringe-segments cf)])
-                                (string-append filesstring " puzzle-solver/" (filespec-fname fspec)))
-                              *local-store*))])
-  (let* (;; EXPAND
+  (let* ([start-expfrg (current-seconds)]
+         ;; push newest fringe (current-fringe) to all workers
+         [push-new-fringe
+          (cond [(string=? *master-name* "localhost")
+                 (for ([fsegment (fringe-segments cf)]
+                       #:unless (file-exists? (format "~a~a" *local-store* (filespec-fname fsegment))))
+                   (copy-file (filespec-fullpathname fsegment) (format "~a~a" *local-store* (filespec-fname fsegment))))]
+                [else (system (format "sync; rocks run host compute 'sync; cp ~a ~a'"      ; just copy from shared drive to local
+                                      (for/fold ([filesstring ""])
+                                        ([fspec (fringe-segments cf)])
+                                        (string-append filesstring " puzzle-solver/" (filespec-fname fspec)))
+                                      *local-store*))])]
+         ;; EXPAND
+         [infomsg1 (printf "starting expand, ... ")]
+         [start-expand (current-seconds)]
          [ranges (make-vector-ranges (fringe-pcount cf))]
          ;;make remote fringe
          [rcf (make-fringe (fringe-fbase cf)
@@ -403,10 +407,9 @@
                                             (filespec-fname seg) (filespec-pcount seg) (filespec-fsize seg) *local-store*))
                            (fringe-pcount cf))]
          ;; --- Distribute the actual expansion work ------------------------
-         [infomsg1 (printf "starting expand, ... ")]
-         [expand-start (current-seconds)]
          [sampling-stats (remote-expand-fringe ranges pf rcf depth)]
-         [expand-time-msg (printf "expand time: ~a~%" (~r (/ (- (current-seconds) expand-start) 60.0) #:precision 4))]
+         [end-expand (current-seconds)]
+         [expand-time-msg (printf "expand time: ~a~%" (~r (/ (- end-expand start-expand) 60.0) #:precision 4))]
          ;; -----------------------------------------------------------------
          [check-for-goal (for/first ([ss sampling-stats]
                                      #:when (vector-ref ss 4))
@@ -453,7 +456,7 @@
     ;(system "rm partial-expansion* partial-merge*")
     ;(unless (string=? *master-name* "localhost") (delete-file (fspec-fname cf-spec)))
     (printf "distributed-expand-fringe: file manipulation ~a, and total at depth ~a: ~a~%" 
-            (~r (/ (- (current-seconds) merge-end) 60.0) #:precision 4) depth (~r (/ (- (current-seconds) expand-start) 60.0) #:precision 4))
+            (~r (/ (- (current-seconds) merge-end) 60.0) #:precision 4) depth (~r (/ (- (current-seconds) start-expand) 60.0) #:precision 4))
     ;; make the new fringe to return
     (make-fringe ""
                  (for/list ([mrg-range merge-ranges]
