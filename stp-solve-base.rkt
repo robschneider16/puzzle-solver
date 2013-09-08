@@ -12,6 +12,7 @@
 
 (provide compile-ms-array!
          position<?
+         lexi<?
          position-in-vec?
          expand
          is-goal?)
@@ -46,8 +47,34 @@
 ;; a bw-position is a (vector int)
 ;; where each int is a bitwise representation of the locations of the pieces of that type
 
+;; a hc-position (hcpos for short) is a structure: (make-hc-position hc bwrep)
+;; where hc is the equal-hash-code for the bw-position bwrep
+
 
 ;; ******************************************************************************
+
+(define-struct hc-position (hc bs))
+;; the hc is the hashcode of the bytestring
+
+;; make-hcpos: bw-position -> hc-position
+;; wrapper for the position rep augmented with the hashcode
+(define (make-hcpos bwrep) (make-hc-position (equal-hash-code bwrep) bwrep))
+
+;; hcposition<?: position position -> boolean
+(define (hcposition<? p1 p2)
+  (or (< (hc-position-hc p1) (hc-position-hc p2))
+      (and (= (hc-position-hc p1) (hc-position-hc p2))
+           (blexi<? (hc-position-bs p1) (hc-position-bs p2)))))
+
+;; blexi<?: hc-position hc-position -> boolean
+;; lexicographic fallback for hash collision
+(define (blexi<? p1 p2)
+  (do ([i 0 (add1 i)])
+    ((or (= i (bytes-length p1))
+         (not (= (bytes-ref p1 i) (bytes-ref p2 i))))
+     (and (< i (bytes-length p1))
+          (< (bytes-ref p1 i) (bytes-ref p2 i))))))
+
 
 ;;-------------------------------------------------------------------------------
 ;; COMMON UTILITIES TO BOTH GENERIC FRINGE-SEARCH AND CLUSTER-FRINGE-SEARCH
@@ -263,6 +290,6 @@
     pos))
 
 ;(block10-init)
-(climb12-init)
+(climb15-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 ;(test)

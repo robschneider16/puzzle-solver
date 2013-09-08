@@ -5,6 +5,7 @@
          *piecelocvec* *expandpos* *start*
          charify
          decharify
+         old-positionify ;** temp for testing
          list->bwrep
          bwrep->list
          cell-to-loc
