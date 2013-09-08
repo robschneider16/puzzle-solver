@@ -5,7 +5,7 @@
          "stp-fringefilerep.rkt")
 
 
-(define *max-depth* 10)(set! *max-depth* 61)
+(define *max-depth* 10)(set! *max-depth* 31)
 
 
 
@@ -35,7 +35,7 @@
                                           string<?)])
                              (printf "~a~%" s)))|#
                          (rename-file-or-directory "current-fringe" "prev-fringe" #t)
-                         (write-fringe-to-disk (set->list new-fringe) "current-fringe")
+                         (write-fringe-to-disk (sort (set->list new-fringe) hcposition<?) "current-fringe")
                          (fringe-file-search (add1 depth) found-goal? (+ npos (set-count new-fringe))))])])))
 
 ;; fringe-mem-search: (setof position) (setof positions) int -> #f or position

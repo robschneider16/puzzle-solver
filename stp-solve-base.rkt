@@ -4,76 +4,30 @@
  srfi/25 ;; multi-dimensional arrays
  racket/fixnum
  racket/set
- test-engine/racket-tests
- racket/generator
+ ;test-engine/racket-tests
+ ;racket/generator
  "stp-init.rkt"
  )
                   
 
-(provide compile-ms-array!
-         position<?
-         lexi<?
+(provide hcposition<?
+         blexi<?
+         compile-ms-array!
          position-in-vec?
          expand
          is-goal?)
 
 
-;; INITIALIZE STUFF FOR SLIDING-TILE-SOLVER
-
-;; move trans for up, right, down and left respectively
-(define *prim-move-translations* '((-1 0) (0 1) (1 0) (0 -1)))
-
-;; move-schema-array for compiling move requirements
-(define *ms-array* #f)(set! *ms-array* *ms-array*)
-
-
-;; ******************************************************************************
-;; DATA DEFINITIONS
-
-;; a cell is a pair, (list r c), for row and column r and c
-
-;; a location (loc for short) is an int, representing the row-major rank of a cell
-
-;; a tile-spec is a triple, (cons a c), where a is the tile-type and c is the cell of the piece-type's origin
-
-;; a tile-loc-spec (tlspec), is a (list t l), where t is the tile-type and l is the loc of that tile
-
-;; a pre-position is a (append (listof tile-spec) (listof cell))
-
-;; a old-position is a (vectorof (listof int))
-;; where the index of the top-level vectors reflect the piece-type as given in the init,
-;; and the ints in the secondary vectors are the SORTED locations of the pieces of that type
-
-;; a bw-position is a (vector int)
-;; where each int is a bitwise representation of the locations of the pieces of that type
-
-;; a hc-position (hcpos for short) is a structure: (make-hc-position hc bwrep)
-;; where hc is the equal-hash-code for the bw-position bwrep
-
-
-;; ******************************************************************************
-
-(define-struct hc-position (hc bs))
-;; the hc is the hashcode of the bytestring
-
-;; make-hcpos: bw-position -> hc-position
-;; wrapper for the position rep augmented with the hashcode
-(define (make-hcpos bwrep) (make-hc-position (equal-hash-code bwrep) bwrep))
-
-;; hcposition<?: position position -> boolean
+;; hcposition<?: hc-position hc-position -> boolean
 (define (hcposition<? p1 p2)
-  (or (< (hc-position-hc p1) (hc-position-hc p2))
-      (and (= (hc-position-hc p1) (hc-position-hc p2))
-           (blexi<? (hc-position-bs p1) (hc-position-bs p2)))))
+  (or (fx< (hc-position-hc p1) (hc-position-hc p2))
+      (and (fx= (hc-position-hc p1) (hc-position-hc p2))
+           (bytes<? (hc-position-bs p1) (hc-position-bs p2)))))
 
 ;; blexi<?: hc-position hc-position -> boolean
 ;; lexicographic fallback for hash collision
 (define (blexi<? p1 p2)
-  (do ([i 0 (add1 i)])
-    ((or (= i (bytes-length p1))
-         (not (= (bytes-ref p1 i) (bytes-ref p2 i))))
-     (and (< i (bytes-length p1))
-          (< (bytes-ref p1 i) (bytes-ref p2 i))))))
+  (bytes<? (hc-position-bs p1) (hc-position-bs p2)))
 
 
 ;;-------------------------------------------------------------------------------
@@ -96,6 +50,10 @@
 
 ;; a ms-array is an array indexed by piece-type, location, move-direction (0-3 starting with up)
 ;; where each location contains a move-schema produced by basic-move-schema
+
+;; move-schema-array for compiling move requirements
+(define *ms-array* #f)(set! *ms-array* *ms-array*)
+
 
 ;; compile-ms-array!: (vectorof (setof cell)) int int -> void
 ;; where the vector is the piece-type specification, *piece-types*, and the ints are the width and height
@@ -144,45 +102,16 @@
                                (cell-to-loc (translate-cell (cdr tile) trans))))
           (cell-to-loc (translate-cell (cdr tile) trans)))))
 
-
-;; lexi<?: position position -> boolean
-;; lexicographic less-than test on two positions (that presumably have a primary hash collision)
-#|
-(check-expect (lexi<? #((1 2 3) (1 3) (1 2 3)) #((1 2 3) (1 3) (1 2 3))) #f)
-(check-expect (lexi<? #((1 2 3) (2 3) (1 2 3)) #((1 2 3) (1 3) (1 2 3))) #f)
-(check-expect (lexi<? #((1 2 3) (1 3) (1 2 3)) #((1 2 3) (2 3) (1 2 3))) #t)
-|#
-(define (lexi<? p1 p2)
-  (for/first ([tile-types1 p1]
-              [tile-types2 p2]
-              #:when (not (equal? tile-types1 tile-types2)))
-    (if (and (number? tile-types1) (number? tile-types2))
-        (< tile-types1 tile-types2)
-        (for/first ([tile1 tile-types1]
-                    [tile2 tile-types2]
-                    #:when (not (= tile1 tile2)))
-          (< tile1 tile2)))))
-
-;; position<?: position position -> boolean
-(define (position<? p1 p2)
-  (let ([hc1 (equal-hash-code p1)]
-        [hc2 (equal-hash-code p2)])
-    #|(when (and (not (equal? p1 p2))
-               (fx= hc1 hc2))
-      (printf "hash collision on ~a and ~a at ~a~%" p1 p2 hc1))|#
-    (or (fx< hc1 hc2)
-        (and (fx= hc1 hc2)
-             (lexi<? p1 p2)))))
-
 ;; position-in-vec?: (vectorof position) position -> boolean
 ;; determine if given position is in vector of positions
 (define (position-in-vec? v p)
-  (vec-member? v p position<?))
+  (vec-member? v p hcposition<?))
 
 ;; find-pos-index: fixnum (vectorof position) -> int
 ;; find the index of the *FIRST* position (if present) or of the first position greater than where it would be
 ;; *** THIS IS NOT _EXACTLY_ CORRECT: assumes only used to pick responsibility-ranges
 (define (find-pos-index pos-hashcode vop (low 0) (high (vector-length vop)))
+  (error "find-pos-index: cannot process hc-positions")
   (let* ([mid (floor (/ (+ low high) 2))]
          [mid-hashcode (and (< mid (vector-length vop)) (equal-hash-code (vector-ref vop mid)))])
     (cond [(>= low high) low]
@@ -194,12 +123,12 @@
           [(fx< pos-hashcode mid-hashcode) (find-pos-index pos-hashcode vop low mid)]
           [else (find-pos-index pos-hashcode vop (add1 mid) high)])))
 
-;; vec-member?: (vectorof X) X (X X -> boolean) [int] [int] -> boolean
+;; vec-member?: (vectorof hc-position) hc-position (hc-position hc-position -> boolean) [int] [int] -> boolean
 ;; determine if the given item appears in the SORTED vector of positions
 (define (vec-member? v x compare? [low 0] [high (vector-length v)])
   (let ((mid (floor (/ (+ low high) 2)))) 
     (cond [(>= low high) #f]
-          [(equal? x (vector-ref v mid)) (vector-ref v mid)]
+          [(= (hc-position-hc x) (hc-position-hc (vector-ref v mid))) (vector-ref v mid)]
           [(compare? x (vector-ref v mid)) (vec-member? v x compare? low mid)]
           [else (vec-member? v x compare? (add1 mid) high)])))
 
@@ -248,17 +177,18 @@
     ;; until no further moves of this piece
     ((= new-positions-to-check start-check))))
 
-;; expand: bw-position -> (setof bw-position)
+;; expand: hc-position -> (setof hc-position)
 ;; generate next states from this one
-(define (expand s)
-  (let ([expand-count (box 0)])
+(define (expand hc-s)
+  (let ([expand-count (box 0)]
+        [s (decharify (hc-position-bs hc-s))])
     (vector-fill! *expandpos* #f)
     (for ([piece-type (in-range 1 *num-piece-types*)])
       (for ([piece-loc (bwrep->list (vector-ref s piece-type))])
         (vector-fill! *piecelocvec* #f) ;reset for the next piece
         (expand-piece piece-type piece-loc s expand-count)))
     (for/set ([i (unbox expand-count)])
-      (cdr (vector-ref *expandpos* i)))))
+      (make-hcpos (charify (cdr (vector-ref *expandpos* i)))))))
 
 
 
@@ -276,10 +206,10 @@
 
 ;;------------------------------------------------------------------------------------
 
-;; is-goal?: position -> boolean
-(define (is-goal? p)
+;; is-goal?: hc-position -> boolean
+(define (is-goal? hcp)
   (andmap (lambda (tile-type-target-pair) 
-            (positive? (bitwise-and (vector-ref p (first tile-type-target-pair))
+            (positive? (bitwise-and (vector-ref (decharify (hc-position-bs hcp)) (first tile-type-target-pair))
                                     (second tile-type-target-pair))))
           *target*))
 

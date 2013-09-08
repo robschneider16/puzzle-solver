@@ -1,6 +1,12 @@
 #lang racket
 
-(provide *num-piece-types* *piece-types*
+(require srfi/25 ;; multi-dimensional arrays
+         )
+
+(provide hc-position hc-position-hc hc-position-bs hc-position?
+         make-hcpos
+         *prim-move-translations*
+         *num-piece-types* *piece-types*
          *target* *bw* *bh* *bsz*
          *piecelocvec* *expandpos* *start*
          charify
@@ -13,6 +19,49 @@
          block10-init
          climb12-init
          climb15-init)
+
+
+;; ******************************************************************************
+;; DATA DEFINITIONS
+
+;; a cell is a pair, (list r c), for row and column r and c
+
+;; a location (loc for short) is an int, representing the row-major rank of a cell
+
+;; a tile-spec is a triple, (cons a c), where a is the tile-type and c is the cell of the piece-type's origin
+
+;; a tile-loc-spec (tlspec), is a (list t l), where t is the tile-type and l is the loc of that tile
+
+;; a pre-position is a (append (listof tile-spec) (listof cell))
+
+;; a old-position is a (vectorof (listof int))
+;; where the index of the top-level vectors reflect the piece-type as given in the init,
+;; and the ints in the secondary vectors are the SORTED locations of the pieces of that type
+
+;; a bw-position is a (vector int)
+;; where each int is a bitwise representation of the locations of the pieces of that type
+
+;; a bs-position is a bytestring, where each byte represents the location of the corresponding tile
+
+;; a hc-position (hcpos for short) is a structure: (make-hc-position hc bwrep)
+;; where hc is the equal-hash-code for the bytestring of the position, bwrep
+
+
+;; ******************************************************************************
+
+(struct hc-position (hc bs) #:transparent)
+;; the hc is the hashcode of the bytestring
+
+;; make-hcpos: bs-position -> hc-position
+;; wrapper for the position rep augmented with the hashcode
+(define (make-hcpos bsrep) (hc-position (equal-hash-code bsrep) bsrep))
+
+
+;; INITIALIZE STUFF FOR SLIDING-TILE-SOLVER
+
+;; move trans for up, right, down and left respectively
+(define *prim-move-translations* '((-1 0) (0 1) (1 0) (0 -1)))
+
 
 (define *num-piece-types* 0)
 (define *piece-types* empty)
@@ -41,8 +90,8 @@
                         (length (last s))))
   (set! *charbytes* (make-bytes *num-pieces*))
   (set! *expandpos* (make-vector (* 4 *num-pieces*) #f)) ;; any position can never have more than the 4 x the number of pieces (when 4 spaces)
-  (set! *start* (bw-positionify (pre-compress s)))
-  (set! *piece-type-template* (for/vector ([pt (old-positionify *start*)]) (length pt)))
+  (set! *start* (make-hcpos (charify (bw-positionify (pre-compress s)))))
+  (set! *piece-type-template* (for/vector ([pt (old-positionify (bw-positionify (pre-compress s)))]) (length pt)))
   (set! *target* (for/list ([tile-spec t]) (list (first tile-spec) (list->bwrep (list (cell-to-loc (cdr tile-spec)))))))
   )
 
@@ -229,4 +278,4 @@
 
 
 ;;------------------------------------------------------------------------------------------------------
-;(block10-init) ; for local testing
+(block10-init) ; for local testing

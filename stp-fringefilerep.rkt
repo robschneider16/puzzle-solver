@@ -5,7 +5,7 @@
  ;file/gzip
  ;file/gunzip
  mzlib/string
- racket/generator
+ ;racket/generator
  "stp-init.rkt"
  "stp-solve-base.rkt")
 
@@ -87,13 +87,13 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
               (filespec-fullpathname (first (fringehead-filespecs fh))) (fringehead-readcount fh) (fringehead-total fh))
       (sleep sleep-time)))
   (unless (fhdone? fh)
-    (set-fringehead-next! fh (read-pos (fringehead-iprt fh)))
+    (set-fringehead-next! fh (read-bs->hcpos (fringehead-iprt fh)))
     (set-fringehead-readcount! fh (add1 (fringehead-readcount fh)))
     (when (and (eof-object? (fringehead-next fh)) (not (fhdone? fh))) ; advance to next segment
       (set-fringehead-filespecs! fh (rest (fringehead-filespecs fh)))
       (close-input-port (fringehead-iprt fh))
       (set-fringehead-iprt! fh (open-input-file (filespec-fullpathname (first (fringehead-filespecs fh)))))
-      (set-fringehead-next! fh (read-pos (fringehead-iprt fh))))
+      (set-fringehead-next! fh (read-bs->hcpos (fringehead-iprt fh))))
     (fringehead-next fh)))
 
 ;; position-in-fhead?: position fringehead -> boolean
@@ -104,7 +104,7 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 (define (position-in-fhead? p fh)
   (do ([fhp (fringehead-next fh) (advance-fhead! fh)])
     ((or (fhdone? fh)
-         (not (position<? fhp p))) 
+         (not (hcposition<? fhp p))) 
      (equal? fhp p))))
 
 ;; fh-from-fringe: fringe [int 0] -> fringehead
@@ -116,7 +116,7 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
   (let*-values ([(active-fspecs dropped) (drop-some-maybe (fringe-segments f) skip)]
                 [(firstfullpathname) (filespec-fullpathname (first active-fspecs))]
                 [(inprt) (open-input-file firstfullpathname)]
-                [(new-fh) (fringehead (read-pos inprt) inprt active-fspecs (add1 dropped) (fringe-pcount f))])
+                [(new-fh) (fringehead (read-bs->hcpos inprt) inprt active-fspecs (add1 dropped) (fringe-pcount f))])
     (for ([i (- skip dropped)]) (advance-fhead! new-fh))
     #|(printf "fh-from-fringe: leaving, looking at ~a w/ fh-next = ~a, fh-readcount = ~a, asked to advance to ~a~%" 
             (filespec-fullpathname (first (fringehead-filespecs new-fh))) (fringehead-next new-fh) (fringehead-readcount new-fh) skip)|#
@@ -141,21 +141,24 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 ;; -----------------------------------------------------------------------------------
 ;; --- BULK FRINGE READING/WRITING ---------------------------------------------------
 
-;; write-fringe-to-disk: (listof or vectorof position) string -> void
-;; writes the positions from the given fringe (whether list or vector) into a file with given file-name.
+;; write-fringe-to-disk: (listof or vectorof hc-position) string -> void
+;; writes the bytestring portions of the hc-positions from the given fringe (whether list or vector) into a file with given file-name.
 (define (write-fringe-to-disk fringe file-name)
   (let ([my-output (open-output-file file-name #:exists 'replace)])
-    (for ([position fringe])
-      (fprintf my-output "~a~%" (charify position)))
+    (for ([hcposition fringe])
+      (fprintf my-output "~a~%" (hc-position-bs hcposition)))
     (flush-output my-output)
     (close-output-port my-output)))
 
 ;; read-fringe-from-file: string -> (listof position)
 ;; reads a file from a file path (if you are in the current directory just simply the file-name)
-;; and returns the fringe that was in that file.
+;; and returns the fringe made up of hc-positions that was in that file.
 (define (read-fringe-from-file file-name)
   (let* ([iport (open-input-file file-name)]
-         [the-fringe (port->list (lambda (in) (decharify (read-bytes-line in))) iport)])
+         [the-fringe (port->list (lambda (in)
+                                   (let ([bspos (read-bytes-line in)])
+                                     (if (eof-object? bspos) bspos (make-hcpos bspos))))
+                                 iport)])
     (close-input-port iport)
     the-fringe))
 
@@ -163,10 +166,16 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 ;; -----------------------------------------------------------------------------------
 ;; --- MISC UTILITIES ----------------------------------------------------------------
 
+;; read-bs->hcpos: input-port -> hc-position
+;; read a bytestring from the given input-port and create hc-position
+(define (read-bs->hcpos in)
+  (let ([bspos (read-bytes-line in)])
+    (if (eof-object? bspos) bspos (make-hcpos bspos))))
+
 ;; read-pos: input-port -> bw-position
 ;; read the (probably byte representation of) position from the file attatched to the given input port
 ;; ASSUMES: fringe-file format is one position per line with bytes
-(define (read-pos iprt)
+(define (read-bs->bwpos iprt)
   (decharify (read-bytes-line iprt)))
 
 ;; fringe-exists?: fringe -> boolean
@@ -240,9 +249,9 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 ;; assuming the string, f, points to a sorted file of positions, check to make sure they are sorted
 (define (check-sorted-fringe? f)
   (let* ([myin (open-input-file f)]
-         [prevpos (read-pos myin)]
-         [bool-res (for/and ([pos (in-port read-pos myin)])
-                     (let ([res (position<? prevpos pos)])
+         [prevpos (read-bs->hcpos myin)]
+         [bool-res (for/and ([pos (in-port read-bs->hcpos myin)])
+                     (let ([res (hcposition<? prevpos pos)])
                        (set! prevpos pos)
                        res))])
     (close-input-port myin)

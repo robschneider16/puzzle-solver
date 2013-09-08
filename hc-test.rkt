@@ -5,20 +5,14 @@
 ;(require file/gzip)
 (require "stp-init.rkt"
          "stp-solve-base.rkt"
-         "stp-fringefilerep.rkt")
+         "stp-fringefilerep.rkt"
+         racket/fixnum)
 (require rnrs/sorting-6)
 
 
 (define *ntimes* 50)
 
-(define-struct hcpos (hc bs))
-;; the hc is the hashcode of the bytestring
 
-;; position<?: position position -> boolean
-(define (hcposition<? p1 p2)
-  (or (< (hcpos-hc p1) (hcpos-hc p2))
-      (and (= (hcpos-hc p1) (hcpos-hc p2))
-           (blexi<? (hcpos-bs p1) (hcpos-bs p2)))))
 
 (define (llexi<? p1 p2)
   (do ([pt 0 (add1 pt)]
@@ -32,13 +26,6 @@
             (if (< bv1 bv2)
                 -1
                 1)))))
-
-(define (blexi<? p1 p2)
-  (do ([i 0 (add1 i)])
-    ((or (= i (bytes-length p1))
-         (not (= (bytes-ref p1 i) (bytes-ref p2 i))))
-     (and (< i (bytes-length p1))
-          (< (bytes-ref p1 i) (bytes-ref p2 i))))))
 
 ;; TESTING HASH-CODE-BASED position<? TO LEXICOGRAPHIC VERSION
 #|
@@ -61,14 +48,17 @@ bwreps      39.997(10.388)             85.013(44.984)               26.639(6.561
 ;; Read a fringe, expand it and sort the result (might as well ignore duplicates in order to make it larger)
 
 ;; create generator from the fringehead
-(define HOWMANY 5000000)
+(define HOWMANY 5000)
+(climb15-init)
 (define iprt (open-input-file "hold-current-fringe-d104"))
 (define bfv (for/vector #:length HOWMANY ([p (in-port read iprt)])
-              (let ([charpos (charify (set-first (expand p)))])
-                (make-hcpos (equal-hash-code charpos) charpos))))
+              (set-first (expand (make-hcpos (charify p))))))
 (define bfv1 (vector-copy bfv))
-"augmented hash-code positions"
-(time (vector-sort! (lambda (p1 p2) (< (hcpos-hc p1) (hcpos-hc p2))) bfv1))
+(define bfv2 (vector-copy bfv))
+(printf "augmented hash-code positions over ~a expansions using simple hash-code comparison~%" HOWMANY)
+(time (vector-sort! (lambda (p1 p2) (fx< (hc-position-hc p1) (hc-position-hc p2))) bfv1))
+(printf "augmented hash-code positions over ~a expansions using bytestring lexicographic comparison~%" HOWMANY)
+(time (vector-sort! (lambda (p1 p2) (bytes<? (hc-position-bs p1) (hc-position-bs p2))) bfv2))
 ;(define bfv2 (vector-copy bfv))
 ;(define bfv3 (vector-copy bfv))
 ;"using position<? with charified positions:"

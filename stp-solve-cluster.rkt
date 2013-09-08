@@ -23,20 +23,20 @@
 
 (define *master-name* "the name of the host where the master process is running")
 (define *local-store* "the root portion of path to where workers can store temporary fringe files")
-#|
+;#|
 (set! *master-name* "localhost")
 (set! *local-store* "/space/fringefiles/")
 (define *n-processors* 4)
 ;(define *n-processors* 8)
-|#
-;#|
+;|#
+#|
 (set! *master-name* "wcp")
 (set! *local-store* "/state/partition1/fringefiles/")
 (define *n-processors* 32)
-;|#
+|#
 
 (define *expand-multiplier* 1)
-(define *diy-threshold* 1000)
+(define *diy-threshold* 5000)
 
 (define *min-pre-proto-fringe-size* 3000) ; to be replaced by *max-size-...*
 
@@ -74,6 +74,7 @@
                           ([sgmnt (reverse (fringe-segments cf))])
                           (append (read-fringe-from-file (filespec-fullpathname sgmnt)) the-fringe)))]
          [new-cf-name (format "fringe-d~a" depth)]
+         ;[prntmsg (printf "finished reading the fringes~%")]
          [res (for/list ([p (for/fold ([expansions (set)])
                               ([p-to-expand current-fringe-vec])
                               (set-union expansions
@@ -86,7 +87,7 @@
     (for ([p res])
       (printf "pos: ~a~%~a~%" (stringify p) p))|#
     (for ([sgmnt (fringe-segments pf)]) (delete-file (filespec-fullpathname sgmnt)))
-    (write-fringe-to-disk (sort res position<?) new-cf-name)
+    (write-fringe-to-disk (sort res hcposition<?) new-cf-name)
     (make-fringe "" (list (make-filespec *most-negative-fixnum* *most-positive-fixnum* new-cf-name (length res) (file-size new-cf-name) "")) (length res))))
 
 ;;----------------------------------------------------------------------------------------
@@ -134,7 +135,7 @@
          [pffh (fh-from-fringe rpf)]
          [cffh (fh-from-fringe cf)]
          [lo-effh (for/list ([an-fspec lo-expand-fspec]) (fh-from-filespec an-fspec))]
-         [heap-o-fheads (let ([lheap (make-heap (lambda (fh1 fh2) (position<? (fringehead-next fh1) (fringehead-next fh2))))])
+         [heap-o-fheads (let ([lheap (make-heap (lambda (fh1 fh2) (hcposition<? (fringehead-next fh1) (fringehead-next fh2))))])
                           (heap-add-all! lheap lo-effh)
                           lheap)]
          [expand-out (open-output-file ofile-name #:exists 'replace)] ; writing directly to NFS doesn't seem any slower than *local-store* and then copy
@@ -147,10 +148,10 @@
       (let ([efpos (fringehead-next an-fhead)])
         (unless (or (position-in-fhead? efpos pffh)
                     (position-in-fhead? efpos cffh))
-          (fprintf expand-out "~a~%" (charify efpos))
-          (when (is-goal? efpos) (vector-set! sample-stats 4 efpos))
-          (vector-set! sample-stats 1 (fxmin (vector-ref sample-stats 1) (equal-hash-code efpos)))
-          (vector-set! sample-stats 2 (fxmax (vector-ref sample-stats 2) (equal-hash-code efpos)))
+          (fprintf expand-out "~a~%" (hc-position-bs efpos))
+          (when (is-goal? efpos) (vector-set! sample-stats 4 (hc-position-bs efpos)))
+          (vector-set! sample-stats 1 (fxmin (vector-ref sample-stats 1) (hc-position-hc efpos)))
+          (vector-set! sample-stats 2 (fxmax (vector-ref sample-stats 2) (hc-position-hc efpos)))
           (set! unique-expansions (add1 unique-expansions))
           )
         (advance-fhead! an-fhead)
@@ -186,11 +187,11 @@
   (cons (let* ([resv (for/vector #:length (set-count sop) ([p sop]) p)] ;; convert set to vector
                [f (format "~a~a" pre-ofile-template pre-ofile-counter)]
                [fullpath (string-append *local-store* f)])
-          (vector-sort! position<? resv)
-          ;(set! resv (vector-sort position<? resv))
+          (vector-sort! hcposition<? resv)
+          ;(set! resv (vector-sort hcposition<? resv))
           (write-fringe-to-disk resv fullpath)
-          (make-filespec (equal-hash-code (vector-ref resv 0))
-                         (fx+ (equal-hash-code (vector-ref resv (sub1 (vector-length resv)))) 1)
+          (make-filespec (hc-position-hc (vector-ref resv 0))
+                         (fx+ (hc-position-hc (vector-ref resv (sub1 (vector-length resv)))) 1)
                          f (vector-length resv) (file-size fullpath) *local-store*))
         pre-ofiles))
                         
@@ -300,26 +301,27 @@
                 [partial-expansion-size (map filespec-pcount local-protofringe-fspecs)])
             (let ([fnext (fringehead-next fh)])
               (unless (or (eof-object? fnext)
-                          (fx>= (equal-hash-code fnext) (first my-range)))
+                          (fx>= (hc-position-hc fnext) (first my-range)))
                 (do ([lfhpos fnext (advance-fhead! fh)])
                   ((or (eof-object? lfhpos)
-                       (fx>= (equal-hash-code lfhpos) (first my-range))))))))]
-         [heap-o-fheads (let ([lheap (make-heap (lambda (fh1 fh2) (position<? (fringehead-next fh1) (fringehead-next fh2))))])
+                       (fx>= (hc-position-hc lfhpos) (first my-range))))))))]
+         ;[errorhere (error "check the fastforwarded fringeheads")]
+         [heap-o-fheads (let ([lheap (make-heap (lambda (fh1 fh2) (hcposition<? (fringehead-next fh1) (fringehead-next fh2))))])
                           (heap-add-all! lheap (filter-not (lambda (fh) (eof-object? (fringehead-next fh))) to-merge-fheads))
                           lheap)]
-         [segment-size (let ([last-pos (void)]
+         [segment-size (let ([last-pos (make-hcpos (bytes 49 49 49 49))]
                              [keep-pos (void)]
                              [num-written 0])
                          (for ([an-fhead (in-heap/consume! heap-o-fheads)]
-                               #:break (fx>= (equal-hash-code (fringehead-next an-fhead)) (second my-range)))
+                               #:break (fx>= (hc-position-hc (fringehead-next an-fhead)) (second my-range)))
                            (set! keep-pos (fringehead-next an-fhead))
                            (advance-fhead! an-fhead)
                            (unless (fhdone? an-fhead) ;;(eof-object? (peek-byte (fringehead-iprt an-fhead) 1))
                              (heap-add! heap-o-fheads an-fhead))
-                           (unless (equal? keep-pos last-pos)
-                             (fprintf mrg-segment-oport "~a~%" (charify keep-pos))
-                             (set! num-written (add1 num-written)))
-                           (set! last-pos keep-pos))
+                           (unless (bytes=? (hc-position-bs keep-pos) (hc-position-bs last-pos))
+                             (fprintf mrg-segment-oport "~a~%" (hc-position-bs keep-pos))
+                             (set! num-written (add1 num-written))
+                             (set! last-pos keep-pos)))
                          num-written)])
     ;(printf "remote-merge-expansions: fw-lolop-lengths=~a [total ~a]~%" (map length fastforwarded-lolops) (for/sum ([l fastforwarded-lolops]) (length l)))
     ;(printf "remote-merge-expansions: merged-expns-length=~a~%" (length sorted-merged-expansions))
@@ -479,19 +481,19 @@
       ;; else call distributed-expand, which will farm out to workers
       (distributed-expand-fringe prev-fringe current-fringe depth)))
 
-;; vectorize-list: (listof position) -> (vectorof position)
+;; vectorize-list: (listof hc-position) -> (vectorof hc-position)
 ;; convert a list of positions into a vector for easy/efficient partitioning
 (define (vectorize-list f)
   (let ([new-vec (list->vector f)])
-    (vector-sort! position<? new-vec)
+    (vector-sort! hcposition<? new-vec)
     new-vec))
 
-;; fringe-merge: (listof position) (listof position) -> (listof X)
+;; fringe-merge: (listof hc-position) (listof hc-position) -> (listof X)
 ;; ASSUMES both lists are sorted and creates a new list with duplicates removed
 (define (fringe-merge l1 l2)
   (cond [(empty? l1) l2]
         [(empty? l2) l1]
-        [(position<? (first l1) (first l2)) (cons (first l1) (fringe-merge (rest l1) l2))]
+        [(hcposition<? (first l1) (first l2)) (cons (first l1) (fringe-merge (rest l1) l2))]
         [(equal? (first l1) (first l2)) (fringe-merge l1 (rest l2))]
         [else (cons (first l2) (fringe-merge l1 (rest l2)))]))
 
@@ -514,14 +516,15 @@
                           new-fringe
                           (add1 depth)))]))
 
-;; start-cluster-fringe-search: bw-position -> ...
+;; start-cluster-fringe-search: hc-position -> ...
 (define (start-cluster-fringe-search start-position)
   ;; initialization of fringe files
   (write-fringe-to-disk empty "fringe-d-1")
   (write-fringe-to-disk (list start-position) "fringe-d0")
   (cfs-file (make-fringe "" (list (make-filespec *most-negative-fixnum* *most-positive-fixnum* "fringe-d-1" 0 (file-size "fringe-d-1") "")) 0)
             (make-fringe "" (list (make-filespec *most-negative-fixnum* *most-positive-fixnum* "fringe-d0" 1 (file-size "fringe-d0") "")) 1)
-            1))
+            1)
+  )
   
 
 ;(block10-init)
