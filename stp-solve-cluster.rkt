@@ -23,17 +23,17 @@
 
 (define *master-name* "the name of the host where the master process is running")
 (define *local-store* "the root portion of path to where workers can store temporary fringe files")
-;#|
+#|
 (set! *master-name* "localhost")
 (set! *local-store* "/space/fringefiles/")
 (define *n-processors* 4)
 ;(define *n-processors* 8)
-;|#
-#|
+|#
+;#|
 (set! *master-name* "wcp")
 (set! *local-store* "/state/partition1/fringefiles/")
 (define *n-processors* 32)
-|#
+;|#
 
 (define *expand-multiplier* 1)
 (define *diy-threshold* 5000)
@@ -498,7 +498,7 @@
         [else (cons (first l2) (fringe-merge l1 (rest l2)))]))
 
 
-(define *max-depth* 10)(set! *max-depth* 105)
+(define *max-depth* 10)(set! *max-depth* 230)
 
 ;; cfs-file: fringe fringe int -> position
 ;; perform a file-based cluster-fringe-search at given depth
@@ -529,7 +529,8 @@
 
 ;(block10-init)
 ;(climb12-init)
-(climb15-init)
+;(climb15-init)
+(climbpro24-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
 ;;#|

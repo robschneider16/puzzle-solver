@@ -5,7 +5,7 @@
          "stp-fringefilerep.rkt")
 
 
-(define *max-depth* 10)(set! *max-depth* 31)
+(define *max-depth* 10)(set! *max-depth* 30)
 
 
 
@@ -58,9 +58,10 @@
                        (fringe-mem-search current-fringe new-fringe (add1 depth) found-goal? (+ npos (set-count new-fringe))))])]))
 
 
-(block10-init)
+;(block10-init)
 ;(climb12-init)
 ;(climb15-init)
+(climbpro24-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
 (write-fringe-to-disk empty "prev-fringe")

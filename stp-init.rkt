@@ -18,7 +18,8 @@
          loc-to-cell
          block10-init
          climb12-init
-         climb15-init)
+         climb15-init
+         climbpro24-init)
 
 
 ;; ******************************************************************************
@@ -274,8 +275,66 @@
 
 ;;------------------------------------------------------------------------------------------------------
 ;; CLIMB-24-PRO PUZZLE INIT
-;; 22x moves
+;; 22? moves
+;;  From Minoru Abe -- http://www.johnrausch.com/slidingblockpuzzles/abe.htm
+;;           _
+;; 0   _____|x|_____
+;; 1  |___|x x x|___|
+;; 2  |   |_____|   |
+;; 3  |___| |_  |___|
+;; 4  |_  |___|_|  _|
+;; 5  | |_| |_| |_| |
+;; 6  |_| |_|_|_| |_|
+;; 7  |___|_____|___|
+;; 8  |   |_| |_|   |
+;; 9  |___|_____|___|
+
+(define *climbpro24-target* '((2 0 3)))
+
+(define *climbpro24-piece-types*
+  '#((reserved-spaces)
+     ((0 0)(0 1)(1 0)(1 1))              ; 1  2x2 square
+     ((0 0)(1 -1)(1 0)(1 1))             ; 2  4 square T (stem up)
+     ((0 0)(0 1)(1 0))                   ; 3  Upper Left pointing L
+     ((0 0)(0 1)(1 1))                   ; 4  Upper Right pointing L
+     ((0 0)(1 -1)(1 0))                  ; 5  Lower Right pointing L
+     ((0 0)(1 0)(1 1))                   ; 6  Lower Left pointing L
+     ((0 0)(1 0))                        ; 7  2x1 vertical rectangle
+     ((0 0)(0 1))                        ; 8  1x2 horizontal rectangle
+     ((0 0)(0 1)(0 2))                   ; 9  1x3 horizontal rectangle
+     ((0 0))))                           ; 10 1x1 unit square
+
+(define *climbpro24-start*
+  '((1 2 0)    ; 2x2
+    (1 2 5)    ; 2x2
+    (1 8 0)    ; 2x2
+    (1 8 5)    ; 2x2
+    (2 8 3)    ; T piece
+    (3 4 5)    ; up-left L
+    (4 3 3)    ; up-right L
+    (4 4 0)    ; up-right L
+    (5 6 1)    ; down-right L
+    (6 3 2)    ; down-left L
+    (6 6 5)    ; down-left L
+    (7 5 0)    ; 2x1 (vertical)
+    (7 5 2)    ; 2x1 (vertical)
+    (7 5 4)    ; 2x1 (vertical)
+    (7 5 6)    ; 2x1 (vertical)
+    (8 1 0)    ; 1x2 (horizontal)
+    (8 1 5)    ; 1x2 (horizontal)
+    (9 2 2)    ; 1x3 (horizontal)
+    (9 7 2)    ; 1x3 (horizontal)
+    (10 5 3)    ; 1x1
+    (10 6 3)    ; 1x1
+    (10 8 2)    ; 1x1
+    (10 8 4)    ; 1x1
+    ((0 3)(1 2)(1 3)(1 4))
+    ))
+
+(define (climbpro24-init)
+  (set-em! *climbpro24-piece-types* *climbpro24-start* *climbpro24-target* 10 7))
 
 
 ;;------------------------------------------------------------------------------------------------------
-(block10-init) ; for local testing
+;(block10-init) ; for local testing
+(climbpro24-init)
