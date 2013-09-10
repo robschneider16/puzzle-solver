@@ -23,17 +23,17 @@
 
 (define *master-name* "the name of the host where the master process is running")
 (define *local-store* "the root portion of path to where workers can store temporary fringe files")
-#|
+;#|
 (set! *master-name* "localhost")
 (set! *local-store* "/space/fringefiles/")
 (define *n-processors* 4)
 ;(define *n-processors* 8)
-|#
-;#|
+;|#
+#|
 (set! *master-name* "wcp")
 (set! *local-store* "/state/partition1/fringefiles/")
 (define *n-processors* 32)
-;|#
+|#
 
 (define *expand-multiplier* 1)
 (define *diy-threshold* 5000)
@@ -53,6 +53,16 @@
        ])
 
 (define *found-goal* #f)
+
+(define *num-proto-fringe-slices* (* 10 *n-processors*))
+;; define the fixed hash-code bounds to be used for repsonsibility ranges and proto-fringe slicing
+(define *proto-fringe-slice-bounds*
+  (let* ([slice-width (floor (/ (- *most-positive-fixnum* *most-negative-fixnum*) *num-proto-fringe-slices*))]
+         [slices (for/list ([i *num-proto-fringe-slices*])
+                   (cons (+ *most-negative-fixnum* (* i slice-width))
+                         (+ *most-negative-fixnum* (* (add1 i) slice-width))))])
+    (append (drop-right slices 1)
+            (list (cons (car (last slices)) *most-positive-fixnum*)))))
 
 
 ;; Cluster/multi-process specific code for the sliding-tile puzzle solver
@@ -250,7 +260,7 @@
 ;; where the copy is arranged-for by the master also
 (define (remote-expand-fringe ranges pf cf depth)
   ;;(printf "remote-expand-fringe: current-fringe of ~a split as: ~a~%" cur-fringe-size (map (lambda (pr) (- (second pr) (first pr))) ranges))
-  (let* ([distrib-results (for/work ([range-pair ranges]
+  (let* ([distrib-results (for/list #|work|# ([range-pair ranges]
                                      [i (in-range (length ranges))])
                                     (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end")) ;;prevent riot cache-failure
                                     ;; need alternate version of wait-for-files that just checks on the assigned range
@@ -342,7 +352,7 @@
   (when (string=? *master-name* "localhost")
     (bring-local-partial-expansions expand-files-specs))
   (let ([merge-results
-         (for/work ([merge-range merge-ranges] ;; merged results should come back in order of merge-ranges assignments
+         (for/list #|work|# ([merge-range merge-ranges] ;; merged results should come back in order of merge-ranges assignments
                     [i (in-range (length merge-ranges))])
                    (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end"))
                    (let* ([ofile-name (format "fringe-segment-d~a-~a" depth (~a i #:left-pad-string "0" #:width 2 #:align 'right))]
@@ -528,17 +538,18 @@
   
 
 ;(block10-init)
-;(climb12-init)
+(climb12-init)
 ;(climb15-init)
-(climbpro24-init)
+;(climbpro24-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
-;;#|
+;#|
 (module+ main
   ;; Switch between these according to if using the cluster or testing on multi-core single machine
-  (connect-to-riot-server! *master-name*)
+  ;(connect-to-riot-server! *master-name*)
   (define search-result (time (start-cluster-fringe-search *start*)))
-  (print search-result))
-;;|#
+  (print search-result)
+  )
+;|#
 
 ;;(time (start-cluster-fringe-search *start*))
