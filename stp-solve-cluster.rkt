@@ -161,7 +161,9 @@
          [heap-o-fheads (let ([lheap (make-heap (lambda (fh1 fh2) (hcposition<? (fringehead-next fh1) (fringehead-next fh2))))])
                           (heap-add-all! lheap lo-effh)
                           lheap)]
-         [expand-out (open-output-file ofile-name #:exists 'replace)] ; writing directly to NFS doesn't seem any slower than *local-store* and then copy
+         ; writing directly to NFS doesn't seem any slower than *local-store* and then copy
+         [proto-slice-ofiles (for/vector ([i *num-proto-fringe-slices*])
+                               (open-output-file (string-append ofile-name "-" (~a i #:left-pad-string "0" #:width 3 #:align 'right))))]
          [unique-expansions 0]
          [sample-stats 
           (vector 0 *most-positive-fixnum* *most-negative-fixnum* empty #f ofile-name 0)] ;; here, use the shared ofile-name instead of *local-store*
@@ -171,7 +173,7 @@
       (let ([efpos (fringehead-next an-fhead)])
         (unless (or (position-in-fhead? efpos pffh)
                     (position-in-fhead? efpos cffh))
-          (fprintf expand-out "~a~%" (hc-position-bs efpos))
+          (fprintf (vector-ref proto-slice-ofiles (get-slice-num (hc-position-hc efpos))) "~a~%" (hc-position-bs efpos))
           (when (is-goal? efpos) (vector-set! sample-stats 4 (hc-position-bs efpos)))
           (vector-set! sample-stats 1 (fxmin (vector-ref sample-stats 1) (hc-position-hc efpos)))
           (vector-set! sample-stats 2 (fxmax (vector-ref sample-stats 2) (hc-position-hc efpos)))
@@ -184,12 +186,12 @@
     ;(for ([p resv]) (displayln p))
     ;; close input and output ports
     (for ([fh (cons pffh (cons cffh lo-effh))]) (close-input-port (fringehead-iprt fh)))
-    (close-output-port expand-out)
+    (for ([oprt proto-slice-ofiles]) (close-output-port oprt))
     ;; copy the proto-fringe file from *local-store* to shared working directory for other processes to have when merging
     ;(copy-file use-ofilename ofile-name)
     ;; complete the sampling-stat
     (vector-set! sample-stats 0 unique-expansions)
-    (vector-set! sample-stats 6 (file-size ofile-name))
+    (vector-set! sample-stats 6 (file-size ofile-name)) ;; proto-fringe name minus the trailing "-XXX" for slice number
     ;; delete files that are no longer needed
     (for ([efspec lo-expand-fspec]) (delete-file (filespec-fullpathname efspec)))
     (unless (string=? *master-name* "localhost") (delete-fringe rpf))
@@ -361,19 +363,25 @@
     (list ofile-name segment-size)))
 
 ;; remote-merge: (listof (list fixnum fixnum)) (listof fspec) int -> (listof string int)
+;; expand-files-specs (proto-fringe-specs) does not have the trailing slice identifier in the names;
+;; for each one, we will eventually need to add the oppropriate slice id
+;;*** eliminate merge-ranges
 (define (remote-merge merge-ranges expand-files-specs depth)
+  ;;**** RETHINK THIS -- MAYBE FORCE THE WORKER TO GRAB THE SLICE IT NEEDS??????
   (when (string=? *master-name* "localhost")
     (bring-local-partial-expansions expand-files-specs))
   (let ([merge-results
-         (for/list #|work|# ([merge-range merge-ranges] ;; merged results should come back in order of merge-ranges assignments
-                    [i (in-range (length merge-ranges))])
-                   (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end"))
-                   (let* ([ofile-name (format "fringe-segment-d~a-~a" depth (~a i #:left-pad-string "0" #:width 2 #:align 'right))]
-                          [merged-fname-and-resp-rng-size (remote-merge-proto-fringes merge-range expand-files-specs depth ofile-name)]
+         (for/list #|work|# 
+             (;;***** CHANGE TO SLICE NUMBERS
+              [merge-range merge-ranges] ;; merged results should come back in order of merge-ranges assignments
+              [i (in-range (length merge-ranges))])
+           (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end"))
+           (let* ([ofile-name (format "fringe-segment-d~a-~a" depth (~a i #:left-pad-string "0" #:width 2 #:align 'right))]
+                  [merged-fname-and-resp-rng-size (remote-merge-proto-fringes merge-range expand-files-specs depth ofile-name)]
                           )
-                     ;;(printf "distributed-expand-fringe: merge-range = ~a~%~a~%" merge-range merged-responsibility-range)
-                     ;(write-fringe-to-disk merged-responsibility-range ofile-name)
-                     merged-fname-and-resp-rng-size))])
+             ;;(printf "distributed-expand-fringe: merge-range = ~a~%~a~%" merge-range merged-responsibility-range)
+             ;(write-fringe-to-disk merged-responsibility-range ofile-name)
+             merged-fname-and-resp-rng-size))])
     ;(printf "remote-merge: merged segment names and lengths ~a~%" merge-results)
     (when (string=? *master-name* "localhost")
       (for ([f expand-files-specs])
@@ -425,7 +433,7 @@
          [infomsg1 (printf "starting expand, ... ")]
          [start-expand (current-seconds)]
          [ranges (make-vector-ranges (fringe-pcount cf))]
-         ;;make remote fringe
+         ;;make remote fringe filespecs
          [rcf (make-fringe (fringe-fbase cf)
                            (for/list ([seg (fringe-segments cf)]) 
                              (make-filespec (filespec-minhc seg) (filespec-maxhc seg)
@@ -446,11 +454,8 @@
                                 (make-filespec (vector-ref ss 1) (vector-ref ss 2) (vector-ref ss 5) (vector-ref ss 0) (vector-ref ss 6) ""))]
          ;; need to wait for write to complete -- i.e., all data to appear on master
          ;; push this wait into the place we're trying to access the file ... [wait-for-partial-expansions (wait-for-files expand-files-specs)]
-         #|[error-check1 (for/first ([i (in-range (length sampling-stats))]
-                                   [ss sampling-stats]
-                                   #:unless (= (vector-ref ss 0) (position-count-in-file (format "partial-expansion~a" (~a i #:left-pad-string "0" #:width 2 #:align 'right)))))
-                         (error 'distributed-expand-fringe (format "err-chk1: partial-expansion sizes do not match up for ~a which should be ~a" i (vector-ref ss 0))))]|#
          ;; MERGE
+         ;;***** eliminate merge-ranges as based now on slices
          [merge-ranges (simple-merge-ranges sampling-stats)]
          [infomsg2 (printf "starting merge, ... ")]
          ;; --- Distribute the merging work ----------
