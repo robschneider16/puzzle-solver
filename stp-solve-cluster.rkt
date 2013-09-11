@@ -34,8 +34,11 @@
 (set! *local-store* "/state/partition1/fringefiles/")
 (define *n-processors* 32)
 |#
-
 (define *expand-multiplier* 1)
+(define *merge-multiplier* 10)
+(define *n-expanders* (* *n-processors* *expand-multiplier*))
+(define *n-mergers* (* *n-processors* *merge-multiplier*))
+
 (define *diy-threshold* 5000)
 
 (define *min-pre-proto-fringe-size* 3000) ; to be replaced by *max-size-...*
@@ -44,17 +47,18 @@
 (define *most-negative-fixnum* 0)
 (cond [(fixnum? (expt 2 61))
        (set! *most-positive-fixnum* (fx+ (expt 2 61) (fx- (expt 2 61) 1)))  ;; ****** only on 64-bit architectures *****
-       (set! *most-negative-fixnum* (fx+ (fx* -1 (expt 2 61)) (fx* -1 (expt 2 61))));; ***** likewise *****
-       ]
+       (set! *most-negative-fixnum* (fx+ (fx* -1 (expt 2 61)) (fx* -1 (expt 2 61))))];; ***** likewise *****
       [else 
        ;; For the cluster platform use the following:
        (set! *most-positive-fixnum* (fx+ (expt 2 29) (fx- (expt 2 29) 1)))  ;; ****** only on our cluster, wcp *****
-       (set! *most-negative-fixnum* (fx+ (fx* -1 (expt 2 29)) (fx* -1 (expt 2 29))));; ***** likewise *****
-       ])
+       (set! *most-negative-fixnum* (fx+ (fx* -1 (expt 2 29)) (fx* -1 (expt 2 29))))]);; ***** likewise *****
 
 (define *found-goal* #f)
 
-(define *num-proto-fringe-slices* (* 10 *n-processors*))
+;;------------------------------------------
+;; proto-fringe slicing
+
+(define *num-proto-fringe-slices* *n-mergers*)
 ;; define the fixed hash-code bounds to be used for repsonsibility ranges and proto-fringe slicing
 (define *proto-fringe-slice-bounds*
   (let* ([slice-width (floor (/ (- *most-positive-fixnum* *most-negative-fixnum*) *num-proto-fringe-slices*))]
@@ -78,11 +82,9 @@
           [else (get-slice-num p mid hi)])))
 
 
-;; Cluster/multi-process specific code for the sliding-tile puzzle solver
 
 
 ;;----------------------------------------------------------------------------------------
-
 
 ;; expand-fringe-self: fringe fringe int -> fringe
 ;; expand just the current-fringe and remove duplicates in the expansion and repeats from prev-fringe
@@ -113,6 +115,8 @@
     (write-fringe-to-disk (sort res hcposition<?) new-cf-name)
     (make-fringe "" (list (make-filespec *most-negative-fixnum* *most-positive-fixnum* new-cf-name (length res) (file-size new-cf-name) "")) (length res))))
 
+
+
 ;;----------------------------------------------------------------------------------------
 ;; DISTRIBUTED EXPANSION AND MERGING OF FRINGES
 
@@ -126,7 +130,7 @@
 ;; 5. output file name, e.g., partial-expansionXX
 ;; 6. compressed file size
 
-;; -----------------------------------------------------------------------------------------------------
+;; ---------------------------------------------------------------------------------------
 ;; EXPANSION .....
 
 ;; make-vector-ranges: int -> (listof (list int int)
@@ -221,7 +225,7 @@
         pre-ofiles))
                         
 
-;; remote-expand-part-fringe: (list int int) int fringe fringe int -> sampling-stat
+;; remote-expand-part-fringe: (list int int) int fringe fringe int -> {whatever returned by remove-dupes}
 ;; given a pair of indices into the current-fringe that should be expanded by this process, a process-id,
 ;; and the prev- and current-fringes, and the depth ...
 ;; expand the positions in the indices range, ignoring duplicates other than within the new fringe being constructed.
@@ -308,29 +312,29 @@
 ;; go through all the partial-expansions and merge the positions (removing duplicates) in that range into a single collection.
 ;; write the results to a local /tmp file, then finally copy to the home directory (NFS share), and delete the files.
 ;; Return a list with the merged filename and the size of that segment
+;; NEW:
+;; distributed-merge-proto-fringe-slices: number (listof fspec) int string -> (list string number)
+;; given a slice identifier to be merged, obtain all the relevant slices of that id, 
+;; and merge into a single segment that will participate in the new fringe, removing duplicates among slices.
+;; Note: we have already removed from slices any duplicates found in prev- and current-fringes
+;;****** MY-RANGE WILL BECOME PROTO-FRINGE SLICE ID
+;(define (distributed-merge-proto-fringe-slices slice-id slice-fspecs depth ofile-name)
 (define (remote-merge-proto-fringes my-range expand-files-specs depth ofile-name)
   ;; expand-files-specs are of pattern: "proto-fringe-dXX-NN" for depth XX and proc-id NN, pointing to working (shared) directory 
-  ;;NEW: ofile-name is of pattern: "fringe-segment-dX-NN", where the X is the depth and the NN is a process identifier
+  ;; WAS: ofile-name is of pattern: "fringe-segment-dX-NN", where the X is the depth and the NN is a process identifier
+  ;; NEW: ofile-name is of pattern: "fringe-segment-dX-NNN", where the X is the depth and the NN is a slice identifier
   (let* (;[mrg-segment-oport (open-output-file (string-append *local-store* ofile-name))]
          [mrg-segment-oport (open-output-file ofile-name)] ; try writing directly to NFS
+         ;;****** ONLY COPY THE ASSIGNED SLICE
          [copy-partial-expansions-to-local-disk ;; but only if not sharing host with master
           (unless (string=? *master-name* "localhost")
             ;; copy shared-drive expansions to *local-store*, uncompress, and delete compressed version
             (bring-local-partial-expansions expand-files-specs))]
+         ;;****** AGAIN, FOR THE ASSIGNED SLICE
          [local-protofringe-fspecs (for/list ([fs expand-files-specs]) (rebase-filespec fs *local-store*))]
          [to-merge-fheads 
           (for/list ([exp-fspec local-protofringe-fspecs])
             (fh-from-filespec exp-fspec))]
-         [fastforward-the-to-merge-fheads ; for the side-effect
-          (for ([fh to-merge-fheads]
-                [partial-expansion-size (map filespec-pcount local-protofringe-fspecs)])
-            (let ([fnext (fringehead-next fh)])
-              (unless (or (eof-object? fnext)
-                          (fx>= (hc-position-hc fnext) (first my-range)))
-                (do ([lfhpos fnext (advance-fhead! fh)])
-                  ((or (eof-object? lfhpos)
-                       (fx>= (hc-position-hc lfhpos) (first my-range))))))))]
-         ;[errorhere (error "check the fastforwarded fringeheads")]
          [heap-o-fheads (let ([lheap (make-heap (lambda (fh1 fh2) (hcposition<? (fringehead-next fh1) (fringehead-next fh2))))])
                           (heap-add-all! lheap (filter-not (lambda (fh) (eof-object? (fringehead-next fh))) to-merge-fheads))
                           lheap)]
@@ -343,7 +347,7 @@
                            (advance-fhead! an-fhead)
                            (unless (fhdone? an-fhead) ;;(eof-object? (peek-byte (fringehead-iprt an-fhead) 1))
                              (heap-add! heap-o-fheads an-fhead))
-                           (unless (bytes=? (hc-position-bs keep-pos) (hc-position-bs last-pos))
+                           (unless (bytes=? (hc-position-bs keep-pos) (hc-position-bs last-pos)) ;; don't write duplicates
                              (fprintf mrg-segment-oport "~a~%" (hc-position-bs keep-pos))
                              (set! num-written (add1 num-written))
                              (set! last-pos keep-pos)))
