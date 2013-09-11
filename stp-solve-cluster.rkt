@@ -58,11 +58,11 @@
 ;; define the fixed hash-code bounds to be used for repsonsibility ranges and proto-fringe slicing
 (define *proto-fringe-slice-bounds*
   (let* ([slice-width (floor (/ (- *most-positive-fixnum* *most-negative-fixnum*) *num-proto-fringe-slices*))]
-         [slices (for/list ([i *num-proto-fringe-slices*])
-                   (cons (+ *most-negative-fixnum* (* i slice-width))
-                         (+ *most-negative-fixnum* (* (add1 i) slice-width))))])
-    (append (drop-right slices 1)
-            (list (cons (car (last slices)) *most-positive-fixnum*)))))
+         [slices (for/vector #:length (add1 *num-proto-fringe-slices*)
+                   ([i *num-proto-fringe-slices*])
+                   (+ *most-negative-fixnum* (* i slice-width)))])
+    (vector-set! slices *num-proto-fringe-slices* *most-positive-fixnum*)
+    slices))
 
 
 ;; Cluster/multi-process specific code for the sliding-tile puzzle solver
@@ -543,13 +543,13 @@
 ;(climbpro24-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
-;#|
+#|
 (module+ main
   ;; Switch between these according to if using the cluster or testing on multi-core single machine
   ;(connect-to-riot-server! *master-name*)
   (define search-result (time (start-cluster-fringe-search *start*)))
   (print search-result)
   )
-;|#
+|#
 
 ;;(time (start-cluster-fringe-search *start*))
