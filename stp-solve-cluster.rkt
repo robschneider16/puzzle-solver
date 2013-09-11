@@ -64,6 +64,19 @@
     (vector-set! slices *num-proto-fringe-slices* *most-positive-fixnum*)
     slices))
 
+;; get-slice-num: hc-position [low number] [hi number] -> number
+;; use binary search to find index for given hc-position within ranges defined by *proto-fringe-slice-bounds*
+(define (get-slice-num p (low 0) (hi *num-proto-fringe-slices*))
+  (let ([mid (floor (/ (+ low hi) 2))]
+        [hc (hc-position-hc p)])
+    (cond [(= low mid)
+           (when (>= hc (vector-ref *proto-fringe-slice-bounds* (add1 mid)))
+             (error (format "get-slice-num: missed the mark with index ~a for hc=~a~%" mid hc)))
+           mid]
+          [(< hc (vector-ref *proto-fringe-slice-bounds* mid))
+           (get-slice-num p low (sub1 mid))]
+          [else (get-slice-num p mid hi)])))
+
 
 ;; Cluster/multi-process specific code for the sliding-tile puzzle solver
 
