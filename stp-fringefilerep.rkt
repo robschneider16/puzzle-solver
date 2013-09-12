@@ -104,8 +104,9 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 (define (position-in-fhead? p fh)
   (do ([fhp (fringehead-next fh) (advance-fhead! fh)])
     ((or (fhdone? fh)
-         (not (hcposition<? fhp p))) 
-     (equal? fhp p))))
+         (not (hcposition<? fhp p)))
+     (and (hc-position? fhp)
+          (bytes=? (hc-position-bs fhp) (hc-position-bs p))))))
 
 ;; fh-from-fringe: fringe [int 0] -> fringehead
 ;; create a fringehead from a given fringe and advance it to the requested start point,
