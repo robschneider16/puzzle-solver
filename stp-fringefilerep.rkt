@@ -132,12 +132,16 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 
 ;; drop-some-maybe: (listof filespec) int -> (listof filespec)
 ;; drop leading filespecs in the fringe that would be open-and-closed when skipping over skip
+;; **** filespecs must be non-zero length
 (define (drop-some-maybe lofspec skip)
+  ;(printf "drop-some-maybe: entering with skip=~a~%" skip)
   (do ([i skip (- i (filespec-pcount (car lof)))]
        [dropped 0 (+ dropped (filespec-pcount (car lof)))]
        [lof lofspec (cdr lof)]
        )
-    ((< i (filespec-pcount (car lof))) (values lof dropped))))
+    ((< i (filespec-pcount (car lof))) 
+     ;(printf "drop-some-maybe: about to return two values lof=~a, and dropped=~a~%" lof dropped)
+     (values lof dropped))))
 
 ;; -----------------------------------------------------------------------------------
 ;; --- BULK FRINGE READING/WRITING ---------------------------------------------------

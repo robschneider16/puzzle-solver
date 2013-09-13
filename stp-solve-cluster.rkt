@@ -23,23 +23,23 @@
 
 (define *master-name* "the name of the host where the master process is running")
 (define *local-store* "the root portion of path to where workers can store temporary fringe files")
-;#|
+#|
 (set! *master-name* "localhost")
 (set! *local-store* "/space/fringefiles/")
+;(set! *local-store* "/state/partition1/fringefiles/")
 (define *n-processors* 4)
-;(define *n-processors* 8)
-;|#
-#|
+|#
+;#|
 (set! *master-name* "wcp")
 (set! *local-store* "/state/partition1/fringefiles/")
 (define *n-processors* 32)
-|#
+;|#
 (define *expand-multiplier* 1)
-(define *merge-multiplier* 10)
+(define *merge-multiplier* 4)
 (define *n-expanders* (* *n-processors* *expand-multiplier*))
 (define *n-mergers* (* *n-processors* *merge-multiplier*))
 
-(define *diy-threshold* 1000)
+(define *diy-threshold* 3000)
 
 (define *min-pre-proto-fringe-size* 3000) ; to be replaced by *max-size-...*
 
@@ -137,14 +137,13 @@
 ;; make-vector-ranges: int -> (listof (list int int)
 ;; create the pairs of indices into the current-fringe-vector that will specify the part of the fringe each worker tackles
 (define (make-vector-ranges vlength)
-  (if (< vlength 1000)
+  (if (< vlength 10)
       (list (list 0 vlength))
       (let ((start-list (build-list *n-expanders*
                                     (lambda (i) (floor (* i (/ vlength *n-expanders*)))))))
         (foldr (lambda (x r) (cons (list x (first (first r))) r)) 
                (list (list (last start-list) vlength)) 
                (drop-right start-list 1)))))
-
 
 ;; remove-dupes: fringe fringe (listof filespec) string int -> sampling-stat
 ;; Running in distributed worker processes:
@@ -216,7 +215,6 @@
       (error 'remove-dupes "phase 2: failed to generate a sorted fringe file ~a" ofile-name))|#
     sample-stats))
 
-
 ;; process-proto-fringe: (setof position) string int (listof fspec) -> (listof fspec)
 ;; convert set to vector, sort it and write the sorted vector to the given filename,
 ;; returning the list of filespecs augmented with the fspec for the newly written file
@@ -231,7 +229,6 @@
                          (fx+ (hc-position-hc (vector-ref resv (sub1 (vector-length resv)))) 1)
                          f (vector-length resv) (file-size fullpath) *local-store*))
         pre-ofiles))
-                        
 
 ;; remote-expand-part-fringe: (list int int) int fringe fringe int -> {whatever returned by remove-dupes}
 ;; given a pair of indices into the current-fringe that should be expanded by this process, a process-id,
@@ -307,7 +304,7 @@
 ;; bring-local-partial-expansions: (listof fspec) -> void
 ;; copy the partial expansions from the shared disk to our local /tmp, 
 (define (bring-local-partial-expansions lo-expand-specs)
-  (for ([fs lo-expand-specs])
+  (for ([fs lo-expand-specs] #:unless (zero? (filespec-pcount fs)))
     (let* ([base-fname (filespec-fname fs)] 
            [tmp-partexp-name (string-append *local-store* base-fname)])
       (unless (file-exists? tmp-partexp-name) ; unless this process id is here from expansion
@@ -329,13 +326,17 @@
           (unless (string=? *master-name* "localhost")
             ;; copy shared-drive expansions to *local-store*, uncompress, and delete compressed version
             (bring-local-partial-expansions slice-fspecs))]
-         [local-protofringe-fspecs (for/list ([fs slice-fspecs]) (rebase-filespec fs *local-store*))]
+         [local-protofringe-fspecs (for/list ([fs slice-fspecs] #:unless (zero? (filespec-pcount fs))) (rebase-filespec fs *local-store*))]
+         ;[pmsg1 (printf "distmerge-debug1: ~a fspecs in ~a~%distmerge-debug1: or localfspecs=~a~%" (vector-length slice-fspecs) slice-fspecs local-protofringe-fspecs)]
          [to-merge-fheads 
           (for/list ([exp-fspec local-protofringe-fspecs])
             (fh-from-filespec exp-fspec))]
+         ;[pmsg2 (printf "distmerge-debug2: made 'to-merge-fheads'~%")]
          [heap-o-fheads (let ([lheap (make-heap (lambda (fh1 fh2) (hcposition<? (fringehead-next fh1) (fringehead-next fh2))))])
-                          (heap-add-all! lheap to-merge-fheads)
+                          (heap-add-all! lheap 
+                                         (filter-not (lambda (fh) (eof-object? (fringehead-next fh)))to-merge-fheads))
                           lheap)]
+         ;[pmsg3 (printf "distmerge-debug3: made the heap with ~a frigeheads in it~%" (heap-count heap-o-fheads))]
          [segment-size (let ([last-pos (make-hcpos (bytes 49 49 49 49))]
                              [keep-pos (void)]
                              [num-written 0])
@@ -370,6 +371,7 @@
   ;;**** RETHINK THIS -- MAYBE FORCE THE WORKER TO GRAB THE SLICE IT NEEDS??????
   (when (string=? *master-name* "localhost")
     (for ([efs expand-files-specs]) (bring-local-partial-expansions efs)))
+  ;(printf "remote-merge: n-protof-slices=~a, and length expand-files-specs=~a~%" *num-proto-fringe-slices* (vector-length expand-files-specs))
   (let ([merge-results
          (for/work ([i *num-proto-fringe-slices*]
                     [expand-fspecs-slice expand-files-specs])
@@ -539,8 +541,8 @@
   )
   
 
-(block10-init)
-;(climb12-init)
+;(block10-init)
+(climb12-init)
 ;(climb15-init)
 ;(climbpro24-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
