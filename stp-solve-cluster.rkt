@@ -21,6 +21,7 @@
 
 (provide (all-defined-out))
 
+(define *depth-start-time* "the time from current-seconds at the start of a given depth")
 (define *master-name* "the name of the host where the master process is running")
 (define *local-store* "the root portion of path to where workers can store temporary fringe files")
 #|
@@ -35,7 +36,7 @@
 (define *n-processors* 32)
 ;|#
 (define *expand-multiplier* 1)
-(define *merge-multiplier* 4)
+(define *merge-multiplier* 1)
 (define *n-expanders* (* *n-processors* *expand-multiplier*))
 (define *n-mergers* (* *n-processors* *merge-multiplier*))
 
@@ -315,7 +316,6 @@
 ;; given a list of filespecs pointing to the slices assigend to this worker and needing to be merged, copy the slices
 ;; and merge into a single segment that will participate in the new fringe, removing duplicates among slices.
 ;; Note: we have already removed from slices any duplicates found in prev- and current-fringes
-;;****** MY-RANGE WILL BECOME PROTO-FRINGE SLICE ID
 (define (distributed-merge-proto-fringe-slices slice-fspecs depth ofile-name)
   ;(define (remote-merge-proto-fringes my-range expand-files-specs depth ofile-name)
   ;; expand-files-specs are of pattern: "proto-fringe-dXX-NN" for depth XX and proc-id NN, pointing to working (shared) directory 
@@ -518,13 +518,15 @@
 ;; perform a file-based cluster-fringe-search at given depth
 ;; using given previous and current fringes
 (define (cfs-file prev-fringe current-fringe depth)
+  (set! *depth-start-time* (current-seconds))
   (cond [(or (zero? (fringe-pcount current-fringe)) (> depth *max-depth*)) #f]
         [*found-goal*
          (print "found goal")
          *found-goal*]
         [else (let ([new-fringe (expand-fringe prev-fringe current-fringe depth)])
-                (printf "At depth ~a: current-fringe has ~a positions (and new-fringe ~a)~%" 
-                        depth (fringe-pcount current-fringe) (fringe-pcount new-fringe))
+                (printf "At depth ~a: current-fringe has ~a positions (and new-fringe ~a) in ~a~%" 
+                        depth (fringe-pcount current-fringe) (fringe-pcount new-fringe)
+                        (- (current-seconds) *depth-start-time*))
                 ;;(for ([p current-fringe]) (displayln p))
                 (cfs-file current-fringe ;; use current-fringe as prev-fringe at next level
                           new-fringe
@@ -542,8 +544,8 @@
   
 
 ;(block10-init)
-(climb12-init)
-;(climb15-init)
+;(climb12-init)
+(climb15-init)
 ;(climbpro24-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
