@@ -5,15 +5,18 @@
 
 (provide hc-position hc-position-hc hc-position-bs hc-position?
          make-hcpos
-         *prim-move-translations*
-         *num-piece-types* *piece-types*
+         *prim-move-translations* *charify-offset* *max-board-size*
+         *num-piece-types* *piece-types* *num-pieces*
+         *bs-ptype-index*
          *target* *bw* *bh* *bsz*
-         *piecelocvec* *expandpos* *start*
-         charify
-         decharify
-         old-positionify ;** temp for testing
-         list->bwrep
-         bwrep->list
+         *expandpos* *piecelocvec*
+         *start*
+         *piece-type-template*
+         charify charify-int
+         decharify intify
+         ;old-positionify ;** temp for testing
+         list->bwrep ;; used only during initialization in compile-ms-array! via better-move-schema
+         ;bwrep->list
          cell-to-loc
          loc-to-cell
          block10-init
@@ -62,6 +65,8 @@
 
 ;; move trans for up, right, down and left respectively
 (define *prim-move-translations* '((-1 0) (0 1) (1 0) (0 -1)))
+(define *charify-offset* 48)
+(define *max-board-size* 64)
 
 
 (define *num-piece-types* 0)
@@ -70,12 +75,13 @@
 (define *charbytes* #"")
 (define *start* empty)
 (define *piece-type-template* (vector))
+(define *bs-ptype-index* (vector));; for a byte's index in a position, store the byte's piece-type
 (define *target* empty)
 (define *bw* 0)
 (define *bh* 0)
 (define *bsz* 0)
-(define *piecelocvec* (vector));; a (vectorof int)
-(define *expandpos* (vector))  ;; a (vectorof position)
+(define *expandpos* (vector))  ;; a (vectorof position) contains locations to index into *piecelocvec*
+(define *piecelocvec* (vector));; contains newly constructed bytestring positions indexed by the location of moved-piece
 
 ;; set-em!: piece-type-vector pre-position-list target int int -> void
 ;; generic setter for use by puzzle-specific initialization functions
@@ -83,7 +89,6 @@
   (set! *bh* nrow)
   (set! *bw* ncol)
   (set! *bsz* (* nrow ncol))
-  (set! *piecelocvec* (make-vector *bsz* #f))
   (set! *num-piece-types* (vector-length ptv)) ;; must come before bw-positionify/(pre-compress)
   (set! *piece-types* (for/vector ([cell-specs ptv])
                                   (list->set cell-specs)));****
@@ -91,35 +96,62 @@
                         (length (last s))))
   (set! *charbytes* (make-bytes *num-pieces*))
   (set! *expandpos* (make-vector (* 4 *num-pieces*) #f)) ;; any position can never have more than the 4 x the number of pieces (when 4 spaces)
+  (set! *piecelocvec* (make-vector *bsz* #f))
   (set! *start* (make-hcpos (charify (bw-positionify (pre-compress s)))))
   (set! *piece-type-template* (for/vector ([pt (old-positionify (bw-positionify (pre-compress s)))]) (length pt)))
-  (set! *target* (for/list ([tile-spec t]) (list (first tile-spec) (list->bwrep (list (cell-to-loc (cdr tile-spec)))))))
+  (set! *bs-ptype-index* (for/vector #:length *num-pieces* 
+                           ([i *num-pieces*])
+                           (for/last ([ptindex-for-i *num-piece-types*]
+                                      #:break (< i (for/sum ([ptype-count *piece-type-template*]
+                                                             [x ptindex-for-i])
+                                                     ptype-count)))
+                             ptindex-for-i)))
+  ;; should set *target* to a bytestring index and an expected location for that indexed value
+  ;;******** this only works for a single goal-spec for a tile-type with only one instance, but ....
+  (set! *target* (cons (for/sum ([ntypes *piece-type-template*]
+                                 [i *num-piece-types*]
+                                 #:break (= i (car (car t))))
+                         ntypes)
+                       (+ (cell-to-loc (cdr (car t))) *charify-offset*)))
   )
 
 ;; charify: bw-position -> bytearray
 ;; convert a bitwise represented position into a series of bytes
 (define (charify bw-p)
-  (let ([locp (old-positionify bw-p)]
-        [bytearray (make-bytes *num-pieces*)]
-        [counter 0]
-        )
-    (for ([pt bw-p])
-      (for ([loc (bwrep->list pt)])
-        (bytes-set! bytearray counter (+ 50 loc))
-        (set! counter (add1 counter))))
-    bytearray))
+  (for/fold ([res #""])
+    ([pt bw-p])
+    (bytes-append res (charify-int pt))))
 
-;; decharify: bytearray -> bw-position
+;; charify-int: int -> bytearray
+;; convert a single int to a bytearray rep of each 1 appearing in the int's binary representation
+;; that is, the resulting bytearray will be as long as the number of 1's in the given int
+(define (charify-int i)
+  (for/fold ([res #""])
+    ([b (integer-length i)]
+     #:when (bitwise-bit-set? i b))
+    (bytes-append res (bytes (+ b *charify-offset*)))))
+
+;; decharify: bytestring -> bw-position
 ;; for the inverse of charify
 (define (decharify ba)
   (if (eof-object? ba)
       ba
-      (let ([in (open-input-bytes ba)])
+      (let ([running-start 0])
         (for/vector ([num-of-pt *piece-type-template*])
-          (list->bwrep (for/list ([b (in-bytes (read-bytes num-of-pt in))]) (- b 50)))))))
+          (let ([res (intify (subbytes ba running-start (+ running-start num-of-pt)))])
+            (set! running-start (+ running-start num-of-pt))
+            res)))))
+
+;; intify: bytestring -> int
+;; convert a given series of bytes to a bitwise overlay of their corresponding positions
+(define (intify bs)
+  (for/fold ([newnum 0])
+    ([ploc bs])
+    (+ newnum (arithmetic-shift 1 (- ploc *charify-offset*)))))
 
 ;; bw-positionify: old-position -> bw-position
 ;; create a bitwise-'position' representation of a board state based on the given start-list pre-position format
+;;*** called only during initialization
 (define (bw-positionify old-position)
   (for/vector ([pspec old-position]
                [i (in-range *num-piece-types*)])
@@ -337,4 +369,5 @@
 
 ;;------------------------------------------------------------------------------------------------------
 ;(block10-init) ; for local testing
-(climbpro24-init)
+;(climb15-init)
+;(climbpro24-init)

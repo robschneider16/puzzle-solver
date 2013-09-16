@@ -177,12 +177,6 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
   (let ([bspos (read-bytes-line in)])
     (if (eof-object? bspos) bspos (make-hcpos bspos))))
 
-;; read-pos: input-port -> bw-position
-;; read the (probably byte representation of) position from the file attatched to the given input port
-;; ASSUMES: fringe-file format is one position per line with bytes
-(define (read-bs->bwpos iprt)
-  (decharify (read-bytes-line iprt)))
-
 ;; fringe-exists?: fringe -> boolean
 ;; report if all the files in the fringe are present (for now, ignore the sizes)
 (define (fringe-exists? f)

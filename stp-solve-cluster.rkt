@@ -24,23 +24,23 @@
 (define *depth-start-time* "the time from current-seconds at the start of a given depth")
 (define *master-name* "the name of the host where the master process is running")
 (define *local-store* "the root portion of path to where workers can store temporary fringe files")
-#|
+;#|
 (set! *master-name* "localhost")
 (set! *local-store* "/space/fringefiles/")
 ;(set! *local-store* "/state/partition1/fringefiles/")
 (define *n-processors* 4)
-|#
-;#|
+;|#
+#|
 (set! *master-name* "wcp")
 (set! *local-store* "/state/partition1/fringefiles/")
 (define *n-processors* 32)
-;|#
+|#
 (define *expand-multiplier* 1)
 (define *merge-multiplier* 1)
 (define *n-expanders* (* *n-processors* *expand-multiplier*))
 (define *n-mergers* (* *n-processors* *merge-multiplier*))
 
-(define *diy-threshold* 3000)
+(define *diy-threshold* 5000)
 
 (define *min-pre-proto-fringe-size* 3000) ; to be replaced by *max-size-...*
 
@@ -472,8 +472,14 @@
       (for ([fspec fspecs]) (delete-file (filespec-fullpathname fspec))))
     ;(system "rm partial-expansion* partial-merge*")
     ;(unless (string=? *master-name* "localhost") (delete-file (fspec-fname cf-spec)))
-    (printf "distributed-expand-fringe: file manipulation ~a, and total at depth ~a: ~a~%" 
-            (~r (/ (- (current-seconds) merge-end) 60.0) #:precision 4) depth (~r (/ (- (current-seconds) start-expand) 60.0) #:precision 4))
+    ;; func-call, file-copy, expansion, protofringe-bookkeeping, merge, total
+    (printf "distributed-expand-fringe:\t~a\t~a\t~a\t~a\t~a\t~a~%"
+            (- start-expfrg *depth-start-time*)
+            (- start-expand start-expfrg)
+            (- end-expand start-expand)
+            (- merge-start end-expand)
+            (- merge-end merge-start)
+            (- (current-seconds) *depth-start-time*))
     ;; make the new fringe to return
     (make-fringe ""
                  (for/list ([segmentfile sorted-expansion-files]
@@ -524,9 +530,10 @@
          (print "found goal")
          *found-goal*]
         [else (let ([new-fringe (expand-fringe prev-fringe current-fringe depth)])
-                (printf "At depth ~a: current-fringe has ~a positions (and new-fringe ~a) in ~a~%" 
+                (printf "At depth ~a: current-fringe has ~a positions (and new-fringe ~a) in ~a (~a)~%" 
                         depth (fringe-pcount current-fringe) (fringe-pcount new-fringe)
-                        (- (current-seconds) *depth-start-time*))
+                        (- (current-seconds) *depth-start-time*) (seconds->time (- (current-seconds) *depth-start-time*)))
+                (flush-output)
                 ;;(for ([p current-fringe]) (displayln p))
                 (cfs-file current-fringe ;; use current-fringe as prev-fringe at next level
                           new-fringe
@@ -544,8 +551,8 @@
   
 
 ;(block10-init)
-;(climb12-init)
-(climb15-init)
+(climb12-init)
+;(climb15-init)
 ;(climbpro24-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 

@@ -15,7 +15,8 @@
          compile-ms-array!
          position-in-vec?
          expand
-         is-goal?)
+         is-goal?
+         seconds->time)
 
 
 ;; hcposition<?: hc-position hc-position -> boolean
@@ -146,52 +147,78 @@
                               (second mv-schema)))
     new-vec))
 
-;; bw-1pc-1step: int int bw-position (vectorof loc) (box int) -> (listof (pair loc bw-position))
+;; make-new-hcpos: bytestring move-schema int -> bytestring
+;; given a bytestring representation of current position and move-schema for a valid move, generate the new bytestring
+(define (make-new-hcpos bspos mv-schema ptype)
+  (let* ([nspace (vector-ref *piece-type-template* 0)]
+         [piece-start (for/sum ([i ptype]) (vector-ref *piece-type-template* i))]
+         [piece-end (+ piece-start (vector-ref *piece-type-template* ptype))])
+    (bytes-append (charify-int (bitwise-xor (intify (subbytes bspos 0 nspace)) ;; do the spaces at the front
+                                            (second mv-schema)))
+                  ;;**** pick up the unchanged intervening substring
+                  (subbytes bspos nspace piece-start)
+                  ;; do the movement for the piece-type in question
+                  (charify-int (bitwise-xor (intify (subbytes bspos piece-start piece-end))
+                                            (third mv-schema)))
+                  ;; pick up any remaining unchanged substring
+                  (subbytes bspos piece-end))))
+
+;; hc-1pc-1step: int int bytestring (vectorof loc) (vectorof (or boolean bytestring)) (box int) -> (listof (pair loc hc-position))
 ;; for a given piece, identified by piece-type and location, generate all next-positions obtained by moving one-step (only)
 ;; but for each next-position, return a tile-loc/position pair for the given piece just moved
-(define (bw-1pc-1step piece-type piece-loc position prior-locs expcount)
+(define (hc-1pc-1step piece-type piece-loc bsposition plocvec expandpos expcount)
   (let ([mv-schema empty])
     (for ([dir-trans *prim-move-translations*]
           [dir-i (in-range (length *prim-move-translations*))]
           #:when (begin (set! mv-schema (array-ref *ms-array* piece-type piece-loc dir-i))
                         (and mv-schema
-                             (not (vector-ref prior-locs (fourth mv-schema)))
-                             (bw-valid-move? (vector-ref position 0) (first mv-schema)))))
-      (vector-set! prior-locs (fourth mv-schema) #t)
-      (vector-set! *expandpos* (unbox expcount) 
-                   (cons (fourth mv-schema)      ; new location of the moved tile that gives rise to this position
-                         (make-new-move position mv-schema piece-type)))
+                             (not (vector-ref plocvec (fourth mv-schema)))
+                             (bw-valid-move? (intify (subbytes bsposition 0 (vector-ref *piece-type-template* 0)))
+                                             (first mv-schema)))))
+      (vector-set! expandpos (unbox expcount) (fourth mv-schema)) ; new location of the moved tile that gives rise to this position
+      (vector-set! plocvec (fourth mv-schema) (make-new-hcpos bsposition mv-schema piece-type)) ; new bytestring position stored at new location
       (set-box! expcount (add1 (unbox expcount))))
     (unbox expcount)))
 
-;; expand-piece: int int bw-position (box int) -> (listof bw-position)
+;; expand-piece: int int bw-position (box int) (vectorof boolean) (vectorof (or boolean bytestring)) -> void
 ;; for a given piece (identified by piece-type and location of tile of that type),
 ;; return the list or set of all new positions reachable by moving the given piece starting in the given position
-(define (expand-piece piece-type piece-loc position expcount)
-  (vector-set! *piecelocvec* piece-loc #t)
+(define (expand-piece piece-type piece-loc position expcount piecelocvec expandpos)
+  (vector-set! piecelocvec piece-loc position)
   (do ([start-check (unbox expcount) new-positions-to-check]
        ;; new-positions is a set of (list piece-loc bw-position) for this piece
-       [new-positions-to-check (bw-1pc-1step piece-type piece-loc position *piecelocvec* expcount)
+       [new-positions-to-check (hc-1pc-1step piece-type piece-loc position piecelocvec expandpos expcount)
                                (for/last ([i (in-range start-check new-positions-to-check)])
-                                 (bw-1pc-1step piece-type (car (vector-ref *expandpos* i)) (cdr (vector-ref *expandpos* i)) *piecelocvec* expcount))])
+                                 (hc-1pc-1step piece-type 
+                                               (vector-ref expandpos i)
+                                               (vector-ref piecelocvec (vector-ref expandpos i))
+                                               piecelocvec expandpos expcount))])
     ;; until no further moves of this piece
     ((= new-positions-to-check start-check))))
 
 ;; expand: hc-position -> (setof hc-position)
 ;; generate next states from this one
-(define (expand hc-s)
-  (let ([expand-count (box 0)]
-        [s (decharify (hc-position-bs hc-s))])
-    (vector-fill! *expandpos* #f)
-    (for ([piece-type (in-range 1 *num-piece-types*)])
-      (for ([piece-loc (bwrep->list (vector-ref s piece-type))])
-        (vector-fill! *piecelocvec* #f) ;reset for the next piece
-        (expand-piece piece-type piece-loc s expand-count)))
-    (for/set ([i (unbox expand-count)])
-      (make-hcpos (charify (cdr (vector-ref *expandpos* i)))))))
+(define expand
+  (local ([define expand-count (box 0)]
+          )
+    (lambda (hc-s)
+      (let ([bs (hc-position-bs hc-s)]
+            [return-set (set)])
+        (for ([i (in-range (vector-ref *piece-type-template* 0) *num-pieces*)]) ;; start after spaces
+          (let ([ptype (vector-ref *bs-ptype-index* i)]
+                [ploc (- (bytes-ref bs i) *charify-offset*)])
+            (set-box! expand-count 0)
+            (vector-fill! *piecelocvec* #f) ; reset for next piece
+            (vector-fill! *expandpos* #f)
+            (expand-piece ptype ploc bs expand-count *piecelocvec* *expandpos*)
+            (set! return-set
+                  (set-union return-set
+                             (for/set ([i (unbox expand-count)])
+                               (make-hcpos (vector-ref *piecelocvec* (vector-ref *expandpos* i))))))))
+        return-set))))
 
-
-
+;; bw-valid-move?: number number -> boolean
+;; determine if the current location of the spaces supports a move's prerequisites given as space-prereq
 (define (bw-valid-move? space-int space-prereq)
   (= (bitwise-and space-int space-prereq)
      space-prereq))
@@ -207,11 +234,10 @@
 ;;------------------------------------------------------------------------------------
 
 ;; is-goal?: hc-position -> boolean
+;;****** relies on special-case of goal where single tile of type with only one tile needs to be in certain location
 (define (is-goal? hcp)
-  (andmap (lambda (tile-type-target-pair) 
-            (positive? (bitwise-and (vector-ref (decharify (hc-position-bs hcp)) (first tile-type-target-pair))
-                                    (second tile-type-target-pair))))
-          *target*))
+  (= (bytes-ref (hc-position-bs hcp) (car *target*))
+     (cdr *target*)))
 
 ;; goal-in-fringe?: (setof position) -> position OR #f
 (define (goal-in-fringe? f)
@@ -219,7 +245,19 @@
               #:when (is-goal? pos))
     pos))
 
+;; seconds->time: int -> string
+;; format the given number of seconds as hours (if non-zero), minutes (if non-zero), and seconds
+(define (seconds->time ts)
+  (let* ([hrs (floor (/ ts 3600))]
+         [min (floor (/ (- ts (* hrs 3600)) 60))]
+         [sec (- ts (* hrs 3600) (* min 60))])
+    (cond [(and (zero? hrs) (zero? min)) (format "~a sec." sec)]
+          [(and (zero? hrs) (positive? min)) (format "~a min., ~a sec." min sec)]
+          [else (format "~a hrs., ~a min., ~a sec." hrs min sec)])))
+
+
 ;(block10-init)
-(climb15-init)
-(compile-ms-array! *piece-types* *bh* *bw*)
+;(climb15-init)
+;(compile-ms-array! *piece-types* *bh* *bw*)
+;(expand *start*)
 ;(test)
