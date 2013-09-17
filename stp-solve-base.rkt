@@ -133,10 +133,10 @@
           [(compare? x (vector-ref v mid)) (vec-member? v x compare? low mid)]
           [else (vec-member? v x compare? (add1 mid) high)])))
 
-;; make-new-move: position move-schema int -> position
+;; make-new-bwmove: bw-position move-schema int -> bw-position
 ;; create a new position from an existing position and a move schema
-(define (make-new-move position mv-schema piece-type)
-  (let ((new-vec (vector-copy position)))                          ; build the new position
+(define (make-new-bwmove bwposition mv-schema piece-type)
+  (let ((new-vec (vector-copy bwposition)))                          ; build the new position
     ;; update piece
     (vector-set! new-vec piece-type
                  (bitwise-xor (vector-ref new-vec piece-type)
@@ -163,7 +163,7 @@
                   ;; pick up any remaining unchanged substring
                   (subbytes bspos piece-end))))
 
-;; hc-1pc-1step: int int bytestring (vectorof loc) (vectorof (or boolean bytestring)) (box int) -> (listof (pair loc hc-position))
+;; hc-1pc-1step: int int bytestring (vectorof loc) (vectorof (or boolean bytestring)) (box int) -> int
 ;; for a given piece, identified by piece-type and location, generate all next-positions obtained by moving one-step (only)
 ;; but for each next-position, return a tile-loc/position pair for the given piece just moved
 (define (hc-1pc-1step piece-type piece-loc bsposition plocvec expandpos expcount)
@@ -180,42 +180,43 @@
       (set-box! expcount (add1 (unbox expcount))))
     (unbox expcount)))
 
-;; expand-piece: int int bw-position (box int) (vectorof boolean) (vectorof (or boolean bytestring)) -> void
-;; for a given piece (identified by piece-type and location of tile of that type),
-;; return the list or set of all new positions reachable by moving the given piece starting in the given position
-(define (expand-piece piece-type piece-loc position expcount piecelocvec expandpos)
-  (vector-set! piecelocvec piece-loc position)
-  (do ([start-check (unbox expcount) new-positions-to-check]
-       ;; new-positions is a set of (list piece-loc bw-position) for this piece
-       [new-positions-to-check (hc-1pc-1step piece-type piece-loc position piecelocvec expandpos expcount)
+;; expand-piece: int int bw-position (box int) (box int) (vectorof boolean) -> void
+;; for a given piece (identified by piece-type and location of tile of that type), and given position,
+;; expand and generate all successors, writing them as side-effect into the *bsbuffer*
+(define (expand-piece piece-type piece-loc position expcount-b bsb-ptr-b piecelocvec)
+  (vector-set! piecelocvec piece-loc #t)
+  (do ([start-check (unbox expcount-b) new-positions-to-check];; position-wise index into *bsbuffer*
+       ;; new-positions is the index past the last of the new successors that were generated and need to be checked
+       [new-positions-to-check (hc-1pc-1step piece-type piece-loc position expcount-b bsb-ptr-b piecelocvec)
                                (for/last ([i (in-range start-check new-positions-to-check)])
                                  (hc-1pc-1step piece-type 
                                                (vector-ref expandpos i)
                                                (vector-ref piecelocvec (vector-ref expandpos i))
                                                piecelocvec expandpos expcount))])
     ;; until no further moves of this piece
-    ((= new-positions-to-check start-check))))
+    ((= (* *num-pieces* new-positions-to-check) start-check))))
 
 ;; expand: hc-position -> (setof hc-position)
 ;; generate next states from this one
+;; *bsbuffer*: holds all the bytstring expansions/successors of the given hc-position
+;; bsb-ptr: holds the count of total expansions/successors stored in the *bsbuffer*
+;; *expandpos*: holds the location-index of a single expansion for a single piece
+;; *piecelocvec*: holds the bytestring successors of a single piece
+;; expand-count: counts expansions/successors for a single piece
 (define expand
   (local ([define expand-count (box 0)]
           )
     (lambda (hc-s)
-      (let ([bs (hc-position-bs hc-s)]
-            [return-set (set)])
+      (let ([bs (hc-position-bs hc-s)])
+        (set-box! expand-count 0)
         (for ([i (in-range (vector-ref *piece-type-template* 0) *num-pieces*)]) ;; start after spaces
           (let ([ptype (vector-ref *bs-ptype-index* i)]
                 [ploc (- (bytes-ref bs i) *charify-offset*)])
-            (set-box! expand-count 0)
             (vector-fill! *piecelocvec* #f) ; reset for next piece
-            (vector-fill! *expandpos* #f)
-            (expand-piece ptype ploc bs expand-count *piecelocvec* *expandpos*)
-            (set! return-set
-                  (set-union return-set
-                             (for/set ([i (unbox expand-count)])
-                               (make-hcpos (vector-ref *piecelocvec* (vector-ref *expandpos* i))))))))
-        return-set))))
+            (expand-piece ptype ploc bs expand-count *piecelocvec*)
+            ))
+        (for/set ([i (unbox expand-count)])
+          (make-hcpos (make-position bs (vector-ref *expandbuf* i))))))))
 
 ;; bw-valid-move?: number number -> boolean
 ;; determine if the current location of the spaces supports a move's prerequisites given as space-prereq

@@ -9,7 +9,9 @@
          *num-piece-types* *piece-types* *num-pieces*
          *bs-ptype-index*
          *target* *bw* *bh* *bsz*
-         *expandpos* *piecelocvec*
+         ;*expandpos*
+         *expandbuf*
+         *piecelocvec* 
          *start*
          *piece-type-template*
          charify charify-int
@@ -72,7 +74,6 @@
 (define *num-piece-types* 0)
 (define *piece-types* empty)
 (define *num-pieces* 0)
-(define *charbytes* #"")
 (define *start* empty)
 (define *piece-type-template* (vector))
 (define *bs-ptype-index* (vector));; for a byte's index in a position, store the byte's piece-type
@@ -80,8 +81,10 @@
 (define *bw* 0)
 (define *bh* 0)
 (define *bsz* 0)
-(define *expandpos* (vector))  ;; a (vectorof position) contains locations to index into *piecelocvec*
-(define *piecelocvec* (vector));; contains newly constructed bytestring positions indexed by the location of moved-piece
+;(define *expandpos* (vector))  ;; a (vectorof position) contains locations to index into *piecelocvec*
+(define *expandbuf* (vector)) ;; a vector of mutable pairs holding piece-type and location
+(define *piecelocvec* (vector));; vector boolean representing used move locations where the index is the location to which a single piece was moved
+;(define *bsbuffer* #"") ;; a reusable buffer for holding expansions of a given position
 
 ;; set-em!: piece-type-vector pre-position-list target int int -> void
 ;; generic setter for use by puzzle-specific initialization functions
@@ -94,11 +97,12 @@
                                   (list->set cell-specs)));****
   (set! *num-pieces* (+ (length s) -1
                         (length (last s))))
-  (set! *charbytes* (make-bytes *num-pieces*))
-  (set! *expandpos* (make-vector (* 4 *num-pieces*) #f)) ;; any position can never have more than the 4 x the number of pieces (when 4 spaces)
-  (set! *piecelocvec* (make-vector *bsz* #f))
   (set! *start* (make-hcpos (charify (bw-positionify (pre-compress s)))))
   (set! *piece-type-template* (for/vector ([pt (old-positionify (bw-positionify (pre-compress s)))]) (length pt)))
+  ;(set! *expandpos* (make-vector (vector-ref *piece-type-template* 0) #f)) ;; any single piece can never generate more than the number of spaces
+  (set! *expandbuf* (build-vector (* (vector-ref *piece-type-template* 0) *num-pieces*) (lambda (_) (mcons 0 0))))
+  (set! *piecelocvec* (make-vector *bsz* #f))
+  ;(set! *bsbuffer* (make-bytes (* 4 *num-pieces*) 0))
   (set! *bs-ptype-index* (for/vector #:length *num-pieces* 
                            ([i *num-pieces*])
                            (for/last ([ptindex-for-i *num-piece-types*]
