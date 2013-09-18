@@ -14,6 +14,7 @@
          *piecelocvec* 
          *start*
          *piece-type-template*
+         *num-spaces*
          charify charify-int
          decharify intify
          ;old-positionify ;** temp for testing
@@ -76,6 +77,7 @@
 (define *num-pieces* 0)
 (define *start* empty)
 (define *piece-type-template* (vector))
+(define *num-spaces* 0)
 (define *bs-ptype-index* (vector));; for a byte's index in a position, store the byte's piece-type
 (define *target* empty)
 (define *bw* 0)
@@ -99,8 +101,9 @@
                         (length (last s))))
   (set! *start* (make-hcpos (charify (bw-positionify (pre-compress s)))))
   (set! *piece-type-template* (for/vector ([pt (old-positionify (bw-positionify (pre-compress s)))]) (length pt)))
+  (set! *num-spaces* (vector-ref *piece-type-template* 0))
   ;(set! *expandpos* (make-vector (vector-ref *piece-type-template* 0) #f)) ;; any single piece can never generate more than the number of spaces
-  (set! *expandbuf* (build-vector (* (vector-ref *piece-type-template* 0) *num-pieces*) (lambda (_) (mcons 0 0))))
+  (set! *expandbuf* (build-vector (* (vector-ref *piece-type-template* 0) *num-pieces*) (lambda (_) (mcons 0 (make-bytes *num-pieces*)))))
   (set! *piecelocvec* (make-vector *bsz* #f))
   ;(set! *bsbuffer* (make-bytes (* 4 *num-pieces*) 0))
   (set! *bs-ptype-index* (for/vector #:length *num-pieces* 

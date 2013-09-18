@@ -147,54 +147,63 @@
                               (second mv-schema)))
     new-vec))
 
-;; make-new-hcpos: bytestring move-schema int -> bytestring
-;; given a bytestring representation of current position and move-schema for a valid move, generate the new bytestring
-(define (make-new-hcpos bspos mv-schema ptype)
-  (let* ([nspace (vector-ref *piece-type-template* 0)]
-         [piece-start (for/sum ([i ptype]) (vector-ref *piece-type-template* i))]
-         [piece-end (+ piece-start (vector-ref *piece-type-template* ptype))])
-    (bytes-append (charify-int (bitwise-xor (intify (subbytes bspos 0 nspace)) ;; do the spaces at the front
-                                            (second mv-schema)))
-                  ;;**** pick up the unchanged intervening substring
-                  (subbytes bspos nspace piece-start)
-                  ;; do the movement for the piece-type in question
-                  (charify-int (bitwise-xor (intify (subbytes bspos piece-start piece-end))
-                                            (third mv-schema)))
-                  ;; pick up any remaining unchanged substring
-                  (subbytes bspos piece-end))))
+;; update-expandbuf!: int bytestring int int move-schema int -> void
+;; update the *expandbuf* vector with the new location and altered bytestring
+(define (update-expandbuf! bufindex src-bspos nu-ploc space-int mv-schema piece-type)
+  (let* ([the-pair (vector-ref  *expandbuf* bufindex)]
+         [targetbs (mcdr the-pair)]
+         [piece-start (for/sum ([i piece-type]) (vector-ref *piece-type-template* i))]
+         [piece-end (+ piece-start (vector-ref *piece-type-template* piece-type))]
+         )
+    (set-mcar! the-pair nu-ploc)
+    ;; set spaces
+    (bytes-copy! targetbs 0 
+                 (charify-int (bitwise-xor space-int ;; do the spaces at the front
+                                           (second mv-schema))))
+    ;; copy unchanged
+    (bytes-copy! targetbs *num-spaces* src-bspos *num-spaces* piece-start)
+    ;; set moved piece
+    (bytes-copy! targetbs piece-start
+                 (charify-int (bitwise-xor (intify (subbytes src-bspos piece-start piece-end))
+                                           (third mv-schema))))
+    ;; copy remaining
+    (bytes-copy! targetbs piece-end
+                 src-bspos piece-end)))
 
-;; hc-1pc-1step: int int bytestring (vectorof loc) (vectorof (or boolean bytestring)) (box int) -> int
+;; hc-1pc-1step: int (pair int bytestring) (vectorof loc) (box int) -> int
 ;; for a given piece, identified by piece-type and location, generate all next-positions obtained by moving one-step (only)
 ;; but for each next-position, return a tile-loc/position pair for the given piece just moved
-(define (hc-1pc-1step piece-type piece-loc bsposition plocvec expandpos expcount)
-  (let ([mv-schema empty])
+(define (hc-1pc-1step piece-type loc-pos-pair expcount plocvec)
+  (let* ([mv-schema empty]
+         [space-int (intify (subbytes (mcdr loc-pos-pair) 0 *num-spaces*))])
     (for ([dir-trans *prim-move-translations*]
           [dir-i (in-range (length *prim-move-translations*))]
-          #:when (begin (set! mv-schema (array-ref *ms-array* piece-type piece-loc dir-i))
+          #:when (begin (set! mv-schema (array-ref *ms-array* piece-type (mcar loc-pos-pair) dir-i))
                         (and mv-schema
                              (not (vector-ref plocvec (fourth mv-schema)))
-                             (bw-valid-move? (intify (subbytes bsposition 0 (vector-ref *piece-type-template* 0)))
-                                             (first mv-schema)))))
-      (vector-set! expandpos (unbox expcount) (fourth mv-schema)) ; new location of the moved tile that gives rise to this position
-      (vector-set! plocvec (fourth mv-schema) (make-new-hcpos bsposition mv-schema piece-type)) ; new bytestring position stored at new location
+                             (bw-valid-move? space-int (first mv-schema)))))
+      
+      (update-expandbuf! (unbox expcount) (mcdr loc-pos-pair)
+                         (fourth mv-schema) ; new location of the moved tile that gives rise to this position
+                         space-int mv-schema piece-type) ; new bytestring position stored at new location
+      (vector-set! plocvec (fourth mv-schema) #t)
       (set-box! expcount (add1 (unbox expcount))))
     (unbox expcount)))
 
-;; expand-piece: int int bw-position (box int) (box int) (vectorof boolean) -> void
+;; expand-piece: int int bs-position (box int) (vectorof boolean) -> void
 ;; for a given piece (identified by piece-type and location of tile of that type), and given position,
 ;; expand and generate all successors, writing them as side-effect into the *bsbuffer*
-(define (expand-piece piece-type piece-loc position expcount-b bsb-ptr-b piecelocvec)
+(define (expand-piece piece-type piece-loc position expcount-b piecelocvec)
   (vector-set! piecelocvec piece-loc #t)
   (do ([start-check (unbox expcount-b) new-positions-to-check];; position-wise index into *bsbuffer*
        ;; new-positions is the index past the last of the new successors that were generated and need to be checked
-       [new-positions-to-check (hc-1pc-1step piece-type piece-loc position expcount-b bsb-ptr-b piecelocvec)
+       [new-positions-to-check (hc-1pc-1step piece-type (mcons piece-loc position) expcount-b piecelocvec)
                                (for/last ([i (in-range start-check new-positions-to-check)])
                                  (hc-1pc-1step piece-type 
-                                               (vector-ref expandpos i)
-                                               (vector-ref piecelocvec (vector-ref expandpos i))
-                                               piecelocvec expandpos expcount))])
+                                               (vector-ref *expandbuf* i)
+                                               expcount-b piecelocvec))])
     ;; until no further moves of this piece
-    ((= (* *num-pieces* new-positions-to-check) start-check))))
+    ((= new-positions-to-check start-check))))
 
 ;; expand: hc-position -> (setof hc-position)
 ;; generate next states from this one
@@ -216,7 +225,7 @@
             (expand-piece ptype ploc bs expand-count *piecelocvec*)
             ))
         (for/set ([i (unbox expand-count)])
-          (make-hcpos (make-position bs (vector-ref *expandbuf* i))))))))
+          (make-hcpos (bytes-copy (mcdr (vector-ref *expandbuf* i)))))))))
 
 ;; bw-valid-move?: number number -> boolean
 ;; determine if the current location of the spaces supports a move's prerequisites given as space-prereq
