@@ -243,7 +243,7 @@
          [pre-ofile-counter 0]
          [pre-ofiles empty]
          ;; *** Dynamically choose the size of the pre-proto-fringes to keep the number of files below 500 ***
-         [dynamic-proto-fringe-size (max *min-pre-proto-fringe-size* (/ (fringe-pcount cf) (* *n-processors* 500)))]
+         [dynamic-proto-fringe-size (max *min-pre-proto-fringe-size* (/ (fringe-pcount cf) 500))]
          [start (first ipair)]
          [end (second ipair)]
          [assignment-count (- end start)]
@@ -380,7 +380,6 @@
                           [merged-fname-and-resp-rng-size (distributed-merge-proto-fringe-slices expand-fspecs-slice depth ofile-name)]
                           )
              ;;(printf "distributed-expand-fringe: merge-range = ~a~%~a~%" merge-range merged-responsibility-range)
-             ;(write-fringe-to-disk merged-responsibility-range ofile-name)
              merged-fname-and-resp-rng-size))])
     ;(printf "remote-merge: merged segment names and lengths ~a~%" merge-results)
     (when (string=? *master-name* "localhost")
@@ -551,8 +550,8 @@
   
 
 ;(block10-init)
-(climb12-init)
-;(climb15-init)
+;(climb12-init)
+(climb15-init)
 ;(climbpro24-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
