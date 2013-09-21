@@ -40,7 +40,7 @@
 (define *n-expanders* (* *n-processors* *expand-multiplier*))
 (define *n-mergers* (* *n-processors* *merge-multiplier*))
 
-(define *diy-threshold* 5000)
+(define *diy-threshold* 1000)
 
 (define *min-pre-proto-fringe-size* 3000) ; to be replaced by *max-size-...*
 
@@ -173,9 +173,10 @@
          [slice-upper-bound (vector-ref *proto-fringe-slice-bounds* (add1 proto-slice-num))]
          [proto-slice-ofile (open-output-file (string-append ofile-name "-" (~a proto-slice-num #:left-pad-string "0" #:width 3 #:align 'right)))]
          [unique-expansions 0]
+         [slice-counts (make-vector *num-proto-fringe-slices* 0)]
          [sample-stats 
-          (vector 0 *most-positive-fixnum* *most-negative-fixnum* 
-                  (make-vector *num-proto-fringe-slices* 0)
+          (vector 0 *most-negative-fixnum* *most-positive-fixnum*
+                  slice-counts
                   #f ofile-name ;; here, use the stem of the shared ofile-name 
                   0 n-pos-to-process)] 
          )
@@ -185,18 +186,18 @@
         (unless (or (position-in-fhead? efpos pffh)
                     (position-in-fhead? efpos cffh))
           ;****** the one-at-a-time change above should obviate this get-slice-num and the vector-ref in the fprintf
-          (let ([slice-counts (vector-ref sample-stats 3)])
-            (when (>= (hc-position-hc efpos) slice-upper-bound) 
-              (close-output-port proto-slice-ofile)
-              (set! proto-slice-num (add1 proto-slice-num))
-              (set! proto-slice-ofile (open-output-file (string-append ofile-name "-" (~a proto-slice-num #:left-pad-string "0" #:width 3 #:align 'right))))
-              (set! slice-upper-bound (vector-ref *proto-fringe-slice-bounds* (add1 proto-slice-num))))
-            (fprintf proto-slice-ofile "~a~%" (hc-position-bs efpos))
-            (when (is-goal? efpos) (vector-set! sample-stats 4 (hc-position-bs efpos)))
-            (vector-set! sample-stats 1 (fxmin (vector-ref sample-stats 1) (hc-position-hc efpos)))
-            (vector-set! sample-stats 2 (fxmax (vector-ref sample-stats 2) (hc-position-hc efpos)))
-            (vector-set! slice-counts proto-slice-num (add1 (vector-ref slice-counts proto-slice-num))))
-          )
+          (do ([efpos-hc (hc-position-hc efpos)])
+            ;; if efpos-hc is >= to the slice-upper-bound, advance the proto-slice-num/ofile/upper-bound until it is not
+            ((< efpos-hc slice-upper-bound))
+            (close-output-port proto-slice-ofile)
+            (set! proto-slice-num (add1 proto-slice-num))
+            (set! proto-slice-ofile (open-output-file (string-append ofile-name "-" (~a proto-slice-num #:left-pad-string "0" #:width 3 #:align 'right))))
+            (set! slice-upper-bound (vector-ref *proto-fringe-slice-bounds* (add1 proto-slice-num))))
+          (fprintf proto-slice-ofile "~a~%" (hc-position-bs efpos))
+          (when (is-goal? efpos) (vector-set! sample-stats 4 (hc-position-bs efpos)))
+          ;(vector-set! sample-stats 1 (fxmin (vector-ref sample-stats 1) (hc-position-hc efpos)))
+          ;(vector-set! sample-stats 2 (fxmax (vector-ref sample-stats 2) (hc-position-hc efpos)))
+          (vector-set! slice-counts proto-slice-num (add1 (vector-ref slice-counts proto-slice-num))))
         (advance-fhead! an-fhead)
         (unless (fhdone? an-fhead) ;;(eof-object? (peek-byte (fringehead-iprt an-fhead) 1))
           (heap-add! heap-o-fheads an-fhead))))
@@ -205,11 +206,13 @@
     ;; close input and output ports
     (for ([fh (cons pffh (cons cffh lo-effh))]) (close-input-port (fringehead-iprt fh)))
     (close-output-port proto-slice-ofile)
+    (for ([i (in-range (add1 proto-slice-num) *num-proto-fringe-slices*)])
+      (touch (string-append ofile-name "-" (~a i #:left-pad-string "0" #:width 3 #:align 'right))))
     ;; copy the proto-fringe file from *local-store* to shared working directory for other processes to have when merging
     ;(copy-file use-ofilename ofile-name)
     ;; complete the sampling-stat
     (vector-set! sample-stats 0 (for/sum ([i (vector-ref sample-stats 3)]) i))
-    (vector-set! sample-stats 6 (for/vector ([i *num-proto-fringe-slices*])
+    (vector-set! sample-stats 6 (for/vector ([i *num-proto-fringe-slices*]) 
                                   (file-size (format "~a-~a" ofile-name (~a i #:left-pad-string "0" #:width 3 #:align 'right)))))
     ;; delete files that are no longer needed
     (for ([efspec lo-expand-fspec]) (delete-file (filespec-fullpathname efspec)))
@@ -394,8 +397,7 @@
     ;(printf "remote-merge: merged segment names and lengths ~a~%" merge-results)
     (when (string=? *master-name* "localhost")
       (for ([fs expand-files-specs])
-        (for ([f fs])
-          ;(delete-file (first f)) ; these should have been deleted before the call to for/work
+        (for ([f fs] #:unless (zero? (filespec-pcount f)))
           (delete-file (string-append *local-store* (filespec-fname f))))))
     merge-results))
 
@@ -559,8 +561,8 @@
   )
   
 
-;(block10-init)
-(climb12-init)
+(block10-init)
+;(climb12-init)
 ;(climb15-init)
 ;(climbpro24-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
