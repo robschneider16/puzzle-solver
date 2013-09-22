@@ -24,23 +24,23 @@
 (define *depth-start-time* "the time from current-seconds at the start of a given depth")
 (define *master-name* "the name of the host where the master process is running")
 (define *local-store* "the root portion of path to where workers can store temporary fringe files")
-;#|
+#|
 (set! *master-name* "localhost")
 (set! *local-store* "/space/fringefiles/")
 ;(set! *local-store* "/state/partition1/fringefiles/")
 (define *n-processors* 4)
-;|#
-#|
+|#
+;#|
 (set! *master-name* "wcp")
 (set! *local-store* "/state/partition1/fringefiles/")
 (define *n-processors* 32)
-|#
+;|#
 (define *expand-multiplier* 1)
 (define *merge-multiplier* 1)
 (define *n-expanders* (* *n-processors* *expand-multiplier*))
 (define *n-mergers* (* *n-processors* *merge-multiplier*))
 
-(define *diy-threshold* 1000)
+(define *diy-threshold* 5000)
 
 (define *min-pre-proto-fringe-size* 3000) ; to be replaced by *max-size-...*
 
@@ -179,12 +179,16 @@
                   slice-counts
                   #f ofile-name ;; here, use the stem of the shared ofile-name 
                   0 n-pos-to-process)] 
+         [last-pos-bs #"0000"]
          )
     ;; locally merge the pre-proto-fringes, removing duplicates from prev- and current-fringes
     (for ([an-fhead (in-heap/consume! heap-o-fheads)])
       (let ([efpos (fringehead-next an-fhead)])
-        (unless (or (position-in-fhead? efpos pffh)
-                    (position-in-fhead? efpos cffh))
+        (unless (and (not (bytes=? (hc-position-bs efpos) last-pos-bs))
+                     (or (position-in-fhead? efpos pffh)
+                         (position-in-fhead? efpos cffh)
+                         ))
+          (set! last-pos-bs (hc-position-bs efpos))
           ;****** the one-at-a-time change above should obviate this get-slice-num and the vector-ref in the fprintf
           (do ([efpos-hc (hc-position-hc efpos)])
             ;; if efpos-hc is >= to the slice-upper-bound, advance the proto-slice-num/ofile/upper-bound until it is not
@@ -561,9 +565,9 @@
   )
   
 
-(block10-init)
+;(block10-init)
 ;(climb12-init)
-;(climb15-init)
+(climb15-init)
 ;(climbpro24-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
