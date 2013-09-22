@@ -205,18 +205,17 @@
     ;; until no further moves of this piece
     ((= new-positions-to-check start-check))))
 
-;; expand: hc-position -> (setof hc-position)
+;; expand: hc-position int -> int
 ;; generate next states from this one
-;; *bsbuffer*: holds all the bytstring expansions/successors of the given hc-position
-;; bsb-ptr: holds the count of total expansions/successors stored in the *bsbuffer*
-;; *expandpos*: holds the location-index of a single expansion for a single piece
+;; *expandbuf*: holds all the pairs of piece-loc and bytstring expansions/successors of the given hc-position
 ;; *piecelocvec*: holds the bytestring successors of a single piece
 ;; expand-count: counts expansions/successors for a single piece
 (define expand
   (local ([define expand-count (box 0)]
           )
-    (lambda (hc-s)
-      (let ([bs (hc-position-bs hc-s)])
+    (lambda (hc-s exp-ptr)
+      (let ([bs (hc-position-bs hc-s)]
+            [target-hc-pos 'mutable-hc-pos-in-*expansion-space*])
         (set-box! expand-count 0)
         (for ([i (in-range (vector-ref *piece-type-template* 0) *num-pieces*)]) ;; start after spaces
           (let ([ptype (vector-ref *bs-ptype-index* i)]
@@ -224,8 +223,12 @@
             (vector-fill! *piecelocvec* #f) ; reset for next piece
             (expand-piece ptype ploc bs expand-count *piecelocvec*)
             ))
-        (for/set ([i (unbox expand-count)])
-          (make-hcpos (bytes-copy (mcdr (vector-ref *expandbuf* i)))))))))
+        (for ([i (unbox expand-count)])
+          (set! target-hc-pos (vector-ref *expansion-space* (+ exp-ptr i)))
+          (set-hc-position-hc! target-hc-pos (equal-hash-code (mcdr (vector-ref *expandbuf* i))))
+          ;; copy bytes to the *expansion-space*
+          (bytes-copy! (hc-position-bs target-hc-pos) 0 (mcdr (vector-ref *expandbuf* i))))
+        (+ exp-ptr (unbox expand-count))))))
 
 ;; bw-valid-move?: number number -> boolean
 ;; determine if the current location of the spaces supports a move's prerequisites given as space-prereq

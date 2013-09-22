@@ -3,7 +3,8 @@
 (require srfi/25 ;; multi-dimensional arrays
          )
 
-(provide hc-position hc-position-hc hc-position-bs hc-position?
+(provide EXPAND-SPACE-SIZE
+         hc-position hc-position-hc hc-position-bs hc-position? set-hc-position-hc!
          make-hcpos
          *prim-move-translations* *charify-offset* *max-board-size*
          *num-piece-types* *piece-types* *num-pieces*
@@ -11,6 +12,7 @@
          *target* *bw* *bh* *bsz*
          ;*expandpos*
          *expandbuf*
+         *expansion-space*
          *piecelocvec* 
          *start*
          *piece-type-template*
@@ -56,7 +58,7 @@
 
 ;; ******************************************************************************
 
-(struct hc-position (hc bs) #:transparent)
+(struct hc-position (hc bs) #:transparent #:mutable)
 ;; the hc is the hashcode of the bytestring
 
 ;; make-hcpos: bs-position -> hc-position
@@ -66,12 +68,14 @@
 
 ;; INITIALIZE STUFF FOR SLIDING-TILE-SOLVER
 
+(define EXPAND-SPACE-SIZE 10000)
+
 ;; move trans for up, right, down and left respectively
 (define *prim-move-translations* '((-1 0) (0 1) (1 0) (0 -1)))
 (define *charify-offset* 48)
 (define *max-board-size* 64)
 
-
+;; puzzle specific parameters
 (define *num-piece-types* 0)
 (define *piece-types* empty)
 (define *num-pieces* 0)
@@ -85,6 +89,7 @@
 (define *bsz* 0)
 ;(define *expandpos* (vector))  ;; a (vectorof position) contains locations to index into *piecelocvec*
 (define *expandbuf* (vector)) ;; a vector of mutable pairs holding piece-type and location
+(define *expansion-space* (vector))
 (define *piecelocvec* (vector));; vector boolean representing used move locations where the index is the location to which a single piece was moved
 ;(define *bsbuffer* #"") ;; a reusable buffer for holding expansions of a given position
 
@@ -104,6 +109,7 @@
   (set! *num-spaces* (vector-ref *piece-type-template* 0))
   ;(set! *expandpos* (make-vector (vector-ref *piece-type-template* 0) #f)) ;; any single piece can never generate more than the number of spaces
   (set! *expandbuf* (build-vector (* (vector-ref *piece-type-template* 0) *num-pieces*) (lambda (_) (mcons 0 (make-bytes *num-pieces*)))))
+  (set! *expansion-space* (build-vector (+ EXPAND-SPACE-SIZE *bsz*) (lambda (_) (hc-position 0 (make-bytes *num-pieces*)))))
   (set! *piecelocvec* (make-vector *bsz* #f))
   ;(set! *bsbuffer* (make-bytes (* 4 *num-pieces*) 0))
   (set! *bs-ptype-index* (for/vector #:length *num-pieces* 

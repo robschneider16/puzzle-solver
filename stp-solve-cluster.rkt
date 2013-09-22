@@ -24,25 +24,24 @@
 (define *depth-start-time* "the time from current-seconds at the start of a given depth")
 (define *master-name* "the name of the host where the master process is running")
 (define *local-store* "the root portion of path to where workers can store temporary fringe files")
-#|
+;#|
 (set! *master-name* "localhost")
 (set! *local-store* "/space/fringefiles/")
 ;(set! *local-store* "/state/partition1/fringefiles/")
 (define *n-processors* 4)
-|#
-;#|
+;|#
+#|
 (set! *master-name* "wcp")
 (set! *local-store* "/state/partition1/fringefiles/")
 (define *n-processors* 32)
-;|#
+|#
 (define *expand-multiplier* 1)
 (define *merge-multiplier* 1)
 (define *n-expanders* (* *n-processors* *expand-multiplier*))
 (define *n-mergers* (* *n-processors* *merge-multiplier*))
 
-(define *diy-threshold* 5000)
+(define *diy-threshold* 4000) ;;**** this must be significantly less than EXPAND-SPACE-SIZE 
 
-(define *min-pre-proto-fringe-size* 3000) ; to be replaced by *max-size-...*
 
 (define *most-positive-fixnum* 0)
 (define *most-negative-fixnum* 0)
@@ -98,14 +97,15 @@
                           (append (read-fringe-from-file (filespec-fullpathname sgmnt)) the-fringe)))]
          [new-cf-name (format "fringe-d~a" depth)]
          ;[prntmsg (printf "finished reading the fringes~%")]
-         [res (for/list ([p (for/fold ([expansions (set)])
-                              ([p-to-expand current-fringe-vec])
-                              (set-union expansions
-                                         (expand p-to-expand)))]
-                         #:unless (or (set-member? prev-fringe-set p)
-                                      (position-in-vec? current-fringe-vec p)))
-                (when (is-goal? p) (set! *found-goal* p))
-                p)])
+         [exp-ptr 0]
+         [expand-them (for ([p-to-expand current-fringe-vec])
+                        (set! exp-ptr (expand p-to-expand exp-ptr)))]
+         [res (set->list (for/set ([i exp-ptr]
+                                   #:unless (or (set-member? prev-fringe-set (vector-ref *expansion-space* i))
+                                                (position-in-vec? current-fringe-vec (vector-ref *expansion-space* i))))
+                           (when (is-goal? (vector-ref *expansion-space* i)) (set! *found-goal* (vector-ref *expansion-space* i)))
+                           (vector-ref *expansion-space* i)))]
+         )
     #|(printf "Finished the work packet generating a set of ~a positions~%" (set-count res))
     (for ([p res])
       (printf "pos: ~a~%~a~%" (stringify p) p))|#
@@ -246,6 +246,26 @@
                          (fx+ (hc-position-hc (vector-ref resv (sub1 (vector-length resv)))) 1)
                          f (vector-length resv) (file-size fullpath) *local-store*))
         pre-ofiles))
+;; dump-partial-expansion: int string int (listof fspec) -> (listof fspec)
+;; given the count of pending expanded positions to write, the out-file template, the out-file counter, and the previously written filespecs,
+;; sort and write the specified number of positions to the appropriately opened new file 
+(define (dump-partial-expansion pcount ofile-template ofile-counter ofiles)
+  (let* ([hc-to-scrub 'hcpos-to-scrub]
+         [f (format "~a~a" ofile-template ofile-counter)]
+         [fullpath (string-append *local-store* f)])
+    ;; scrub the last part of the vector with bogus positions
+    (for ([i (in-range pcount (vector-length *expansion-space*))])
+      (set! hc-to-scrub (vector-ref *expansion-space* i))
+      (set-hc-position-hc! hc-to-scrub *most-positive-fixnum*)
+      (bytes-copy! (hc-position-bs hc-to-scrub) 0 #"zIgnoreMe"))
+    ;; sort the vector
+    (vector-sort! hcposition<? *expansion-space*)
+    ;; write the first pcount positions to the file
+    (write-fringe-to-disk *expansion-space* fullpath pcount)
+    (cons (make-filespec (hc-position-hc (vector-ref *expansion-space* 0))
+                         (fx+ (hc-position-hc (vector-ref *expansion-space* (sub1 pcount))) 1)
+                         f pcount (file-size fullpath) *local-store*)
+          ofiles)))
 
 ;; remote-expand-part-fringe: (list int int) int fringe fringe int -> {whatever returned by remove-dupes}
 ;; given a pair of indices into the current-fringe that should be expanded by this process, a process-id,
@@ -259,7 +279,6 @@
          [pre-ofile-counter 0]
          [pre-ofiles empty]
          ;; *** Dynamically choose the size of the pre-proto-fringes to keep the number of files below 500 ***
-         [dynamic-proto-fringe-size (max *min-pre-proto-fringe-size* (/ (fringe-pcount cf) 500))]
          [start (first ipair)]
          [end (second ipair)]
          [assignment-count (- end start)]
@@ -269,17 +288,17 @@
          )
     ;; do the actual expansions
     (do ([i 1 (add1 i)]
-         [expansions (expand (fringehead-next cffh))
-                     (set-union expansions (expand (fringehead-next cffh)))])
+         [expansion-ptr (expand (fringehead-next cffh) 0)
+                        (expand (fringehead-next cffh) expansion-ptr)])
       ((>= i assignment-count)
        (set! pre-ofiles
-             (process-preproto-fringe expansions pre-ofile-template-fname pre-ofile-counter pre-ofiles)))
+             (dump-partial-expansion expansion-ptr pre-ofile-template-fname pre-ofile-counter pre-ofiles)))
       ;; When we have collected the max number of expansions, create another pre-proto-fringe file
-      (when (>= (set-count expansions) dynamic-proto-fringe-size)
+      (when (>= expansion-ptr EXPAND-SPACE-SIZE)
         (set! pre-ofiles
-              (process-preproto-fringe expansions pre-ofile-template-fname pre-ofile-counter pre-ofiles))
+              (dump-partial-expansion expansion-ptr pre-ofile-template-fname pre-ofile-counter pre-ofiles))
         (set! pre-ofile-counter (add1 pre-ofile-counter))
-        (set! expansions (set)))
+        (set! expansion-ptr 0))
       (advance-fhead! cffh)
       (set! expanded-phase1 (add1 expanded-phase1)))
     #|(printf "remote-exp-part-fringe: PHASE 1: expanding ~a positions of assigned ~a~%" 
@@ -431,7 +450,6 @@
                                         (string-append filesstring " puzzle-solver/" (filespec-fname fspec)))
                                       *local-store*))])]
          ;; EXPAND
-         [infomsg1 (printf "starting expand, ... ")]
          [start-expand (current-seconds)]
          [ranges (make-vector-ranges (fringe-pcount cf))]
          ;;make remote fringe filespecs
@@ -459,7 +477,6 @@
          ;; need to wait for write to complete -- i.e., all data to appear on master
          ;; push this wait into the place we're trying to access the file ... [wait-for-partial-expansions (wait-for-files expand-files-specs)]
          ;; MERGE
-         [infomsg2 (printf "starting merge, ... ")]
          ;; --- Distribute the merging work ----------
          [sorted-segment-fspecs (remote-merge proto-fringe-fspecs depth)]
          [merge-end (current-seconds)]
@@ -560,8 +577,8 @@
   
 
 ;(block10-init)
-;(climb12-init)
-(climb15-init)
+(climb12-init)
+;(climb15-init)
 ;(climbpro24-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 

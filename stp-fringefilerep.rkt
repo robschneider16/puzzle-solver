@@ -148,9 +148,14 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 
 ;; write-fringe-to-disk: (listof or vectorof hc-position) string -> void
 ;; writes the bytestring portions of the hc-positions from the given fringe (whether list or vector) into a file with given file-name.
-(define (write-fringe-to-disk fringe file-name)
-  (let ([my-output (open-output-file file-name #:exists 'replace)])
-    (for ([hcposition fringe])
+(define (write-fringe-to-disk fringe file-name [how-many -1])
+  (let ([my-output (open-output-file file-name #:exists 'replace)]
+        [stop-at (if (negative? how-many)
+                     (or (and (vector? fringe) (vector-length fringe))
+                         (length fringe))
+                     how-many)])
+    (for ([i stop-at]
+          [hcposition fringe])
       (fprintf my-output "~a~%" (hc-position-bs hcposition)))
     (flush-output my-output)
     (close-output-port my-output)))
