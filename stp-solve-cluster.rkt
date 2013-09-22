@@ -121,8 +121,8 @@
 ;; a sampling-stat is a (vector int fixnum fixnum (listofof fixnum) boolean string int)
 ;; where the elements are:s
 ;; 0. total number of duplicate-free positions summed over slices
-;; 1. [DEPRECATED?] minimum hash value of the positions 
-;; 2. [DEPRECATED?] maximum hash value of the positions
+;; 1. number of positions discarded because duplicate with current or prev-fringes
+;; 2. number of positions discarded because duplicate with other partial-expansion file
 ;; 3. vector of numbers counting duplicate-free positions in each respective slice (provide pcount if needed for fspec)
 ;; 4. boolean goal-found if found when expanding the assigned positions
 ;; 5. output file name prefix, e.g., proto-fringe-dXX-NN, without slice id which is assumed to be added when needed
@@ -175,17 +175,23 @@
          [unique-expansions 0]
          [slice-counts (make-vector *num-proto-fringe-slices* 0)]
          [sample-stats 
-          (vector 0 *most-negative-fixnum* *most-positive-fixnum*
+          (vector 0 ; number of positions preserved for further merging
+                  0 ; number of positions discarded because duplicate with prev- or current-fringes
+                  0 ; number of positions discarded because duplicate with another partial-expansion
                   slice-counts
                   #f ofile-name ;; here, use the stem of the shared ofile-name 
                   0 n-pos-to-process)] 
+         [last-pos-bs #"0000"]
          )
     ;; locally merge the pre-proto-fringes, removing duplicates from prev- and current-fringes
     (for ([an-fhead (in-heap/consume! heap-o-fheads)])
       (let ([efpos (fringehead-next an-fhead)])
-        (unless (or (position-in-fhead? efpos pffh)
-                    (position-in-fhead? efpos cffh))
-          ;****** the one-at-a-time change above should obviate this get-slice-num and the vector-ref in the fprintf
+        (unless ;; efpos is a duplicate
+            (or (and (bytes=? (hc-position-bs efpos) last-pos-bs) ; duplicate from most recently written 
+                     (vector-set! sample-stats 2 (add1 (vector-ref sample-stats 2))))
+                (and (position-in-fhead? efpos pffh) (vector-set! sample-stats 1 (add1 (vector-ref sample-stats 1))))
+                (and (position-in-fhead? efpos cffh) (vector-set! sample-stats 1 (add1 (vector-ref sample-stats 1)))))
+          (set! last-pos-bs (hc-position-bs efpos))
           (do ([efpos-hc (hc-position-hc efpos)])
             ;; if efpos-hc is >= to the slice-upper-bound, advance the proto-slice-num/ofile/upper-bound until it is not
             ((< efpos-hc slice-upper-bound))
@@ -437,7 +443,6 @@
          ;; --- Distribute the actual expansion work ------------------------
          [sampling-stats (remote-expand-fringe ranges pf rcf depth)]
          [end-expand (current-seconds)]
-         [expand-time-msg (printf "expand time: ~a~%" (~r (/ (- end-expand start-expand) 60.0) #:precision 4))]
          ;; -----------------------------------------------------------------
          [check-for-goal (for/first ([ss sampling-stats]
                                      #:when (vector-ref ss 4))
@@ -456,10 +461,8 @@
          ;; MERGE
          [infomsg2 (printf "starting merge, ... ")]
          ;; --- Distribute the merging work ----------
-         [merge-start (current-seconds)]
          [sorted-segment-fspecs (remote-merge proto-fringe-fspecs depth)]
          [merge-end (current-seconds)]
-         [merge-time-msg (printf "merge time: ~a~%" (~r (/ (- merge-end merge-start) 60.0) #:precision 4))]
          ;; -------------------------------------------
          [sorted-expansion-files (map first sorted-segment-fspecs)]
          [sef-lengths (map second sorted-segment-fspecs)]
@@ -483,14 +486,25 @@
       (for ([fspec fspecs]) (delete-file (filespec-fullpathname fspec))))
     ;(system "rm partial-expansion* partial-merge*")
     ;(unless (string=? *master-name* "localhost") (delete-file (fspec-fname cf-spec)))
-    ;; func-call, file-copy, expansion, protofringe-bookkeeping, merge, total
-    (printf "distributed-expand-fringe:\t~a\t~a\t~a\t~a\t~a\t~a~%"
-            (- start-expfrg *depth-start-time*)
-            (- start-expand start-expfrg)
-            (- end-expand start-expand)
-            (- merge-start end-expand)
-            (- merge-end merge-start)
-            (- (current-seconds) *depth-start-time*))
+    ;; file-copy, expansion, merge, total
+    (printf "expand-merge-times: ~a\t~a\t~a\t~a\t~a~%"
+            depth
+            (- start-expand start-expfrg)       ;file-copying
+            (- end-expand start-expand)         ;expansion
+            (- merge-end end-expand)            ;merge
+            (- (current-seconds) *depth-start-time*)) ;total
+    ;; report the duplicate elimination data
+    (let ([counts (vector 0 0 0)])
+      (for ([ss sampling-stats]) 
+        (vector-set! counts 0 (+ (vector-ref ss 0) (vector-ref counts 0)))
+        (vector-set! counts 1 (+ (vector-ref ss 1) (vector-ref counts 1)))
+        (vector-set! counts 2 (+ (vector-ref ss 2) (vector-ref counts 2))))
+      (printf "duplicate-elimination-data: ~a\t~a\t~a\t~a\t~a~%"
+              depth
+              (vector-ref counts 0) ; unique positions over all processors -- pre-merge
+              (vector-ref counts 1) ; duplicates eliminated because prev- or current-fringe
+              (vector-ref counts 2) ; duplicates eliminated because other partial-expansion at current depth
+              (for/sum ([n counts]) n))) ; total
     ;; make the new fringe to return
     (make-fringe ""
                  (for/list ([segmentfile sorted-expansion-files]
@@ -511,22 +525,6 @@
       (expand-fringe-self prev-fringe current-fringe depth)
       ;; else call distributed-expand, which will farm out to workers
       (distributed-expand-fringe prev-fringe current-fringe depth)))
-
-;; vectorize-list: (listof hc-position) -> (vectorof hc-position)
-;; convert a list of positions into a vector for easy/efficient partitioning
-(define (vectorize-list f)
-  (let ([new-vec (list->vector f)])
-    (vector-sort! hcposition<? new-vec)
-    new-vec))
-
-;; fringe-merge: (listof hc-position) (listof hc-position) -> (listof X)
-;; ASSUMES both lists are sorted and creates a new list with duplicates removed
-(define (fringe-merge l1 l2)
-  (cond [(empty? l1) l2]
-        [(empty? l2) l1]
-        [(hcposition<? (first l1) (first l2)) (cons (first l1) (fringe-merge (rest l1) l2))]
-        [(equal? (first l1) (first l2)) (fringe-merge l1 (rest l2))]
-        [else (cons (first l2) (fringe-merge l1 (rest l2)))]))
 
 
 (define *max-depth* 10)(set! *max-depth* 231)
