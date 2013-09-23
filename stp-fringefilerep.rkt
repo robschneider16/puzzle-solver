@@ -146,19 +146,29 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 ;; -----------------------------------------------------------------------------------
 ;; --- BULK FRINGE READING/WRITING ---------------------------------------------------
 
-;; write-fringe-to-disk: (listof or vectorof hc-position) string -> void
+;; write-fringe-to-disk: (listof or vectorof hc-position) string -> int
 ;; writes the bytestring portions of the hc-positions from the given fringe (whether list or vector) into a file with given file-name.
-(define (write-fringe-to-disk fringe file-name [how-many -1])
+;; return the number written, not counting duplicates if remove-dupes is non-false
+(define (write-fringe-to-disk fringe file-name [how-many -1] [remove-dupes #f])
   (let ([my-output (open-output-file file-name #:exists 'replace)]
         [stop-at (if (negative? how-many)
                      (or (and (vector? fringe) (vector-length fringe))
                          (length fringe))
-                     how-many)])
+                     how-many)]
+        [last-pos #"zzzz"]
+        [num-written 0])
     (for ([i stop-at]
           [hcposition fringe])
-      (fprintf my-output "~a~%" (hc-position-bs hcposition)))
+      (cond [remove-dupes
+             (unless (bytes=? (hc-position-bs hcposition) last-pos)
+               (set! last-pos (hc-position-bs hcposition))
+               (fprintf my-output "~a~%" (hc-position-bs hcposition))
+               (set! num-written (add1 num-written)))]
+            [else (fprintf my-output "~a~%" (hc-position-bs hcposition))
+                  (set! num-written (add1 num-written))]))
     (flush-output my-output)
-    (close-output-port my-output)))
+    (close-output-port my-output)
+    num-written))
 
 ;; read-fringe-from-file: string -> (listof position)
 ;; reads a file from a file path (if you are in the current directory just simply the file-name)

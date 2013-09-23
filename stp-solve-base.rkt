@@ -133,20 +133,6 @@
           [(compare? x (vector-ref v mid)) (vec-member? v x compare? low mid)]
           [else (vec-member? v x compare? (add1 mid) high)])))
 
-;; make-new-bwmove: bw-position move-schema int -> bw-position
-;; create a new position from an existing position and a move schema
-(define (make-new-bwmove bwposition mv-schema piece-type)
-  (let ((new-vec (vector-copy bwposition)))                          ; build the new position
-    ;; update piece
-    (vector-set! new-vec piece-type
-                 (bitwise-xor (vector-ref new-vec piece-type)
-                              (third mv-schema)))
-    ;; update spaces
-    (vector-set! new-vec 0
-                 (bitwise-xor (vector-ref new-vec 0)
-                              (second mv-schema)))
-    new-vec))
-
 ;; update-expandbuf!: int bytestring int int move-schema int -> void
 ;; update the *expandbuf* vector with the new location and altered bytestring
 (define (update-expandbuf! bufindex src-bspos nu-ploc space-int mv-schema piece-type)
