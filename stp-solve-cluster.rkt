@@ -24,23 +24,23 @@
 (define *depth-start-time* "the time from current-seconds at the start of a given depth")
 (define *master-name* "the name of the host where the master process is running")
 (define *local-store* "the root portion of path to where workers can store temporary fringe files")
-;#|
+#|
 (set! *master-name* "localhost")
 (set! *local-store* "/space/fringefiles/")
 ;(set! *local-store* "/state/partition1/fringefiles/")
 (define *n-processors* 4)
-;|#
-#|
+|#
+;#|
 (set! *master-name* "wcp")
 (set! *local-store* "/state/partition1/fringefiles/")
 (define *n-processors* 32)
-|#
+;|#
 (define *expand-multiplier* 1)
 (define *merge-multiplier* 1)
 (define *n-expanders* (* *n-processors* *expand-multiplier*))
 (define *n-mergers* (* *n-processors* *merge-multiplier*))
 
-(define *diy-threshold* 4000) ;;**** this must be significantly less than EXPAND-SPACE-SIZE 
+(define *diy-threshold* 5000) ;;**** this must be significantly less than EXPAND-SPACE-SIZE 
 
 
 (define *most-positive-fixnum* 0)
@@ -143,6 +143,14 @@
         (foldr (lambda (x r) (cons (list x (first (first r))) r)) 
                (list (list (last start-list) vlength)) 
                (drop-right start-list 1)))))
+
+;; simple-ranges: (listof filespec) -> (listof (list int int)
+;; just use the fringe-segments
+(define (make-simple-ranges lofspec)
+  (let ([start-range 0])
+    (for/list ([fs lofspec])
+      (set! start-range (+ start-range (filespec-pcount fs)))
+      (list (- start-range (filespec-pcount fs)) start-range))))
 
 ;; remove-dupes: fringe fringe (listof filespec) string int -> sampling-stat
 ;; Running in distributed worker processes:
@@ -361,7 +369,7 @@
           (unless (string=? *master-name* "localhost")
             ;; copy shared-drive expansions to *local-store*, uncompress, and delete compressed version
             (bring-local-partial-expansions slice-fspecs))]
-         [local-protofringe-fspecs (for/list ([fs slice-fspecs] #:unless (zero? (filespec-pcount fs))) (rebase-filespec fs *local-store*))]
+         [local-protofringe-fspecs (or slice-fspecs (for/list ([fs slice-fspecs] #:unless (zero? (filespec-pcount fs))) (rebase-filespec fs *local-store*)))]
          ;[pmsg1 (printf "distmerge-debug1: ~a fspecs in ~a~%distmerge-debug1: or localfspecs=~a~%" (vector-length slice-fspecs) slice-fspecs local-protofringe-fspecs)]
          ;******
          ;****** move the fringehead creation inside the heap-o-fhead construction in order to avoid the short-lived list allocation *******
@@ -388,16 +396,9 @@
                              (set! num-written (add1 num-written))
                              (set! last-pos keep-pos)))
                          num-written)])
-    ;(printf "remote-merge-expansions: fw-lolop-lengths=~a [total ~a]~%" (map length fastforwarded-lolops) (for/sum ([l fastforwarded-lolops]) (length l)))
-    ;(printf "remote-merge-expansions: merged-expns-length=~a~%" (length sorted-merged-expansions))
     (close-output-port mrg-segment-oport)
     (for ([fhead to-merge-fheads]) (close-input-port (fringehead-iprt fhead)))
-    ;; arrange to move a compressed version of ofile-name to the shared disk
-    ;(copy-file (string-append *local-store* ofile-name) ofile-name)
-    ;(printf "remote-merge-expansions: about to try deleting ofile-name, ~a~%" ofile-name)
-    ;(delete-file (string-append *local-store* ofile-name))
-    ;;**** maybe not remove this as would be the prev-fringe on the next cycle ****????
-    (unless (string=? *master-name* "localhost")
+    (unless (or #t (string=? *master-name* "localhost"))
       (for ([fspc local-protofringe-fspecs]) 
         (delete-file (filespec-fullpathname fspc)))) ;remove the local expansions *** but revisit when we reduce work packet size for load balancing
     (list ofile-name segment-size)))
@@ -439,7 +440,7 @@
           depth pf-spec cf-spec)|#
   (let* ([start-expfrg (current-seconds)]
          ;; push newest fringe (current-fringe) to all workers
-         [push-new-fringe
+         #|[push-new-fringe
           (cond [(string=? *master-name* "localhost")
                  (for ([fsegment (fringe-segments cf)]
                        #:unless (file-exists? (format "~a~a" *local-store* (filespec-fname fsegment))))
@@ -448,10 +449,11 @@
                                       (for/fold ([filesstring ""])
                                         ([fspec (fringe-segments cf)])
                                         (string-append filesstring " puzzle-solver/" (filespec-fname fspec)))
-                                      *local-store*))])]
+                                      *local-store*))])]|#
          ;; EXPAND
          [start-expand (current-seconds)]
-         [ranges (make-vector-ranges (fringe-pcount cf))]
+         ;[ranges (make-vector-ranges (fringe-pcount cf))]
+         [ranges (make-simple-ranges (fringe-segments cf))]
          ;;make remote fringe filespecs
          [rcf (make-fringe (fringe-fbase cf)
                            (for/list ([seg (fringe-segments cf)]) 
@@ -459,7 +461,8 @@
                                             (filespec-fname seg) (filespec-pcount seg) (filespec-fsize seg) *local-store*))
                            (fringe-pcount cf))]
          ;; --- Distribute the actual expansion work ------------------------
-         [sampling-stats (remote-expand-fringe ranges pf rcf depth)]
+         ;[sampling-stats (remote-expand-fringe ranges pf rcf depth)]
+         [sampling-stats (remote-expand-fringe ranges pf cf depth)]
          [end-expand (current-seconds)]
          ;; -----------------------------------------------------------------
          [check-for-goal (for/first ([ss sampling-stats]
