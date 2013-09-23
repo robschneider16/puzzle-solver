@@ -40,7 +40,7 @@
 (define *n-expanders* (* *n-processors* *expand-multiplier*))
 (define *n-mergers* (* *n-processors* *merge-multiplier*))
 
-(define *diy-threshold* 5000) ;;**** this must be significantly less than EXPAND-SPACE-SIZE 
+(define *diy-threshold* 10000) ;;**** this must be significantly less than EXPAND-SPACE-SIZE 
 
 
 (define *most-positive-fixnum* 0)
@@ -358,7 +358,8 @@
           (unless (string=? *master-name* "localhost")
             ;; copy shared-drive expansions to *local-store*, uncompress, and delete compressed version
             (bring-local-partial-expansions slice-fspecs))]
-         [local-protofringe-fspecs (or slice-fspecs (for/list ([fs slice-fspecs] #:unless (zero? (filespec-pcount fs))) (rebase-filespec fs *local-store*)))]
+         ;[local-protofringe-fspecs (for/list ([fs slice-fspecs] #:unless (zero? (filespec-pcount fs))) (rebase-filespec fs *local-store*))]
+         [local-protofringe-fspecs (for/list ([fs slice-fspecs] #:unless (zero? (filespec-pcount fs))) fs)]
          ;[pmsg1 (printf "distmerge-debug1: ~a fspecs in ~a~%distmerge-debug1: or localfspecs=~a~%" (vector-length slice-fspecs) slice-fspecs local-protofringe-fspecs)]
          ;******
          ;****** move the fringehead creation inside the heap-o-fhead construction in order to avoid the short-lived list allocation *******
@@ -368,7 +369,7 @@
          ;[pmsg2 (printf "distmerge-debug2: made 'to-merge-fheads'~%")]
          [heap-o-fheads (let ([lheap (make-heap (lambda (fh1 fh2) (hcposition<? (fringehead-next fh1) (fringehead-next fh2))))])
                           (heap-add-all! lheap 
-                                         (filter-not (lambda (fh) (eof-object? (fringehead-next fh)))to-merge-fheads))
+                                         (filter-not (lambda (fh) (eof-object? (fringehead-next fh))) to-merge-fheads))
                           lheap)]
          ;[pmsg3 (printf "distmerge-debug3: made the heap with ~a frigeheads in it~%" (heap-count heap-o-fheads))]
          ;****** log duplicate eliminations here
@@ -441,8 +442,8 @@
                                       *local-store*))])]|#
          ;; EXPAND
          [start-expand (current-seconds)]
-         ;[ranges (make-vector-ranges (fringe-pcount cf))]
-         [ranges (make-simple-ranges (fringe-segments cf))]
+         [ranges (make-vector-ranges (fringe-pcount cf))]
+         ;[ranges (make-simple-ranges (fringe-segments cf))]
          ;;make remote fringe filespecs
          [rcf (make-fringe (fringe-fbase cf)
                            (for/list ([seg (fringe-segments cf)]) 
@@ -571,8 +572,8 @@
   
 
 ;(block10-init)
-(climb12-init)
-;(climb15-init)
+;(climb12-init)
+(climb15-init)
 ;(climbpro24-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
