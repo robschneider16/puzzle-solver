@@ -3,9 +3,21 @@
 (require "stp-init.rkt"
          "stp-solve-base.rkt"
          "stp-fringefilerep.rkt")
+(require racket/fixnum)
 
 
 (define *max-depth* 10)(set! *max-depth* 31)
+(define *most-positive-fixnum* 0)
+(define *most-negative-fixnum* 0)
+(cond [(fixnum? (expt 2 61))
+       (set! *most-positive-fixnum* (fx+ (expt 2 61) (fx- (expt 2 61) 1)))  ;; ****** only on 64-bit architectures *****
+       (set! *most-negative-fixnum* (fx+ (fx* -1 (expt 2 61)) (fx* -1 (expt 2 61))))];; ***** likewise *****
+      [else 
+       ;; For the cluster platform use the following:
+       (set! *most-positive-fixnum* (fx+ (expt 2 29) (fx- (expt 2 29) 1)))  ;; ****** only on our cluster, wcp *****
+       (set! *most-negative-fixnum* (fx+ (fx* -1 (expt 2 29)) (fx* -1 (expt 2 29))))]);; ***** likewise *****
+
+(define *found-goal* #f)
 
 
 
@@ -56,6 +68,36 @@
                                           p)])
                        (printf "At depth ~s fringe has ~a positions~%" depth (set-count current-fringe))
                        (fringe-mem-search current-fringe new-fringe (add1 depth) found-goal? (+ npos (set-count new-fringe))))])]))
+
+;; expand-fringe-self: fringe fringe int -> fringe
+;; expand just the current-fringe and remove duplicates in the expansion and repeats from prev-fringe
+;; returning the new fringe
+(define (expand-fringe-self pf cf depth)
+  (let* ([prev-fringe-set (for/fold ([the-fringe (set)])
+                            ([sgmnt (fringe-segments pf)])
+                            (set-union the-fringe
+                                       (list->set (read-fringe-from-file (filespec-fullpathname sgmnt)))))] ; pf- and cf-spec's in expand-fringe-self should have empty fbase
+         [current-fringe-vec 
+          (list->vector (for/fold ([the-fringe empty])
+                          ([sgmnt (reverse (fringe-segments cf))])
+                          (append (read-fringe-from-file (filespec-fullpathname sgmnt)) the-fringe)))]
+         [new-cf-name (format "fringe-d~a" depth)]
+         ;[prntmsg (printf "finished reading the fringes~%")]
+         [exp-ptr 0]
+         [expand-them (for ([p-to-expand current-fringe-vec])
+                        (set! exp-ptr (expand p-to-expand exp-ptr)))]
+         [res (set->list (for/set ([i exp-ptr]
+                                   #:unless (or (set-member? prev-fringe-set (vector-ref *expansion-space* i))
+                                                (position-in-vec? current-fringe-vec (vector-ref *expansion-space* i))))
+                           (when (is-goal? (vector-ref *expansion-space* i)) (set! *found-goal* (vector-ref *expansion-space* i)))
+                           (vector-ref *expansion-space* i)))]
+         )
+    #|(printf "Finished the work packet generating a set of ~a positions~%" (set-count res))
+    (for ([p res])
+      (printf "pos: ~a~%~a~%" (stringify p) p))|#
+    (for ([sgmnt (fringe-segments pf)]) (delete-file (filespec-fullpathname sgmnt)))
+    (write-fringe-to-disk (sort res hcposition<?) new-cf-name)
+    (make-fringe "" (list (make-filespec *most-negative-fixnum* *most-positive-fixnum* new-cf-name (length res) (file-size new-cf-name) "")) (length res))))
 
 
 (block10-init)

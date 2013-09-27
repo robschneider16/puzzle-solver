@@ -4,6 +4,7 @@ prev-fringe*
 
 # Emacs or Racket backup files
 *~
+*.bak
 \#*\#
 
 # Compiled source #
