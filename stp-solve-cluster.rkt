@@ -573,8 +573,8 @@
 
 ;(block10-init)
 ;(climb12-init)
-(climb15-init)
-;(climbpro24-init)
+;(climb15-init)
+(climbpro24-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
 ;#|
