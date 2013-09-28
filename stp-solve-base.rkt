@@ -235,8 +235,11 @@
 ;; is-goal?: hc-position -> boolean
 ;;****** relies on special-case of goal where single tile of type with only one tile needs to be in certain location
 (define (is-goal? hcp)
-  (= (bytes-ref (hc-position-bs hcp) (car *target*))
-     (cdr *target*)))
+  ;(and #f
+       (= (bytes-ref (hc-position-bs hcp) (car *target*))
+          (cdr *target*))
+  ;)
+)
 
 ;; goal-in-fringe?: (setof position) -> position OR #f
 (define (goal-in-fringe? f)

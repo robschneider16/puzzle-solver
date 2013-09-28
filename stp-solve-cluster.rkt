@@ -355,10 +355,10 @@
   ;; WAS: ofile-name is of pattern: "fringe-segment-dX-NN", where the X is the depth and the NN is a process identifier
   ;; NEW: ofile-name is of pattern: "fringe-segment-dX-NNN", where the X is the depth and the NN is a slice identifier
   (let* ([mrg-segment-oport (open-output-file ofile-name)] ; try writing directly to NFS
-         [copy-partial-expansions-to-local-disk ;; but only if not sharing host with master
+         #|[copy-partial-expansions-to-local-disk ;; but only if not sharing host with master
           (unless (string=? *master-name* "localhost")
             ;; copy shared-drive expansions to *local-store*, uncompress, and delete compressed version
-            (bring-local-partial-expansions slice-fspecs))]
+            (bring-local-partial-expansions slice-fspecs))]|#
          ;[local-protofringe-fspecs (for/list ([fs slice-fspecs] #:unless (zero? (filespec-pcount fs))) (rebase-filespec fs *local-store*))]
          [local-protofringe-fspecs (for/list ([fs slice-fspecs] #:unless (zero? (filespec-pcount fs))) fs)]
          ;[pmsg1 (printf "distmerge-debug1: ~a fspecs in ~a~%distmerge-debug1: or localfspecs=~a~%" (vector-length slice-fspecs) slice-fspecs local-protofringe-fspecs)]
@@ -571,9 +571,26 @@
                                                  "fringe-d-1" 0 (file-size "fringe-d-1") "")) 0)
             (make-fringe "" (list (make-filespec ;*most-negative-fixnum* *most-positive-fixnum* 
                                    "fringe-d0" 1 (file-size "fringe-d0") "")) 1)
-            1)
-  )
-  
+            1))
+
+;; make-fringe-from-files: string int -> fringe
+;; given a base-string and number of processors (actually, segments), create the fringe
+(define (make-fringe-from-files base-string n-seg)
+  (let ([pcount 0])
+    (make-fringe 
+     "" 
+     (for/list ([i n-seg])
+       (let* ([f (format "~a~a" base-string (~a i #:left-pad-string "0" #:width 3 #:align 'right))]
+              [lpcount (read-from-string (with-output-to-string (lambda () (system (format "wc -l ~a" f)))))])
+         (set! pcount (+ pcount lpcount))
+         (make-filespec f lpcount (file-size f) "")))
+     pcount)))
+
+(define (make-fringe-from-file file)
+  (let ([filepcount (read-from-string (with-output-to-string (lambda () (system (format "wc -l ~a" file)))))])
+    (make-fringe ""
+                 (list (make-filespec file filepcount (file-size file) ""))
+                 filepcount)))
 
 ;(block10-init)
 (climb12-init)
@@ -586,6 +603,16 @@
   ;; Switch between these according to if using the cluster or testing on multi-core single machine
   (connect-to-riot-server! *master-name*)
   (define search-result (time (start-cluster-fringe-search *start*)))
+  #|
+  (define search-result (time (cfs-file (make-fringe-from-files "fringe-segment-d58-" 4)
+                                        (make-fringe-from-files "fringe-segment-d59-" 4)
+                                        60)))
+  |#
+  #|
+  (define search-result (time (cfs-file (make-fringe-from-file "c12d59fringe")
+                                        (make-fringe-from-file "c12d58fringe")
+                                        1)))
+  |#
   (print search-result)
   )
 ;|#
