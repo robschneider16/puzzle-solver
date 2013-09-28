@@ -188,10 +188,12 @@
                   0 ; number of positions discarded because duplicate with prev- or current-fringes
                   0 ; number of positions discarded because duplicate with another partial-expansion
                   slice-counts
-                  #f ofile-name ;; here, use the stem of the shared ofile-name 
-                  0 n-pos-to-process
-                  partial-exp-dupes)] 
-         [last-pos-bs #"0000"]
+                  #f 
+                  ofile-name ;; here, use the stem of the shared ofile-name 
+                  0
+                  n-pos-to-process
+                  partial-exp-dupes)]
+         [last-pos-bs #"NoLastPos"]
          )
     ;; locally merge the pre-proto-fringes, removing duplicates from prev- and current-fringes
     (for ([an-fhead (in-heap/consume! heap-o-fheads)])
@@ -251,12 +253,13 @@
     ;; scrub the last part of the vector with bogus positions
     (for ([i (in-range pcount (vector-length *expansion-space*))])
       (set! hc-to-scrub (vector-ref *expansion-space* i))
-      (set-hc-position-hc! hc-to-scrub *most-positive-fixnum*)
-      (bytes-copy! (hc-position-bs hc-to-scrub) 0 #"zIgnoreMe"))
+      (set-hc-position-hc! hc-to-scrub *most-positive-fixnum*)    ;; make vector-sort! put these at the very end, but if a positions has *most-positive-fixnum* ...
+      (bytes-copy! (hc-position-bs hc-to-scrub) 0 #"~~IgnoreMe")) ;; #\~ (ASCII character 126) is greater than any of our positions
     ;; sort the vector
     (vector-sort! hcposition<? *expansion-space*)
     ;; write the first pcount positions to the file
     (set! this-batch (write-fringe-to-disk *expansion-space* fullpath pcount #t))
+    ;; return the two values: augmented list of filespecs, and the incremented number of duplicates eliminated during writing
     (values (cons (make-filespec ;(hc-position-hc (vector-ref *expansion-space* 0))
                                  ;(fx+ (hc-position-hc (vector-ref *expansion-space* (sub1 pcount))) 1)
                                  f this-batch (file-size fullpath) *local-store*)
@@ -514,7 +517,7 @@
         (vector-set! counts 3 (+ (vector-ref ss 8) (vector-ref counts 3))))
       (printf "duplicate-elimination-data: ~a\t~a\t~a\t~a\t~a\t~a~%"
               depth
-              (vector-ref counts 0) ; unique positions over all processors -- pre-merge
+              (vector-ref counts 0) ; sum of duplicate-free positions written to proto-fringes -- pre-merge
               (vector-ref counts 1) ; duplicates eliminated because prev- or current-fringe
               (vector-ref counts 2) ; duplicates eliminated because other partial-expansion at current depth
               (vector-ref counts 3) ; duplicates eliminated before first writing to partial-expansion
