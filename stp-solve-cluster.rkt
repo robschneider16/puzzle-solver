@@ -24,17 +24,17 @@
 (define *depth-start-time* "the time from current-seconds at the start of a given depth")
 (define *master-name* "the name of the host where the master process is running")
 (define *local-store* "the root portion of path to where workers can store temporary fringe files")
-;#|
+#|
 (set! *master-name* "localhost")
 (set! *local-store* "/space/fringefiles/")
 ;(set! *local-store* "/state/partition1/fringefiles/")
 (define *n-processors* 4)
-;|#
-#|
+|#
+;#|
 (set! *master-name* "wcp")
 (set! *local-store* "/state/partition1/fringefiles/")
 (define *n-processors* 32)
-|#
+;|#
 (define *expand-multiplier* 1)
 (define *merge-multiplier* 1)
 (define *n-expanders* (* *n-processors* *expand-multiplier*))
@@ -65,7 +65,7 @@
          [slices (for/vector #:length (add1 *num-proto-fringe-slices*)
                    ([i *num-proto-fringe-slices*])
                    (+ *most-negative-fixnum* (* i slice-width)))])
-    (vector-set! slices *num-proto-fringe-slices* *most-positive-fixnum*)
+    (vector-set! slices *num-proto-fringe-slices* (add1 *most-positive-fixnum*))
     slices))
 
 ;; get-slice-num: fixnum [low number] [hi number] -> number
@@ -593,8 +593,8 @@
                  filepcount)))
 
 ;(block10-init)
-(climb12-init)
-;(climb15-init)
+;(climb12-init)
+(climb15-init)
 ;(climbpro24-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
