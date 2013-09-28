@@ -40,7 +40,7 @@
 (define *n-expanders* (* *n-processors* *expand-multiplier*))
 (define *n-mergers* (* *n-processors* *merge-multiplier*))
 
-(define *diy-threshold* 1000) ;;**** this must be significantly less than EXPAND-SPACE-SIZE 
+(define *diy-threshold* 10000) ;;**** this must be significantly less than EXPAND-SPACE-SIZE 
 
 
 (define *most-positive-fixnum* 0)
@@ -355,10 +355,10 @@
   ;; WAS: ofile-name is of pattern: "fringe-segment-dX-NN", where the X is the depth and the NN is a process identifier
   ;; NEW: ofile-name is of pattern: "fringe-segment-dX-NNN", where the X is the depth and the NN is a slice identifier
   (let* ([mrg-segment-oport (open-output-file ofile-name)] ; try writing directly to NFS
-         [copy-partial-expansions-to-local-disk ;; but only if not sharing host with master
+         #|[copy-partial-expansions-to-local-disk ;; but only if not sharing host with master
           (unless (string=? *master-name* "localhost")
             ;; copy shared-drive expansions to *local-store*, uncompress, and delete compressed version
-            (bring-local-partial-expansions slice-fspecs))]
+            (bring-local-partial-expansions slice-fspecs))]|#
          ;[local-protofringe-fspecs (for/list ([fs slice-fspecs] #:unless (zero? (filespec-pcount fs))) (rebase-filespec fs *local-store*))]
          [local-protofringe-fspecs (for/list ([fs slice-fspecs] #:unless (zero? (filespec-pcount fs))) fs)]
          ;[pmsg1 (printf "distmerge-debug1: ~a fspecs in ~a~%distmerge-debug1: or localfspecs=~a~%" (vector-length slice-fspecs) slice-fspecs local-protofringe-fspecs)]
@@ -575,10 +575,10 @@
   )
   
 
-(block10-init)
+;(block10-init)
 ;(climb12-init)
-;(climb15-init)
-(climbpro24-init)
+(climb15-init)
+;(climbpro24-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
 ;#|
