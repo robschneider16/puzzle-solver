@@ -24,17 +24,17 @@
 (define *depth-start-time* "the time from current-seconds at the start of a given depth")
 (define *master-name* "the name of the host where the master process is running")
 (define *local-store* "the root portion of path to where workers can store temporary fringe files")
-#|
+;#|
 (set! *master-name* "localhost")
 (set! *local-store* "/space/fringefiles/")
 ;(set! *local-store* "/state/partition1/fringefiles/")
 (define *n-processors* 4)
-|#
-;#|
+;|#
+#|
 (set! *master-name* "wcp")
 (set! *local-store* "/state/partition1/fringefiles/")
 (define *n-processors* 32)
-;|#
+|#
 (define *expand-multiplier* 1)
 (define *merge-multiplier* 1)
 (define *n-expanders* (* *n-processors* *expand-multiplier*))
@@ -168,8 +168,8 @@
           pf cf lo-expand-fspec ofile-name depth);|#
   ;; EXPAND PHASE 2 (REMOVE DUPLICATES)
   (let* (;[use-ofilename (string-append *local-store* ofile-name)]
-         [rpf (copy-fringe pf *local-store*)]
-         [pffh (fh-from-fringe rpf)]
+         ;[rpf (copy-fringe pf *local-store*)]
+         [pffh (fh-from-fringe pf)];[pffh (fh-from-fringe rpf)]
          [cffh (fh-from-fringe cf)]
          [n-pos-to-process (for/sum ([an-fspec lo-expand-fspec]) (filespec-pcount an-fspec))]
          [lo-effh (for/list ([an-fspec lo-expand-fspec]) (fh-from-filespec an-fspec))]
@@ -229,7 +229,7 @@
                                   (file-size (format "~a-~a" ofile-name (~a i #:left-pad-string "0" #:width 3 #:align 'right)))))
     ;; delete files that are no longer needed
     (for ([efspec lo-expand-fspec]) (delete-file (filespec-fullpathname efspec)))
-    (unless (string=? *master-name* "localhost") (delete-fringe rpf))
+    ;(unless (string=? *master-name* "localhost") (delete-fringe rpf))
     ;(delete-file use-ofilename)
     ;;**** THIS STRIKES ME AS DANGEROUS: IF ONE PROCESS ON MULTI-CORE MACHINE FINISHES FIRST ....
     ;(when (file-exists? (string-append *local-store* (fspec-fname pfspec))) (delete-file (string-append *local-store* (fspec-fname pfspec))))
@@ -390,6 +390,7 @@
     (close-output-port mrg-segment-oport)
     (for ([fhead to-merge-fheads]) (close-input-port (fringehead-iprt fhead)))
     (unless (or #t (string=? *master-name* "localhost"))
+      (error "distributed-merge-proto-fringe: in final unless")
       (for ([fspc local-protofringe-fspecs]) 
         (delete-file (filespec-fullpathname fspc)))) ;remove the local expansions *** but revisit when we reduce work packet size for load balancing
     (list ofile-name segment-size)))
@@ -399,8 +400,8 @@
 ;; each one containing as many proto-fringes as expanders, all of which need to be merged
 (define (remote-merge expand-files-specs depth)
   ;;**** RETHINK THIS -- MAYBE FORCE THE WORKER TO GRAB THE SLICE IT NEEDS??????
-  (when (string=? *master-name* "localhost")
-    (for ([efs expand-files-specs]) (bring-local-partial-expansions efs)))
+  #|(when (string=? *master-name* "localhost")
+    (for ([efs expand-files-specs]) (bring-local-partial-expansions efs)))|#
   ;(printf "remote-merge: n-protof-slices=~a, and length expand-files-specs=~a~%" *num-proto-fringe-slices* (vector-length expand-files-specs))
   (let ([merge-results
          (for/work ([i *num-proto-fringe-slices*]
@@ -412,10 +413,10 @@
              ;;(printf "distributed-expand-fringe: merge-range = ~a~%~a~%" merge-range merged-responsibility-range)
              merged-fname-and-resp-rng-size))])
     ;(printf "remote-merge: merged segment names and lengths ~a~%" merge-results)
-    (when (string=? *master-name* "localhost")
+    #|(when (string=? *master-name* "localhost")
       (for ([fs expand-files-specs])
         (for ([f fs] #:unless (zero? (filespec-pcount f)))
-          (delete-file (string-append *local-store* (filespec-fname f))))))
+          (delete-file (string-append *local-store* (filespec-fname f))))))|#
     merge-results))
 
 
@@ -541,7 +542,7 @@
       (distributed-expand-fringe prev-fringe current-fringe depth)))
 
 
-(define *max-depth* 10)(set! *max-depth* 231)
+(define *max-depth* 10)(set! *max-depth* 241)
 
 ;; cfs-file: fringe fringe int -> position
 ;; perform a file-based cluster-fringe-search at given depth
