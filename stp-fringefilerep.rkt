@@ -43,17 +43,20 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 ;; -----------------------------------------------------------------------------------
 ;; --- FILESPEC (SEGMENT) ------------------------------------------------------------
 
-;; a filespec is a vector: (vector min-hashcode max-hashcode fname position-count file-size basepath)
-(define (make-filespec minhc maxhc fname pcount fsize fbase) (vector minhc maxhc fname pcount fsize fbase))
-(define (filespec-minhc fs) (vector-ref fs 0))
-(define (filespec-maxhc fs) (vector-ref fs 1))
-(define (filespec-fname fs) (vector-ref fs 2))
-(define (filespec-pcount fs) (vector-ref fs 3))
-(define (filespec-fsize fs) (vector-ref fs 4))
-(define (filespec-fbase fs) (vector-ref fs 5))
+;; a filespec is a vector: (vector {tentative-removal: min-hashcode max-hashcode} fname position-count file-size basepath)
+(define (make-filespec ;minhc maxhc 
+                       fname pcount fsize fbase) 
+  (vector ;minhc maxhc
+          fname pcount fsize fbase))
+;(define (filespec-minhc fs) (vector-ref fs 0))
+;(define (filespec-maxhc fs) (vector-ref fs 1))
+(define (filespec-fname fs) (vector-ref fs 0)); was 2
+(define (filespec-pcount fs) (vector-ref fs 1));was 3
+(define (filespec-fsize fs) (vector-ref fs 2)); was 4
+(define (filespec-fbase fs) (vector-ref fs 3)); was 5
 (define (filespec-fullpathname fs) (string-append (filespec-fbase fs) (filespec-fname fs)))
-(define (rebase-filespec fs newbase) (let ([copyfs (vector-copy fs)]) (vector-set! copyfs 5 newbase) copyfs))
-(define (rebase-filespec! fs newbase) (vector-set! fs 5 newbase) fs)
+(define (rebase-filespec fs newbase) (let ([copyfs (vector-copy fs)]) (vector-set! copyfs 3 newbase) copyfs)); 3 was 5
+(define (rebase-filespec! fs newbase) (vector-set! fs 3 newbase) fs); 3 was 5
 
 
 ;; -----------------------------------------------------------------------------------
