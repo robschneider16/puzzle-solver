@@ -158,7 +158,7 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
                      (or (and (vector? fringe) (vector-length fringe))
                          (length fringe))
                      how-many)]
-        [last-pos #"zzzz"]
+        [last-pos #"NoLastPos"]
         [num-written 0])
     (for ([i stop-at]
           [hcposition fringe])
@@ -169,7 +169,6 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
                (set! num-written (add1 num-written)))]
             [else (fprintf my-output "~a~%" (hc-position-bs hcposition))
                   (set! num-written (add1 num-written))]))
-    (flush-output my-output)
     (close-output-port my-output)
     num-written))
 
