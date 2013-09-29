@@ -545,7 +545,7 @@
       (distributed-expand-fringe prev-fringe current-fringe depth)))
 
 
-(define *max-depth* 10)(set! *max-depth* 241)
+(define *max-depth* 10)(set! *max-depth* 105)
 
 ;; cfs-file: fringe fringe int -> position
 ;; perform a file-based cluster-fringe-search at given depth
@@ -606,12 +606,12 @@
 (module+ main
   ;; Switch between these according to if using the cluster or testing on multi-core single machine
   (connect-to-riot-server! *master-name*)
-  (define search-result (time (start-cluster-fringe-search *start*)))
-  #|
-  (define search-result (time (cfs-file (make-fringe-from-files "fringe-segment-d58-" 4)
-                                        (make-fringe-from-files "fringe-segment-d59-" 4)
-                                        60)))
-  |#
+  ;(define search-result (time (start-cluster-fringe-search *start*)))
+  ;#|
+  (define search-result (time (cfs-file (make-fringe-from-files "fringe-segment-d96-" 32)
+                                        (make-fringe-from-files "fringe-segment-d97-" 32)
+                                        98)))
+  ;|#
   #|
   (define search-result (time (cfs-file (make-fringe-from-file "c12d59fringe")
                                         (make-fringe-from-file "c12d58fringe")
