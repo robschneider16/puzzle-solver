@@ -167,9 +167,7 @@
   #|(printf "EXPAND PHASE 2 (REMOVE DUPLICATES) pf: ~a~%cf: ~a~%all of lo-expand-fspec: ~a~%ofile-name: ~a~%depth: ~a~%"
           pf cf lo-expand-fspec ofile-name depth);|#
   ;; EXPAND PHASE 2 (REMOVE DUPLICATES)
-  (let* (;[use-ofilename (string-append *local-store* ofile-name)]
-         ;[rpf (copy-fringe pf *local-store*)]
-         [pffh (fh-from-fringe pf)];[pffh (fh-from-fringe rpf)]
+  (let* ([pffh (fh-from-fringe pf)]
          [cffh (fh-from-fringe cf)]
          [n-pos-to-process (for/sum ([an-fspec lo-expand-fspec]) (filespec-pcount an-fspec))]
          [lo-effh (for/list ([an-fspec lo-expand-fspec]) (fh-from-filespec an-fspec))]
@@ -231,7 +229,7 @@
                                   (file-size (format "~a-~a" ofile-name (~a i #:left-pad-string "0" #:width 3 #:align 'right)))))
     ;; delete files that are no longer needed
     (for ([efspec lo-expand-fspec]) (delete-file (filespec-fullpathname efspec)))
-    ;(unless (string=? *master-name* "localhost") (delete-fringe rpf))
+    ;(unless (string=? *master-name* "localhost") (delete-fringe pf))
     ;(delete-file use-ofilename)
     ;;**** THIS STRIKES ME AS DANGEROUS: IF ONE PROCESS ON MULTI-CORE MACHINE FINISHES FIRST ....
     ;(when (file-exists? (string-append *local-store* (fspec-fname pfspec))) (delete-file (string-append *local-store* (fspec-fname pfspec))))
@@ -358,12 +356,8 @@
   ;; WAS: ofile-name is of pattern: "fringe-segment-dX-NN", where the X is the depth and the NN is a process identifier
   ;; NEW: ofile-name is of pattern: "fringe-segment-dX-NNN", where the X is the depth and the NN is a slice identifier
   (let* ([mrg-segment-oport (open-output-file ofile-name)] ; try writing directly to NFS
-         [copy-partial-expansions-to-local-disk ;; but only if not sharing host with master
-          (unless (string=? *master-name* "localhost")
-            ;; copy shared-drive expansions to *local-store*, uncompress, and delete compressed version
-            (bring-local-partial-expansions slice-fspecs))]
-         [local-protofringe-fspecs (for/list ([fs slice-fspecs] #:unless (zero? (filespec-pcount fs))) (rebase-filespec fs *local-store*))]
-         ;[local-protofringe-fspecs (for/list ([fs slice-fspecs] #:unless (zero? (filespec-pcount fs))) fs)]
+         ;[local-protofringe-fspecs (for/list ([fs slice-fspecs] #:unless (zero? (filespec-pcount fs))) (rebase-filespec fs *local-store*))]
+         [local-protofringe-fspecs (for/list ([fs slice-fspecs] #:unless (zero? (filespec-pcount fs))) fs)]
          ;[pmsg1 (printf "distmerge-debug1: ~a fspecs in ~a~%distmerge-debug1: or localfspecs=~a~%" (vector-length slice-fspecs) slice-fspecs local-protofringe-fspecs)]
          ;******
          ;****** move the fringehead creation inside the heap-o-fhead construction in order to avoid the short-lived list allocation *******
@@ -392,7 +386,7 @@
                          num-written)])
     (close-output-port mrg-segment-oport)
     (for ([fhead to-merge-fheads]) (close-input-port (fringehead-iprt fhead)))
-    (unless (or ;#t 
+    (unless (or #t 
                 (string=? *master-name* "localhost"))
       (for ([fspc local-protofringe-fspecs]) 
         (delete-file (filespec-fullpathname fspc)))) ;remove the local expansions *** but revisit when we reduce work packet size for load balancing
@@ -433,28 +427,10 @@
 (define (distributed-expand-fringe pf cf depth)
   #|(printf "distributed-expand-fringe: at depth ~a, pf-spec: ~a; cf-spec: ~a~%" 
           depth pf-spec cf-spec)|#
-  (let* ([start-expfrg (current-seconds)]
-         ;; push newest fringe (current-fringe) to all workers
-         #|[push-new-fringe
-          (cond [(string=? *master-name* "localhost")
-                 (for ([fsegment (fringe-segments cf)]
-                       #:unless (file-exists? (format "~a~a" *local-store* (filespec-fname fsegment))))
-                   (copy-file (filespec-fullpathname fsegment) (format "~a~a" *local-store* (filespec-fname fsegment))))]
-                [else (system (format "sync; rocks run host compute 'sync; cp ~a ~a'"      ; just copy from shared drive to local
-                                      (for/fold ([filesstring ""])
-                                        ([fspec (fringe-segments cf)])
-                                        (string-append filesstring " puzzle-solver/" (filespec-fname fspec)))
-                                      *local-store*))])]|#
-         ;; EXPAND
+  (let* (;; EXPAND
          [start-expand (current-seconds)]
          [ranges (make-vector-ranges (fringe-pcount cf))]
          ;[ranges (make-simple-ranges (fringe-segments cf))]
-         ;;make remote fringe filespecs
-         [rcf (make-fringe (fringe-fbase cf)
-                           (for/list ([seg (fringe-segments cf)]) 
-                             (make-filespec ;(filespec-minhc seg) (filespec-maxhc seg)
-                                            (filespec-fname seg) (filespec-pcount seg) (filespec-fsize seg) *local-store*))
-                           (fringe-pcount cf))]
          ;; --- Distribute the actual expansion work ------------------------
          ;[sampling-stats (remote-expand-fringe ranges pf rcf depth)]
          [sampling-stats (remote-expand-fringe ranges pf cf depth)]
@@ -502,9 +478,8 @@
     ;(system "rm partial-expansion* partial-merge*")
     ;(unless (string=? *master-name* "localhost") (delete-file (fspec-fname cf-spec)))
     ;; file-copy, expansion, merge, total
-    (printf "expand-merge-times: ~a\t~a\t~a\t~a\t~a~%"
+    (printf "expand-merge-times: ~a\t~a\t~a\t~a~%"
             depth
-            (- start-expand start-expfrg)       ;file-copying
             (- end-expand start-expand)         ;expansion
             (- merge-end end-expand)            ;merge
             (- (current-seconds) *depth-start-time*)) ;total
@@ -597,8 +572,8 @@
                  filepcount)))
 
 ;(block10-init)
-;(climb12-init)
-(climb15-init)
+(climb12-init)
+;(climb15-init)
 ;(climbpro24-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
@@ -606,12 +581,12 @@
 (module+ main
   ;; Switch between these according to if using the cluster or testing on multi-core single machine
   (connect-to-riot-server! *master-name*)
-  ;(define search-result (time (start-cluster-fringe-search *start*)))
-  ;#|
+  (define search-result (time (start-cluster-fringe-search *start*)))
+  #|
   (define search-result (time (cfs-file (make-fringe-from-files "fringe-segment-d96-" 32)
                                         (make-fringe-from-files "fringe-segment-d97-" 32)
                                         98)))
-  ;|#
+  |#
   #|
   (define search-result (time (cfs-file (make-fringe-from-file "c12d59fringe")
                                         (make-fringe-from-file "c12d58fringe")
