@@ -133,8 +133,10 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
                                (list fspec)
                                (filespec-pcount fspec))))
 
-;; drop-some-maybe: (listof filespec) int -> (listof filespec)
+;; drop-some-maybe: (listof filespec) int -> (values (listof filespec) int)
 ;; drop leading filespecs in the fringe that would be open-and-closed when skipping over skip
+;; returning two values: remaining list-of filespecs, and int, the number of positions dropped in filespecs
+;; so that the caller can decide how many positions still need to be passed-over to make the given skip count
 ;; **** filespecs must be non-zero length
 (define (drop-some-maybe lofspec skip)
   ;(printf "drop-some-maybe: entering with skip=~a~%" skip)

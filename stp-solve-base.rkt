@@ -21,8 +21,8 @@
 
 ;; hcposition<?: hc-position hc-position -> boolean
 (define (hcposition<? p1 p2)
-  (or (fx< (hc-position-hc p1) (hc-position-hc p2))
-      (and (fx= (hc-position-hc p1) (hc-position-hc p2))
+  (or (< (hc-position-hc p1) (hc-position-hc p2))
+      (and (= (hc-position-hc p1) (hc-position-hc p2))
            (bytes<? (hc-position-bs p1) (hc-position-bs p2)))))
 
 ;; blexi<?: hc-position hc-position -> boolean
@@ -116,12 +116,12 @@
   (let* ([mid (floor (/ (+ low high) 2))]
          [mid-hashcode (and (< mid (vector-length vop)) (equal-hash-code (vector-ref vop mid)))])
     (cond [(>= low high) low]
-          [(fx= pos-hashcode mid-hashcode)
+          [(= pos-hashcode mid-hashcode)
            (or (for/last ([index (in-range mid -1 -1)]
-                          #:when (fx= (equal-hash-code (vector-ref vop index)) mid-hashcode))
+                          #:when (= (equal-hash-code (vector-ref vop index)) mid-hashcode))
                  index)
                0)]
-          [(fx< pos-hashcode mid-hashcode) (find-pos-index pos-hashcode vop low mid)]
+          [(< pos-hashcode mid-hashcode) (find-pos-index pos-hashcode vop low mid)]
           [else (find-pos-index pos-hashcode vop (add1 mid) high)])))
 
 ;; vec-member?: (vectorof hc-position) hc-position (hc-position hc-position -> boolean) [int] [int] -> boolean
@@ -150,7 +150,7 @@
     (bytes-copy! targetbs *num-spaces* src-bspos *num-spaces* piece-start)
     ;; set moved piece
     (bytes-copy! targetbs piece-start
-                 (charify-int (bitwise-xor (intify (subbytes src-bspos piece-start piece-end))
+                 (charify-int (bitwise-xor (intify src-bspos piece-start piece-end)
                                            (third mv-schema))))
     ;; copy remaining
     (bytes-copy! targetbs piece-end
@@ -161,7 +161,7 @@
 ;; but for each next-position, return a tile-loc/position pair for the given piece just moved
 (define (hc-1pc-1step piece-type loc-pos-pair expcount plocvec)
   (let* ([mv-schema empty]
-         [space-int (intify (subbytes (mcdr loc-pos-pair) 0 *num-spaces*))])
+         [space-int (intify (mcdr loc-pos-pair) 0 *num-spaces*)])
     (for ([dir-trans *prim-move-translations*]
           [dir-i (in-range (length *prim-move-translations*))]
           #:when (begin (set! mv-schema (array-ref *ms-array* piece-type (mcar loc-pos-pair) dir-i))
@@ -203,7 +203,7 @@
       (let ([bs (hc-position-bs hc-s)]
             [target-hc-pos 'mutable-hc-pos-in-*expansion-space*])
         (set-box! expand-count 0)
-        (for ([i (in-range (vector-ref *piece-type-template* 0) *num-pieces*)]) ;; start after spaces
+        (for ([i (in-range *num-spaces* *num-pieces*)]) ;; start after spaces
           (let ([ptype (vector-ref *bs-ptype-index* i)]
                 [ploc (- (bytes-ref bs i) *charify-offset*)])
             (vector-fill! *piecelocvec* #f) ; reset for next piece

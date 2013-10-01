@@ -24,17 +24,17 @@
 (define *depth-start-time* "the time from current-seconds at the start of a given depth")
 (define *master-name* "the name of the host where the master process is running")
 (define *local-store* "the root portion of path to where workers can store temporary fringe files")
-#|
+;#|
 (set! *master-name* "localhost")
 (set! *local-store* "/space/fringefiles/")
 ;(set! *local-store* "/state/partition1/fringefiles/")
 (define *n-processors* 4)
-|#
-;#|
+;|#
+#|
 (set! *master-name* "wcp")
 (set! *local-store* "/state/partition1/fringefiles/")
 (define *n-processors* 32)
-;|#
+|#
 (define *expand-multiplier* 1)
 (define *merge-multiplier* 1)
 (define *n-expanders* (* *n-processors* *expand-multiplier*))
@@ -111,8 +111,7 @@
       (printf "pos: ~a~%~a~%" (stringify p) p))|#
     (for ([sgmnt (fringe-segments pf)]) (delete-file (filespec-fullpathname sgmnt)))
     (write-fringe-to-disk (sort res hcposition<?) new-cf-name)
-    (make-fringe "" (list (make-filespec ;*most-negative-fixnum* *most-positive-fixnum* 
-                                         new-cf-name (length res) (file-size new-cf-name) "")) (length res))))
+    (make-fringe "" (list (make-filespec new-cf-name (length res) (file-size new-cf-name) "")) (length res))))
 
 
 
@@ -211,8 +210,6 @@
             (set! slice-upper-bound (vector-ref *proto-fringe-slice-bounds* (add1 proto-slice-num))))
           (fprintf proto-slice-ofile "~a~%" (hc-position-bs efpos))
           (when (is-goal? efpos) (vector-set! sample-stats 4 (hc-position-bs efpos)))
-          ;(vector-set! sample-stats 1 (fxmin (vector-ref sample-stats 1) (hc-position-hc efpos)))
-          ;(vector-set! sample-stats 2 (fxmax (vector-ref sample-stats 2) (hc-position-hc efpos)))
           (vector-set! slice-counts proto-slice-num (add1 (vector-ref slice-counts proto-slice-num))))
         (advance-fhead! an-fhead)
         (unless (fhdone? an-fhead) ;;(eof-object? (peek-byte (fringehead-iprt an-fhead) 1))
@@ -258,9 +255,7 @@
     ;; write the first pcount positions to the file
     (set! this-batch (write-fringe-to-disk *expansion-space* fullpath pcount #t))
     ;; return the two values: augmented list of filespecs, and the incremented number of duplicates eliminated during writing
-    (values (cons (make-filespec ;(hc-position-hc (vector-ref *expansion-space* 0))
-                                 ;(fx+ (hc-position-hc (vector-ref *expansion-space* (sub1 pcount))) 1)
-                                 f this-batch (file-size fullpath) *local-store*)
+    (values (cons (make-filespec f this-batch (file-size fullpath) *local-store*)
                   ofiles)
             (+ prev-dupes (- pcount this-batch)))))
 
@@ -429,8 +424,8 @@
           depth pf-spec cf-spec)|#
   (let* (;; EXPAND
          [start-expand (current-seconds)]
-         [ranges (make-vector-ranges (fringe-pcount cf))]
-         ;[ranges (make-simple-ranges (fringe-segments cf))]
+         ;[ranges (make-vector-ranges (fringe-pcount cf))]
+         [ranges (make-simple-ranges (fringe-segments cf))]
          ;; --- Distribute the actual expansion work ------------------------
          ;[sampling-stats (remote-expand-fringe ranges pf rcf depth)]
          [sampling-stats (remote-expand-fringe ranges pf cf depth)]
@@ -443,8 +438,7 @@
          [proto-fringe-fspecs (for/vector ([i *num-proto-fringe-slices*]);; for each index to a slice...
                                 ;; pull out the info from each sampling-stat
                                 (for/vector ([ss sampling-stats]) 
-                                  (make-filespec ;0 0 ;; ignore the min and max hashcodes as they should be deprecated
-                                                 (string-append (vector-ref ss 5) "-" (~a i #:left-pad-string "0" #:width 3 #:align 'right)) ;; fname
+                                  (make-filespec (string-append (vector-ref ss 5) "-" (~a i #:left-pad-string "0" #:width 3 #:align 'right)) ;; fname
                                                  (vector-ref (vector-ref ss 3) i) ;pcount
                                                  (vector-ref (vector-ref ss 6) i) ;file-size
                                                  "")))]
@@ -490,19 +484,19 @@
         (vector-set! counts 1 (+ (vector-ref ss 1) (vector-ref counts 1)))
         (vector-set! counts 2 (+ (vector-ref ss 2) (vector-ref counts 2)))
         (vector-set! counts 3 (+ (vector-ref ss 8) (vector-ref counts 3))))
-      (printf "duplicate-elimination-data: ~a\t~a\t~a\t~a\t~a\t~a~%"
+      (printf "duplicate-elimination-data: ~a\t~a\t~a\t~a\t~a\t~a\t~a~%"
               depth
               (vector-ref counts 0) ; sum of duplicate-free positions written to proto-fringes -- pre-merge
               (vector-ref counts 1) ; duplicates eliminated because prev- or current-fringe
               (vector-ref counts 2) ; duplicates eliminated because other partial-expansion at current depth
               (vector-ref counts 3) ; duplicates eliminated before first writing to partial-expansion
-              (for/sum ([n counts]) n))) ; total
+              (for/sum ([n counts]) n) ; total number of expanded positions handled at this level
+              (for/sum ([n sef-lengths]) n))) ; number of positions in the new fringe
     ;; make the new fringe to return
     (make-fringe ""
                  (for/list ([segmentfile sorted-expansion-files]
                             [length sef-lengths])
-                   (make-filespec ;'ignore-min-hc 'ignore-max-hc 
-                                  segmentfile length (file-size segmentfile) ""))
+                   (make-filespec segmentfile length (file-size segmentfile) ""))
                  (for/sum ([len sef-lengths]) len))
     ))
 
@@ -520,7 +514,7 @@
       (distributed-expand-fringe prev-fringe current-fringe depth)))
 
 
-(define *max-depth* 10)(set! *max-depth* 105)
+(define *max-depth* 10)(set! *max-depth* 255)
 
 ;; cfs-file: fringe fringe int -> position
 ;; perform a file-based cluster-fringe-search at given depth
@@ -546,10 +540,8 @@
   ;; initialization of fringe files
   (write-fringe-to-disk empty "fringe-d-1")
   (write-fringe-to-disk (list start-position) "fringe-d0")
-  (cfs-file (make-fringe "" (list (make-filespec ;*most-negative-fixnum* *most-positive-fixnum* 
-                                                 "fringe-d-1" 0 (file-size "fringe-d-1") "")) 0)
-            (make-fringe "" (list (make-filespec ;*most-negative-fixnum* *most-positive-fixnum* 
-                                   "fringe-d0" 1 (file-size "fringe-d0") "")) 1)
+  (cfs-file (make-fringe "" (list (make-filespec "fringe-d-1" 0 (file-size "fringe-d-1") "")) 0)
+            (make-fringe "" (list (make-filespec "fringe-d0" 1 (file-size "fringe-d0") "")) 1)
             1))
 
 ;; make-fringe-from-files: string int -> fringe
@@ -572,8 +564,8 @@
                  filepcount)))
 
 ;(block10-init)
-(climb12-init)
-;(climb15-init)
+;(climb12-init)
+(climb15-init)
 ;(climbpro24-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 

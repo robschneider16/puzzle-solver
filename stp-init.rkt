@@ -151,16 +151,20 @@
       ba
       (let ([running-start 0])
         (for/vector ([num-of-pt *piece-type-template*])
-          (let ([res (intify (subbytes ba running-start (+ running-start num-of-pt)))])
+          (let ([res (intify ba running-start (+ running-start num-of-pt))])
             (set! running-start (+ running-start num-of-pt))
             res)))))
 
-;; intify: bytestring -> int
+;; intify: bytestring [int] [int] -> int
 ;; convert a given series of bytes to a bitwise overlay of their corresponding positions
-(define (intify bs)
+#|(define (intify bs (start 0) (end (bytes-length bs)))
   (for/fold ([newnum 0])
     ([ploc bs])
-    (+ newnum (arithmetic-shift 1 (- ploc *charify-offset*)))))
+    (+ newnum (arithmetic-shift 1 (- ploc *charify-offset*)))))|#
+(define (intify bs (start 0) (end (bytes-length bs)))
+  (for/fold ([newnum 0])
+    ([pref (in-range start end)])
+    (+ newnum (arithmetic-shift 1 (- (bytes-ref bs pref) *charify-offset*)))))
 
 ;; bw-positionify: old-position -> bw-position
 ;; create a bitwise-'position' representation of a board state based on the given start-list pre-position format
