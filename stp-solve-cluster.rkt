@@ -28,7 +28,7 @@
 (set! *master-name* "localhost")
 (set! *local-store* "/space/fringefiles/")
 ;(set! *local-store* "/state/partition1/fringefiles/")
-(define *n-processors* 4)
+(define *n-processors* 1)
 ;|#
 #|
 (set! *master-name* "wcp")
@@ -40,7 +40,7 @@
 (define *n-expanders* (* *n-processors* *expand-multiplier*))
 (define *n-mergers* (* *n-processors* *merge-multiplier*))
 
-(define *diy-threshold* 10000) ;;**** this must be significantly less than EXPAND-SPACE-SIZE 
+(define *diy-threshold* 1000) ;;**** this must be significantly less than EXPAND-SPACE-SIZE 
 
 
 (define *most-positive-fixnum* 0)
@@ -91,18 +91,19 @@
                             ([sgmnt (fringe-segments pf)])
                             (set-union the-fringe
                                        (list->set (read-fringe-from-file (filespec-fullpathname sgmnt)))))] ; pf- and cf-spec's in expand-fringe-self should have empty fbase
-         [current-fringe-vec 
-          (list->vector (for/fold ([the-fringe empty])
-                          ([sgmnt (reverse (fringe-segments cf))])
-                          (append (read-fringe-from-file (filespec-fullpathname sgmnt)) the-fringe)))]
+         [current-fringe-set
+          (for/fold ([the-fringe (set)])
+            ([sgmnt (fringe-segments cf)])
+            (set-union the-fringe
+                       (list->set (read-fringe-from-file (filespec-fullpathname sgmnt)))))]
          [new-cf-name (format "fringe-d~a" depth)]
          ;[prntmsg (printf "finished reading the fringes~%")]
          [exp-ptr 0]
-         [expand-them (for ([p-to-expand current-fringe-vec])
+         [expand-them (for ([p-to-expand current-fringe-set])
                         (set! exp-ptr (expand p-to-expand exp-ptr)))]
          [res (set->list (for/set ([i exp-ptr]
                                    #:unless (or (set-member? prev-fringe-set (vector-ref *expansion-space* i))
-                                                (position-in-vec? current-fringe-vec (vector-ref *expansion-space* i))))
+                                                (set-member? current-fringe-set (vector-ref *expansion-space* i))))
                            (when (is-goal? (vector-ref *expansion-space* i)) (set! *found-goal* (vector-ref *expansion-space* i)))
                            (vector-ref *expansion-space* i)))]
          )
@@ -190,7 +191,7 @@
                   0
                   n-pos-to-process
                   partial-exp-dupes)]
-         [last-pos-bs #"NoLastPos"]
+         [last-pos-bs #"~~~~~~~~NoLastPos"]
          )
     ;; locally merge the pre-proto-fringes, removing duplicates from prev- and current-fringes
     (for ([an-fhead (in-heap/consume! heap-o-fheads)])
@@ -249,7 +250,7 @@
     (for ([i (in-range pcount (vector-length *expansion-space*))])
       (set! hc-to-scrub (vector-ref *expansion-space* i))
       (set-hc-position-hc! hc-to-scrub *most-positive-fixnum*)    ;; make vector-sort! put these at the very end, but if a positions has *most-positive-fixnum* ...
-      (bytes-copy! (hc-position-bs hc-to-scrub) 0 #"~~IgnoreMe")) ;; #\~ (ASCII character 126) is greater than any of our positions
+      (bytes-copy! (hc-position-bs hc-to-scrub) 0 #"~~~~~~~~IgnoreMe~~" 0 *num-pieces*)) ;; #\~ (ASCII character 126) is greater than any of our positions
     ;; sort the vector
     (vector-sort! hcposition<? *expansion-space*)
     ;; write the first pcount positions to the file
@@ -366,7 +367,7 @@
                           lheap)]
          ;[pmsg3 (printf "distmerge-debug3: made the heap with ~a frigeheads in it~%" (heap-count heap-o-fheads))]
          ;****** log duplicate eliminations here
-         [segment-size (let ([last-pos (make-hcpos (bytes 49 49 49 49))]
+         [segment-size (let ([last-pos (make-hcpos #"~~~~~~~~NoLastPos")]
                              [keep-pos (void)]
                              [num-written 0])
                          (for ([an-fhead (in-heap/consume! heap-o-fheads)])
@@ -514,7 +515,7 @@
       (distributed-expand-fringe prev-fringe current-fringe depth)))
 
 
-(define *max-depth* 10)(set! *max-depth* 255)
+(define *max-depth* 10)(set! *max-depth* 75)
 
 ;; cfs-file: fringe fringe int -> position
 ;; perform a file-based cluster-fringe-search at given depth
@@ -569,15 +570,19 @@
 ;(climbpro24-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
+;; THIS IS JUST FOR TESTING THE DUPLICATE-DISCREPANCY
+(set! *most-negative-fixnum* 0)
+(set! *most-positive-fixnum* (expt *bsz* 10))
+
 ;#|
 (module+ main
   ;; Switch between these according to if using the cluster or testing on multi-core single machine
   (connect-to-riot-server! *master-name*)
   (define search-result (time (start-cluster-fringe-search *start*)))
   #|
-  (define search-result (time (cfs-file (make-fringe-from-files "fringe-segment-d96-" 32)
-                                        (make-fringe-from-files "fringe-segment-d97-" 32)
-                                        98)))
+  (define search-result (time (cfs-file (make-fringe-from-files "fringe-segment-dX-" n)
+                                        (make-fringe-from-files "fringe-segment-dX-" n)
+                                        X)))
   |#
   #|
   (define search-result (time (cfs-file (make-fringe-from-file "c12d59fringe")

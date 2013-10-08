@@ -5,7 +5,7 @@
 
 (provide EXPAND-SPACE-SIZE
          hc-position hc-position-hc hc-position-bs hc-position? set-hc-position-hc!
-         make-hcpos
+         fake-hc make-hcpos
          *prim-move-translations* *charify-offset* *max-board-size*
          *num-piece-types* *piece-types* *num-pieces*
          *bs-ptype-index*
@@ -61,9 +61,17 @@
 (struct hc-position (hc bs) #:transparent #:mutable)
 ;; the hc is the hashcode of the bytestring
 
+;; fake-hc: bytestring -> number
+;; create a number to use as the hash-code to test the duplicate-discrepancy issue
+(define (fake-hc bs)
+  (do ((i 4 (add1 i))
+       (fhc 0 (+ (* *bsz* fhc) (- (bytes-ref bs i) *charify-offset*))))
+    ((>= i 13) fhc)))
+
 ;; make-hcpos: bs-position -> hc-position
 ;; wrapper for the position rep augmented with the hashcode
-(define (make-hcpos bsrep) (hc-position (equal-hash-code bsrep) bsrep))
+;(define (make-hcpos bsrep) (hc-position (equal-hash-code bsrep) bsrep))
+(define (make-hcpos bsrep) (hc-position (fake-hc bsrep) bsrep))
 
 
 ;; INITIALIZE STUFF FOR SLIDING-TILE-SOLVER

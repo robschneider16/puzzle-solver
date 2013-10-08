@@ -211,7 +211,8 @@
             ))
         (for ([i (unbox expand-count)])
           (set! target-hc-pos (vector-ref *expansion-space* (+ exp-ptr i)))
-          (set-hc-position-hc! target-hc-pos (equal-hash-code (mcdr (vector-ref *expandbuf* i))))
+          ;(set-hc-position-hc! target-hc-pos (equal-hash-code (mcdr (vector-ref *expandbuf* i))))
+          (set-hc-position-hc! target-hc-pos (fake-hc (mcdr (vector-ref *expandbuf* i))))
           ;; copy bytes to the *expansion-space*
           (bytes-copy! (hc-position-bs target-hc-pos) 0 (mcdr (vector-ref *expandbuf* i))))
         (+ exp-ptr (unbox expand-count))))))
