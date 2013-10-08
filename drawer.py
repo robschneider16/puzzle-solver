@@ -1,3 +1,5 @@
+# Need access to graphics.py from John Zelle.  
+# see http://mcsp.warburg.edu/zelle/python/graphics.py
 from graphics import *
 from random import choice
 
