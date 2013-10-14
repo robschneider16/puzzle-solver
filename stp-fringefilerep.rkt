@@ -73,7 +73,7 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 ;; #t if readcount >= total for the given fringehead -- that is, this fringehead is exhausted.
 ;; Note: readcount starts at 1, 
 (define (fhdone? fh)
-  (when (and (eof-object? (fringehead-next fh)) (empty? (rest (fringehead-filespecs fh))) (<= (fringehead-readcount fh) (fringehead-total fh)))
+  (when (and (eof-object? (fringehead-next fh)) (empty? (rest (fringehead-filespecs fh))) (< (fringehead-readcount fh) (fringehead-total fh)))
     ;; try to reset 
     (error 'fhdone? (format "hit end of fringe reading only ~a of ~a positions~%" (fringehead-readcount fh) (fringehead-total fh))))
   (or (> (fringehead-readcount fh) (fringehead-total fh))
@@ -83,21 +83,26 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 ;; advance-fhead!: fringehead -> position OR void
 ;; move to the next position, but check to make sure something is available if expected
 (define (advance-fhead! fh)
-  (when (< (fringehead-readcount fh) (filespec-pcount (first (fringehead-filespecs fh))))
-    (do ([sleep-time 0.01 (* sleep-time 2)])
-      ((not (eof-object? (peek-bytes 1 1 (fringehead-iprt fh)))) 'proceed)
-      (printf "advance-fhead!: sleeping while waiting on ~a after reading ~a of ~a positions~%" 
-              (filespec-fullpathname (first (fringehead-filespecs fh))) (fringehead-readcount fh) (fringehead-total fh))
-      (sleep sleep-time)))
-  (unless (fhdone? fh)
+  (do ([do-at-least-one #f #t])
+    ((or (fhdone? fh) (and (not (eof-object? (fringehead-next fh))) do-at-least-one))
+     (unless (eof-object? (fringehead-next fh)) (fringehead-next fh)))
+    ;; wait for completed file if necessary -- this should be removed
+    (when (< (fringehead-readcount fh) (filespec-pcount (first (fringehead-filespecs fh))))
+      (do ([sleep-time 0.01 (* sleep-time 2)])
+        ((not (eof-object? (peek-bytes 1 1 (fringehead-iprt fh)))) 'proceed)
+        (printf "advance-fhead!: sleeping while waiting on ~a after reading ~a of ~a positions~%" 
+                (filespec-fullpathname (first (fringehead-filespecs fh))) (fringehead-readcount fh) (fringehead-total fh))
+        (sleep sleep-time)))
+    ;; advance to next position in current file or to next file if at end of file
     (set-fringehead-next! fh (read-bs->hcpos (fringehead-iprt fh)))
-    (set-fringehead-readcount! fh (add1 (fringehead-readcount fh)))
-    (when (and (eof-object? (fringehead-next fh)) (not (fhdone? fh))) ; advance to next segment
+    (unless (eof-object? (fringehead-next fh))
+      (set-fringehead-readcount! fh (add1 (fringehead-readcount fh))))
+    (when (and (eof-object? (fringehead-next fh)) (not (fhdone? fh))) ; advance to next NON-EMPTY segment
       (set-fringehead-filespecs! fh (rest (fringehead-filespecs fh)))
       (close-input-port (fringehead-iprt fh))
       (set-fringehead-iprt! fh (open-input-file (filespec-fullpathname (first (fringehead-filespecs fh)))))
-      (set-fringehead-next! fh (read-bs->hcpos (fringehead-iprt fh))))
-    (fringehead-next fh)))
+      (set-fringehead-next! fh (read-bs->hcpos (fringehead-iprt fh)))))
+    )
 
 ;; position-in-fhead?: position fringehead -> boolean
 ;; determines if given position is present in the fringe headed by the given fringehead
@@ -118,6 +123,7 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 (define (fh-from-fringe f [skip 0])
   ;(printf "fh-from-fringe: starting~%")
   (let*-values ([(active-fspecs dropped) (drop-some-maybe (fringe-segments f) skip)]
+                ;; first active-fspecs must have strictly greater than (- skip dropped) positions which must be strictly greater than zero
                 [(firstfullpathname) (filespec-fullpathname (first active-fspecs))]
                 [(inprt) (open-input-file firstfullpathname)]
                 [(new-fh) (fringehead (read-bs->hcpos inprt) inprt active-fspecs (add1 dropped) (fringe-pcount f))])
@@ -137,14 +143,15 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 ;; drop leading filespecs in the fringe that would be open-and-closed when skipping over skip
 ;; returning two values: remaining list-of filespecs, and int, the number of positions dropped in filespecs
 ;; so that the caller can decide how many positions still need to be passed-over to make the given skip count
-;; **** filespecs must be non-zero length
 (define (drop-some-maybe lofspec skip)
   ;(printf "drop-some-maybe: entering with skip=~a~%" skip)
   (do ([i skip (- i (filespec-pcount (car lof)))]
        [dropped 0 (+ dropped (filespec-pcount (car lof)))]
        [lof lofspec (cdr lof)]
        )
-    ((< i (filespec-pcount (car lof))) 
+    ((or (empty? (cdr lof))
+         (and (positive? (filespec-pcount (car lof)))
+              (< i (filespec-pcount (car lof))))) 
      ;(printf "drop-some-maybe: about to return two values lof=~a, and dropped=~a~%" lof dropped)
      (values lof dropped))))
 

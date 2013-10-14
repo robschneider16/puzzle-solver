@@ -28,7 +28,7 @@
 (set! *master-name* "localhost")
 (set! *local-store* "/space/fringefiles/")
 ;(set! *local-store* "/state/partition1/fringefiles/")
-(define *n-processors* 1)
+(define *n-processors* 32)
 ;|#
 #|
 (set! *master-name* "wcp")
@@ -170,7 +170,8 @@
   (let* ([pffh (fh-from-fringe pf)]
          [cffh (fh-from-fringe cf)]
          [n-pos-to-process (for/sum ([an-fspec lo-expand-fspec]) (filespec-pcount an-fspec))]
-         [lo-effh (for/list ([an-fspec lo-expand-fspec]) (fh-from-filespec an-fspec))]
+         [lo-effh (for/list ([an-fspec lo-expand-fspec]
+                             #:unless (zero? (filespec-pcount an-fspec))) (fh-from-filespec an-fspec))]
          [heap-o-fheads (let ([lheap (make-heap (lambda (fh1 fh2) (hcposition<? (fringehead-next fh1) (fringehead-next fh2))))])
                           (heap-add-all! lheap lo-effh)
                           lheap)]
@@ -197,7 +198,8 @@
     (for ([an-fhead (in-heap/consume! heap-o-fheads)])
       (let ([efpos (fringehead-next an-fhead)])
         (unless ;; efpos is a duplicate
-            (or (and (bytes=? (hc-position-bs efpos) last-pos-bs) ; duplicate from most recently written 
+            (or (fhdone? an-fhead)
+                (and (bytes=? (hc-position-bs efpos) last-pos-bs) ; duplicate from most recently written 
                      (vector-set! sample-stats 2 (add1 (vector-ref sample-stats 2))))
                 (and (position-in-fhead? efpos pffh) (vector-set! sample-stats 1 (add1 (vector-ref sample-stats 1))))
                 (and (position-in-fhead? efpos cffh) (vector-set! sample-stats 1 (add1 (vector-ref sample-stats 1)))))
@@ -223,8 +225,12 @@
       (touch (string-append ofile-name "-" (~a i #:left-pad-string "0" #:width 3 #:align 'right))))
     ;; complete the sampling-stat
     (vector-set! sample-stats 0 (for/sum ([i (vector-ref sample-stats 3)]) i))
-    (vector-set! sample-stats 6 (for/vector ([i *num-proto-fringe-slices*]) 
-                                  (file-size (format "~a-~a" ofile-name (~a i #:left-pad-string "0" #:width 3 #:align 'right)))))
+    (vector-set! sample-stats 6 (let ([retvec (for/vector #:length *num-proto-fringe-slices*
+                                                          ([i (add1 proto-slice-num)])
+                                                          (file-size (format "~a-~a" ofile-name (~a i #:left-pad-string "0" #:width 3 #:align 'right))))])
+                                  (for ([i (in-range (add1 proto-slice-num) *num-proto-fringe-slices*)])
+                                    (vector-set! retvec i 0))
+                                  retvec))
     ;; delete files that are no longer needed
     (for ([efspec lo-expand-fspec]) (delete-file (filespec-fullpathname efspec)))
     ;(unless (string=? *master-name* "localhost") (delete-fringe pf))
@@ -246,19 +252,21 @@
          [f (format "~a~a" ofile-template ofile-counter)]
          [fullpath (string-append *local-store* f)]
          [this-batch 0])
-    ;; scrub the last part of the vector with bogus positions
-    (for ([i (in-range pcount (vector-length *expansion-space*))])
-      (set! hc-to-scrub (vector-ref *expansion-space* i))
-      (set-hc-position-hc! hc-to-scrub *most-positive-fixnum*)    ;; make vector-sort! put these at the very end, but if a positions has *most-positive-fixnum* ...
-      (bytes-copy! (hc-position-bs hc-to-scrub) 0 #"~~~~~~~~IgnoreMe~~" 0 *num-pieces*)) ;; #\~ (ASCII character 126) is greater than any of our positions
-    ;; sort the vector
-    (vector-sort! hcposition<? *expansion-space*)
-    ;; write the first pcount positions to the file
-    (set! this-batch (write-fringe-to-disk *expansion-space* fullpath pcount #t))
-    ;; return the two values: augmented list of filespecs, and the incremented number of duplicates eliminated during writing
-    (values (cons (make-filespec f this-batch (file-size fullpath) *local-store*)
-                  ofiles)
-            (+ prev-dupes (- pcount this-batch)))))
+    (cond [(zero? pcount) (touch fullpath) (values (cons (make-filespec f 0 0 *local-store*) ofiles) prev-dupes)]
+          [else
+           ;; scrub the last part of the vector with bogus positions
+           (for ([i (in-range pcount (vector-length *expansion-space*))])
+             (set! hc-to-scrub (vector-ref *expansion-space* i))
+             (set-hc-position-hc! hc-to-scrub *most-positive-fixnum*)    ;; make vector-sort! put these at the very end, but if a positions has *most-positive-fixnum* ...
+             (bytes-copy! (hc-position-bs hc-to-scrub) 0 #"~~~~~~~~IgnoreMe~~" 0 *num-pieces*)) ;; #\~ (ASCII character 126) is greater than any of our positions
+           ;; sort the vector
+           (vector-sort! hcposition<? *expansion-space*)
+           ;; write the first pcount positions to the file
+           (set! this-batch (write-fringe-to-disk *expansion-space* fullpath pcount #t))
+           ;; return the two values: augmented list of filespecs, and the incremented number of duplicates eliminated during writing
+           (values (cons (make-filespec f this-batch (file-size fullpath) *local-store*)
+                         ofiles)
+                   (+ prev-dupes (- pcount this-batch)))])))
 
 ;; remote-expand-part-fringe: (list int int) int fringe fringe int -> {whatever returned by remove-dupes}
 ;; given a pair of indices into the current-fringe that should be expanded by this process, a process-id,
@@ -275,26 +283,29 @@
          [start (first ipair)]
          [end (second ipair)]
          [assignment-count (- end start)]
-         [expanded-phase1 1];; technically, not yet, but during initialization in pre-resv do loop
+         [expanded-phase1 0];; technically, not yet, but during initialization in pre-resv do loop
          ;; make the fringehead advanced to the right place
          [cffh (fh-from-fringe cf start)]
          [dupes-caught-here 0]
+         [expansion-ptr 0]
          )
     ;; do the actual expansions
-    (do ([i 1 (add1 i)]
-         [expansion-ptr (expand (fringehead-next cffh) 0)
-                        (expand (fringehead-next cffh) expansion-ptr)])
-      ((>= i assignment-count)
+    (do ([exp-phase1 0 (add1 exp-phase1)])
+      ((>= exp-phase1 assignment-count)
        (set!-values (pre-ofiles dupes-caught-here)
-                    (dump-partial-expansion expansion-ptr pre-ofile-template-fname pre-ofile-counter pre-ofiles dupes-caught-here)))
-      ;; When we have collected the max number of expansions, create another pre-proto-fringe file
+                    (dump-partial-expansion expansion-ptr pre-ofile-template-fname pre-ofile-counter pre-ofiles dupes-caught-here))
+       (set! expanded-phase1 exp-phase1))
+      ;; expand the next position in assigned range
+      (set! expansion-ptr (expand (fringehead-next cffh) expansion-ptr))
+      ;; When we have collected the max number of expansion-successors, create another pre-proto-fringe file
       (when (>= expansion-ptr EXPAND-SPACE-SIZE)
         (set!-values (pre-ofiles dupes-caught-here)
                      (dump-partial-expansion expansion-ptr pre-ofile-template-fname pre-ofile-counter pre-ofiles dupes-caught-here))
         (set! pre-ofile-counter (add1 pre-ofile-counter))
         (set! expansion-ptr 0))
+      ;; advance the fringehead to the next position to be expanded
       (advance-fhead! cffh)
-      (set! expanded-phase1 (add1 expanded-phase1)))
+      )
     #|(printf "remote-exp-part-fringe: PHASE 1: expanding ~a positions of assigned ~a~%" 
             expanded-phase1 assignment-count);|#
     (when (< expanded-phase1 assignment-count)
@@ -315,7 +326,7 @@
 ;; where the copy is arranged-for by the master also
 (define (remote-expand-fringe ranges pf cf depth)
   ;;(printf "remote-expand-fringe: current-fringe of ~a split as: ~a~%" cur-fringe-size (map (lambda (pr) (- (second pr) (first pr))) ranges))
-  (let* ([distrib-results (for/work ([range-pair ranges]
+  (let* ([distrib-results (for/list #|work|# ([range-pair ranges]
                                      [i (in-range (length ranges))])
                                     (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end")) ;;prevent riot cache-failure
                                     ;; need alternate version of wait-for-files that just checks on the assigned range
@@ -363,7 +374,10 @@
          ;[pmsg2 (printf "distmerge-debug2: made 'to-merge-fheads'~%")]
          [heap-o-fheads (let ([lheap (make-heap (lambda (fh1 fh2) (hcposition<? (fringehead-next fh1) (fringehead-next fh2))))])
                           (heap-add-all! lheap 
-                                         (filter-not (lambda (fh) (eof-object? (fringehead-next fh))) to-merge-fheads))
+                                         (filter-not (lambda (fh) (when (eof-object? (fringehead-next fh))
+                                                                    (close-input-port (fringehead-iprt fh)))
+                                                       (eof-object? (fringehead-next fh)))
+                                                     to-merge-fheads))
                           lheap)]
          ;[pmsg3 (printf "distmerge-debug3: made the heap with ~a frigeheads in it~%" (heap-count heap-o-fheads))]
          ;****** log duplicate eliminations here
@@ -397,7 +411,7 @@
     (for ([efs expand-files-specs]) (bring-local-partial-expansions efs)))|#
   ;(printf "remote-merge: n-protof-slices=~a, and length expand-files-specs=~a~%" *num-proto-fringe-slices* (vector-length expand-files-specs))
   (let ([merge-results
-         (for/work ([i *num-proto-fringe-slices*]
+         (for/list #|work|# ([i *num-proto-fringe-slices*]
                     [expand-fspecs-slice expand-files-specs])
                    (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end")) ;finesse Riot caching
                    (let* ([ofile-name (format "fringe-segment-d~a-~a" depth (~a i #:left-pad-string "0" #:width 3 #:align 'right))]
@@ -570,14 +584,14 @@
 ;(climbpro24-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
-;; THIS IS JUST FOR TESTING THE DUPLICATE-DISCREPANCY
-(set! *most-negative-fixnum* 0)
-(set! *most-positive-fixnum* (expt *bsz* 10))
+;; THIS IS JUST FOR TESTING THE LEXI-SHIFT VERSION
+(set! *most-negative-fixnum* (fake-hc (bytes-append #"...." (apply bytes (for/list ([i 10]) (+ i *charify-offset*))))))
+(set! *most-positive-fixnum* (fake-hc (bytes-append #"...." (apply bytes (for/list ([i (in-range *bsz* (- *bsz* 10) -1)]) (+ i *charify-offset*))))))
 
 ;#|
 (module+ main
   ;; Switch between these according to if using the cluster or testing on multi-core single machine
-  (connect-to-riot-server! *master-name*)
+  ;(connect-to-riot-server! *master-name*)
   (define search-result (time (start-cluster-fringe-search *start*)))
   #|
   (define search-result (time (cfs-file (make-fringe-from-files "fringe-segment-dX-" n)
