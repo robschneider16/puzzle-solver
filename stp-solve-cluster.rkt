@@ -198,7 +198,7 @@
     (for ([an-fhead (in-heap/consume! heap-o-fheads)])
       (let ([efpos (fringehead-next an-fhead)])
         (unless ;; efpos is a duplicate
-            (or (fhdone? an-fhead)
+            (or (eof-object? efpos) ;(fhdone? an-fhead)
                 (and (bytes=? (hc-position-bs efpos) last-pos-bs) ; duplicate from most recently written 
                      (vector-set! sample-stats 2 (add1 (vector-ref sample-stats 2))))
                 (and (position-in-fhead? efpos pffh) (vector-set! sample-stats 1 (add1 (vector-ref sample-stats 1))))
@@ -364,7 +364,7 @@
   ;; NEW: ofile-name is of pattern: "fringe-segment-dX-NNN", where the X is the depth and the NN is a slice identifier
   (let* ([mrg-segment-oport (open-output-file ofile-name)] ; try writing directly to NFS
          ;[local-protofringe-fspecs (for/list ([fs slice-fspecs] #:unless (zero? (filespec-pcount fs))) (rebase-filespec fs *local-store*))]
-         [local-protofringe-fspecs (for/list ([fs slice-fspecs] #:unless (zero? (filespec-pcount fs))) fs)]
+         [local-protofringe-fspecs (for/list ([fs slice-fspecs]) fs)]
          ;[pmsg1 (printf "distmerge-debug1: ~a fspecs in ~a~%distmerge-debug1: or localfspecs=~a~%" (vector-length slice-fspecs) slice-fspecs local-protofringe-fspecs)]
          ;******
          ;****** move the fringehead creation inside the heap-o-fhead construction in order to avoid the short-lived list allocation *******

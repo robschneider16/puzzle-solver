@@ -85,6 +85,7 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 (define (advance-fhead! fh)
   (do ([do-at-least-one #f #t])
     ((or (fhdone? fh) (and (not (eof-object? (fringehead-next fh))) do-at-least-one))
+     (when (fhdone? fh) (close-input-port (fringehead-iprt fh)))
      (unless (eof-object? (fringehead-next fh)) (fringehead-next fh)))
     ;; wait for completed file if necessary -- this should be removed
     (when (< (fringehead-readcount fh) (filespec-pcount (first (fringehead-filespecs fh))))
