@@ -118,7 +118,7 @@
 ;;----------------------------------------------------------------------------------------
 ;; DISTRIBUTED EXPANSION AND MERGING OF FRINGES
 
-;; a sampling-stat is a (vector int fixnum fixnum (listofof fixnum) boolean string int)
+;; a sampling-stat is a (vector int fixnum fixnum (vectorof fixnum) boolean string (vectorof int) int int real real)
 ;; where the elements are:s
 ;; 0. total number of duplicate-free positions summed over slices
 ;; 1. number of positions discarded because duplicate with current or prev-fringes
@@ -129,6 +129,8 @@
 ;; 6. vector of slice file sizes
 ;; 7. total number of positions processed to give rise to duplicate free positions in index 0
 ;; 8. number of duplicate positions eliminated while generating the partial-expansions
+;; 9. cumulative sort-time from partial-expansion files phase1
+;; 10. cumulative write-time from partial-expansion files phase1
 
 ;; ---------------------------------------------------------------------------------------
 ;; EXPANSION .....
@@ -152,7 +154,7 @@
       (set! start-range (+ start-range (filespec-pcount fs)))
       (list (- start-range (filespec-pcount fs)) start-range))))
 
-;; remove-dupes: fringe fringe (listof filespec) string int int -> sampling-stat
+;; remove-dupes: fringe fringe (listof filespec) string int int float float -> sampling-stat
 ;; Running in distributed worker processes:
 ;; Remove duplicate positions from the list of expand-fspec files (i.e., partial-expansion...),
 ;; for any positions that also appear in the prev- or current-fringes, or within multiple partial-expansion... files.
@@ -161,7 +163,7 @@
 ;; and later delivered a copy to the working directory to share with all the other compute-nodes;
 ;; Try writing directly to the shared NFS drive as a way to spread out network traffic.  This will clean up file name in the return sampling-stat...
 ;; Accordingly, the sampling-stat return value has a filename pointing to the working directory.
-(define (remove-dupes pf cf lo-expand-fspec ofile-name depth partial-exp-dupes)
+(define (remove-dupes pf cf lo-expand-fspec ofile-name depth partial-exp-dupes part-sort-time part-write-time)
   ;; the ofile-name is just the file-name -- no *local-store* path where needed
   #|(printf "EXPAND PHASE 2 (REMOVE DUPLICATES) pf: ~a~%cf: ~a~%all of lo-expand-fspec: ~a~%ofile-name: ~a~%depth: ~a~%"
           pf cf lo-expand-fspec ofile-name depth);|#
@@ -189,7 +191,9 @@
                   ofile-name ;; here, use the stem of the shared ofile-name 
                   0
                   n-pos-to-process
-                  partial-exp-dupes)]
+                  partial-exp-dupes 
+                  part-sort-time 
+                  part-write-time)]
          [last-pos-bs #"NoLastPos"]
          )
     ;; locally merge the pre-proto-fringes, removing duplicates from prev- and current-fringes
@@ -236,28 +240,36 @@
       (error 'remove-dupes "phase 2: failed to generate a sorted fringe file ~a" ofile-name))|#
     sample-stats))
 
-;; dump-partial-expansion: int string int (listof fspec) -> (values (listof fspec) int)
+;; dump-partial-expansion: int string int (listof fspec) float float -> (values (listof fspec) int float float)
 ;; given the count of pending expanded positions to write, the out-file template, the out-file counter, and the previously written filespecs,
 ;; sort and write the specified number of positions to the appropriately opened new file,
 ;; returning two values: the list with the new filespec added and the number of duplicates eliminated at this phase
-(define (dump-partial-expansion pcount ofile-template ofile-counter ofiles prev-dupes)
+(define (dump-partial-expansion pcount ofile-template ofile-counter ofiles prev-dupes sort-time0 write-time0)
   (let* ([hc-to-scrub 'hcpos-to-scrub]
          [f (format "~a~a" ofile-template ofile-counter)]
          [fullpath (string-append *local-store* f)]
-         [this-batch 0])
+         [this-batch 0]
+         [sort-time 0]
+         [write-time 0])
     ;; scrub the last part of the vector with bogus positions
     (for ([i (in-range pcount (vector-length *expansion-space*))])
       (set! hc-to-scrub (vector-ref *expansion-space* i))
       (set-hc-position-hc! hc-to-scrub *most-positive-fixnum*)    ;; make vector-sort! put these at the very end, but if a positions has *most-positive-fixnum* ...
       (bytes-copy! (hc-position-bs hc-to-scrub) 0 #"~~IgnoreMe")) ;; #\~ (ASCII character 126) is greater than any of our positions
     ;; sort the vector
+    (set! sort-time (current-milliseconds))
     (vector-sort! hcposition<? *expansion-space*)
+    (set! sort-time (- (current-milliseconds) sort-time))
     ;; write the first pcount positions to the file
+    (set! write-time (current-milliseconds))
     (set! this-batch (write-fringe-to-disk *expansion-space* fullpath pcount #t))
+    (set! write-time (- (current-milliseconds) write-time))
     ;; return the two values: augmented list of filespecs, and the incremented number of duplicates eliminated during writing
     (values (cons (make-filespec f this-batch (file-size fullpath) *local-store*)
                   ofiles)
-            (+ prev-dupes (- pcount this-batch)))))
+            (+ prev-dupes (- pcount this-batch))
+            (+ sort-time sort-time0)
+            (+ write-time write-time0))))
 
 ;; remote-expand-part-fringe: (list int int) int fringe fringe int -> {whatever returned by remove-dupes}
 ;; given a pair of indices into the current-fringe that should be expanded by this process, a process-id,
@@ -278,18 +290,20 @@
          ;; make the fringehead advanced to the right place
          [cffh (fh-from-fringe cf start)]
          [dupes-caught-here 0]
+         [sort-time 0.0]
+         [write-time 0.0]
          )
     ;; do the actual expansions
     (do ([i 1 (add1 i)]
          [expansion-ptr (expand (fringehead-next cffh) 0)
                         (expand (fringehead-next cffh) expansion-ptr)])
       ((>= i assignment-count)
-       (set!-values (pre-ofiles dupes-caught-here)
-                    (dump-partial-expansion expansion-ptr pre-ofile-template-fname pre-ofile-counter pre-ofiles dupes-caught-here)))
+       (set!-values (pre-ofiles dupes-caught-here sort-time write-time)
+                    (dump-partial-expansion expansion-ptr pre-ofile-template-fname pre-ofile-counter pre-ofiles dupes-caught-here sort-time write-time)))
       ;; When we have collected the max number of expansions, create another pre-proto-fringe file
       (when (>= expansion-ptr EXPAND-SPACE-SIZE)
-        (set!-values (pre-ofiles dupes-caught-here)
-                     (dump-partial-expansion expansion-ptr pre-ofile-template-fname pre-ofile-counter pre-ofiles dupes-caught-here))
+        (set!-values (pre-ofiles dupes-caught-here sort-time write-time)
+                     (dump-partial-expansion expansion-ptr pre-ofile-template-fname pre-ofile-counter pre-ofiles dupes-caught-here sort-time write-time))
         (set! pre-ofile-counter (add1 pre-ofile-counter))
         (set! expansion-ptr 0))
       (advance-fhead! cffh)
@@ -304,7 +318,7 @@
     (remove-dupes pf cf pre-ofiles 
                   (format "proto-fringe-d~a-~a" depth (~a process-id #:left-pad-string "0" #:width 2 #:align 'right)) ;; ofile-name
                   depth
-                  dupes-caught-here)))
+                  dupes-caught-here sort-time write-time)))
 
 
 ;; remote-expand-fringe: (listof (list fixnum fixnum)) fring fringe int -> (listof sampling-stat)
@@ -477,6 +491,14 @@
             (- end-expand start-expand)         ;expansion
             (- merge-end end-expand)            ;merge
             (- (current-seconds) *depth-start-time*)) ;total
+    ;; report the cumulative node sort and write time during expansion phase1
+    (printf "node-sort-write: ~a\t~a\t~a\t~a\t~a~%"
+            depth
+            (for/sum ([ss sampling-stats]) (vector-ref ss 9))  ; sum of worker sort-times
+            (for/sum ([ss sampling-stats]) (vector-ref ss 10)) ; sum of worker write-times
+            (length ranges)                                    ; number of workers for computing average
+            (- end-expand start-expand)                        ; total elapsed expansion time for estimation of successor generation
+            )
     ;; report the duplicate elimination data
     (let ([counts (vector 0 0 0 0)])
       (for ([ss sampling-stats]) 
@@ -564,8 +586,8 @@
                  filepcount)))
 
 ;(block10-init)
-;(climb12-init)
-(climb15-init)
+(climb12-init)
+;(climb15-init)
 ;(climbpro24-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
 
