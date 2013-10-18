@@ -131,6 +131,7 @@
 ;; 8. number of duplicate positions eliminated while generating the partial-expansions
 ;; 9. cumulative sort-time from partial-expansion files phase1
 ;; 10. cumulative write-time from partial-expansion files phase1
+;; 11. other-expand-time (i.e., non-sort and write, or basically the successor-generation)
 
 ;; ---------------------------------------------------------------------------------------
 ;; EXPANSION .....
@@ -154,7 +155,7 @@
       (set! start-range (+ start-range (filespec-pcount fs)))
       (list (- start-range (filespec-pcount fs)) start-range))))
 
-;; remove-dupes: fringe fringe (listof filespec) string int int float float -> sampling-stat
+;; remove-dupes: fringe fringe (listof filespec) string int int float float float -> sampling-stat
 ;; Running in distributed worker processes:
 ;; Remove duplicate positions from the list of expand-fspec files (i.e., partial-expansion...),
 ;; for any positions that also appear in the prev- or current-fringes, or within multiple partial-expansion... files.
@@ -163,7 +164,7 @@
 ;; and later delivered a copy to the working directory to share with all the other compute-nodes;
 ;; Try writing directly to the shared NFS drive as a way to spread out network traffic.  This will clean up file name in the return sampling-stat...
 ;; Accordingly, the sampling-stat return value has a filename pointing to the working directory.
-(define (remove-dupes pf cf lo-expand-fspec ofile-name depth partial-exp-dupes part-sort-time part-write-time)
+(define (remove-dupes pf cf lo-expand-fspec ofile-name depth partial-exp-dupes part-sort-time part-write-time other-expand-time)
   ;; the ofile-name is just the file-name -- no *local-store* path where needed
   #|(printf "EXPAND PHASE 2 (REMOVE DUPLICATES) pf: ~a~%cf: ~a~%all of lo-expand-fspec: ~a~%ofile-name: ~a~%depth: ~a~%"
           pf cf lo-expand-fspec ofile-name depth);|#
@@ -193,7 +194,8 @@
                   n-pos-to-process
                   partial-exp-dupes 
                   part-sort-time 
-                  part-write-time)]
+                  part-write-time
+                  other-expand-time)]
          [last-pos-bs #"NoLastPos"]
          )
     ;; locally merge the pre-proto-fringes, removing duplicates from prev- and current-fringes
@@ -279,7 +281,8 @@
   ;; prev-fringe spec points to default shared directory; current-fringe spec points to *local-store* folder
   ;(printf "remote-expand-part-fringe: starting with pf: ~a, and cf: ~a~%" pf cf)
   ;; EXPAND PHASE 1
-  (let* ([pre-ofile-template-fname (format "partial-expansion~a" (~a process-id #:left-pad-string "0" #:width 2 #:align 'right))]
+  (let* ([expand-part-time (current-milliseconds)]
+         [pre-ofile-template-fname (format "partial-expansion~a" (~a process-id #:left-pad-string "0" #:width 2 #:align 'right))]
          [pre-ofile-counter 0]
          [pre-ofiles empty]
          ;; *** Dynamically choose the size of the pre-proto-fringes to keep the number of files below 500 ***
@@ -318,7 +321,7 @@
     (remove-dupes pf cf pre-ofiles 
                   (format "proto-fringe-d~a-~a" depth (~a process-id #:left-pad-string "0" #:width 2 #:align 'right)) ;; ofile-name
                   depth
-                  dupes-caught-here sort-time write-time)))
+                  dupes-caught-here sort-time write-time (- (current-milliseconds) expand-part-time))))
 
 
 ;; remote-expand-fringe: (listof (list fixnum fixnum)) fring fringe int -> (listof sampling-stat)
@@ -492,12 +495,13 @@
             (- merge-end end-expand)            ;merge
             (- (current-seconds) *depth-start-time*)) ;total
     ;; report the cumulative node sort and write time during expansion phase1
-    (printf "node-sort-write: ~a\t~a\t~a\t~a\t~a~%"
+    (printf "node-sort-write: ~a\t~a\t~a\t~a\t~a\t~a~%"
             depth
             (for/sum ([ss sampling-stats]) (vector-ref ss 9))  ; sum of worker sort-times
             (for/sum ([ss sampling-stats]) (vector-ref ss 10)) ; sum of worker write-times
             (length ranges)                                    ; number of workers for computing average
             (- end-expand start-expand)                        ; total elapsed expansion time for estimation of successor generation
+            (for/sum ([ss sampling-stats]) (vector-ref ss 11)) ; time mainly for successor generation (non- sort and write)
             )
     ;; report the duplicate elimination data
     (let ([counts (vector 0 0 0 0)])
