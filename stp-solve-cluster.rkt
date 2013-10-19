@@ -448,6 +448,10 @@
          [sampling-stats (remote-expand-fringe ranges pf cf depth)]
          [end-expand (current-seconds)]
          ;; -----------------------------------------------------------------
+         ;; delete previous fringe as duplicates have already been removed
+         [delete-previous-fringe (begin (delete-fringe pf)
+                                        (when (string=? *master-name* "localhost") ; delete the *local-store* prev-fringe
+                                          (delete-fringe pf *local-store*)))]
          [check-for-goal (for/first ([ss sampling-stats]
                                      #:when (vector-ref ss 4))
                            (set! *found-goal* (vector-ref ss 4)))]
@@ -480,10 +484,6 @@
       ;(printf "distributed-expand-fringe: concatenating ~a~%" f)
       (system (format "cat ~a >> fringe-d~a" f depth)))|#
     ;;--- delete files we don't need anymore ---------
-    ;; delete previous fringe
-    (delete-fringe pf)
-    (when (string=? *master-name* "localhost") ; delete the *local-store* prev-fringe
-      (delete-fringe pf *local-store*))
     (for ([fspecs proto-fringe-fspecs])
       (for ([fspec fspecs]) (delete-file (filespec-fullpathname fspec))))
     ;(system "rm partial-expansion* partial-merge*")
