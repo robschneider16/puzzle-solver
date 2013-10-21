@@ -84,22 +84,30 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 ;; move to the next position, but check to make sure something is available if expected
 (define (advance-fhead! fh)
   (do ([do-at-least-one #f #t])
-    ((or (fhdone? fh) (and (not (eof-object? (fringehead-next fh))) do-at-least-one))
+    ((or (fhdone? fh) 
+         (and (not (eof-object? (fringehead-next fh)))
+              do-at-least-one))
      (when (fhdone? fh) (close-input-port (fringehead-iprt fh)))
      (unless (eof-object? (fringehead-next fh)) (fringehead-next fh)))
     ;; wait for completed file if necessary -- this should be removed
+    #|
     (when (< (fringehead-readcount fh) (filespec-pcount (first (fringehead-filespecs fh))))
       (do ([sleep-time 0.01 (* sleep-time 2)])
         ((not (eof-object? (peek-bytes 1 1 (fringehead-iprt fh)))) 'proceed)
         (printf "advance-fhead!: sleeping while waiting on ~a after reading ~a of ~a positions~%" 
                 (filespec-fullpathname (first (fringehead-filespecs fh))) (fringehead-readcount fh) (fringehead-total fh))
         (sleep sleep-time)))
+    |#
     ;; advance to next position in current file or to next file if at end of file
     (set-fringehead-next! fh (read-bs->hcpos (fringehead-iprt fh)))
     (unless (eof-object? (fringehead-next fh))
       (set-fringehead-readcount! fh (add1 (fringehead-readcount fh))))
-    (when (and (eof-object? (fringehead-next fh)) (not (fhdone? fh))) ; advance to next NON-EMPTY segment
-      (set-fringehead-filespecs! fh (rest (fringehead-filespecs fh)))
+    (when (and (eof-object? (fringehead-next fh)) (not (fhdone? fh))) 
+      ; advance to next NON-EMPTY segment
+      (do ([lfspcs (fringehead-filespecs fh) (cdr (lfspcs))])
+        ((or (empty? lfspcs)
+             (positive? (filespec-pcount (car lfspcs))))
+         (set-fringehead-filespecs! fh lfspcs)))
       (close-input-port (fringehead-iprt fh))
       (set-fringehead-iprt! fh (open-input-file (filespec-fullpathname (first (fringehead-filespecs fh)))))
       (set-fringehead-next! fh (read-bs->hcpos (fringehead-iprt fh)))))
@@ -111,11 +119,16 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 ;; if the given position is less than the head of the fringe, then we'll not find it further in the fringe
 ;; that is, advance the fh while it is strictly less-than the given position
 (define (position-in-fhead? p fh)
-  (do ([fhp (fringehead-next fh) (advance-fhead! fh)])
-    ((or (fhdone? fh)
-         (not (hcposition<? fhp p)))
-     (and (hc-position? fhp)
-          (bytes=? (hc-position-bs fhp) (hc-position-bs p))))))
+  (let ([p-hc (hc-position-hc p)]
+        [p-bs (hc-position-bs p)]
+        [found-pos #f])
+    (do ([fhp (fringehead-next fh) (advance-fhead! fh)])
+      ((or (fhdone? fh)
+           (hcposition<? p fhp))
+       found-pos)
+      (when (and (= p-hc (hc-position-hc fhp))
+                 (bytes=?  p-bs (hc-position-bs fhp)))
+        (set! found-pos #t)))))
 
 ;; fh-from-fringe: fringe [int 0] -> fringehead
 ;; create a fringehead from a given fringe and advance it to the requested start point,
