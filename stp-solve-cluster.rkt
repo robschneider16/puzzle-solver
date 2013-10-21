@@ -575,7 +575,7 @@
       (distributed-expand-fringe prev-fringe current-fringe depth)))
 
 
-(define *max-depth* 10)(set! *max-depth* 75)
+(define *max-depth* 10)(set! *max-depth* 27)
 
 ;; cfs-file: fringe fringe int -> position
 ;; perform a file-based cluster-fringe-search at given depth
@@ -631,8 +631,8 @@
 (compile-ms-array! *piece-types* *bh* *bw*)
 
 ;; THIS IS JUST FOR TESTING THE LEXI-SHIFT VERSION
-(set! *most-negative-fixnum* (fake-hc (bytes-append #"...." (apply bytes (for/list ([i 10]) (+ i *charify-offset*))))))
-(set! *most-positive-fixnum* (fake-hc (bytes-append #"...." (apply bytes (for/list ([i (in-range *bsz* (- *bsz* 10) -1)]) (+ i *charify-offset*))))))
+(set! *most-negative-fixnum* (fake-hc (bytes-append #"...." (apply bytes (for/list ([i 9]) (+ i *charify-offset*))))))
+(set! *most-positive-fixnum* (fake-hc (bytes-append #"...." (apply bytes (for/list ([i (in-range *bsz* (- *bsz* 9) -1)]) (+ i *charify-offset*))))))
 
 ;#|
 (module+ main

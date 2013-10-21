@@ -28,7 +28,7 @@
 ;; blexi<?: bytestring bytestring -> boolean
 ;; lexicographic fallback for hash collision starting at position 4
 (define (blexi<? p1bs p2bs)
-  (for/first ([i (in-range 4 (min (bytes-length p1bs) (bytes-length p2bs)))]
+  (for/first ([i (in-range 4 *num-pieces*)]
               #:unless (= (bytes-ref p1bs i) (bytes-ref p2bs i)))
     (< (bytes-ref p1bs i) (bytes-ref p2bs i))))
 
