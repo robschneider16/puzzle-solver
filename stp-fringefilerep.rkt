@@ -73,43 +73,74 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 ;; #t if readcount >= total for the given fringehead -- that is, this fringehead is exhausted.
 ;; Note: readcount starts at 1, 
 (define (fhdone? fh)
+  ;; throw error if at end but not read enough positions
   (when (and (eof-object? (fringehead-next fh)) 
              (or (empty? (fringehead-filespecs fh))
                  (empty? (rest (fringehead-filespecs fh))))
              (< (fringehead-readcount fh) (fringehead-total fh)))
     (error 'fhdone? (format "hit end of fringe reading only ~a of ~a positions~%" (fringehead-readcount fh) (fringehead-total fh))))
-  (>= (fringehead-readcount fh) (fringehead-total fh)))
+  (eof-object? (fringehead-next fh))
+  ;(>= (fringehead-readcount fh) (fringehead-total fh))
+  )
+
+;; skip-to-non-zero-file!: fringehead -> void
+;; called at the end of a segment file, drop any zero-position-length segments,
+;; leaving the fringehead-filespecs either empty (done)
+;; or with the first file of filespecs which has at least 1 positions to read.
+(define (skip-to-non-zero-file! fh)
+  (do ([lfspcs (cdr (fringehead-filespecs fh)) (cdr lfspcs)])
+    ((or (empty? lfspcs)
+         (positive? (filespec-pcount (car lfspcs))))
+     ;(close-input-port (fringehead-iprt fh))
+     (set-fringehead-filespecs! fh lfspcs)
+     (unless (or #t (empty? lfspcs))
+       (set-fringehead-iprt! fh (open-input-file (filespec-fullpathname (first lfspcs))))))))
 
 ;; advance-fhead!: fringehead -> position OR void
 ;; read the next position (if it exists), setting the fringehead-next accordingly
 ;; a fringehead-next should never be left as eof unless fhdone? true
-(define (advance-fhead! fh)
+(define (advance-fhead!-old fh)
   (unless (fhdone? fh)
-    (do ((next-pos (read-bs->hcpos (fringehead-iprt fh)) (read-bs->hcpos (fringehead-iprt fh))))
+    (do ([next-pos (read-bs->hcpos (fringehead-iprt fh)) (read-bs->hcpos (fringehead-iprt fh))])
       ;; until either read a position or this fringehead is done
-      ((not (eof-object? next-pos))
+      ((or (not (eof-object? next-pos))
+           (fhdone? fh))
        (set-fringehead-readcount! fh (add1 (fringehead-readcount fh)))
        (set-fringehead-next! fh next-pos)
        (when (and (eof-object? next-pos) (fhdone? fh)) (error 'advance-fhead! "became fhdone? without finding a next-pos"))
-       (when (fhdone? fh) (close-input-port (fringehead-iprt fh)))
+       (close-input-port (fringehead-iprt fh))
+       (unless (fhdone? fh)
+         (set-fringehead-iprt! fh (open-input-file (filespec-fullpathname (car (fringehead-filespecs fh))))))
        (unless (eof-object? (fringehead-next fh)) (fringehead-next fh)))
       ;; must be eof -- advance to next position in current file or to next file if at end of file
       (unless (eof-object? next-pos)
         (error 'advance-fhead! (format "expected an eof object, got ~a" next-pos)))
       (when (eof-object? next-pos)
-        (when (empty? (cdr (fringehead-filespecs fh)))
+        (when (and (< (fringehead-readcount fh) (fringehead-total fh))
+                   (empty? (cdr (fringehead-filespecs fh))))
           (error 'advance-fhead! (format "empty filespecs without being done having read ~a of ~a" 
                                          (fringehead-readcount fh) (fringehead-total fh))))
         ; advance to next NON-EMPTY segment
-        (do ([lfspcs (cdr (fringehead-filespecs fh)) (cdr lfspcs)])
-          ((or (empty? lfspcs)
-               (positive? (filespec-pcount (car lfspcs))))
-           (close-input-port (fringehead-iprt fh))
-           (set-fringehead-filespecs! fh lfspcs)
-           (unless (empty? lfspcs)
-             (set-fringehead-iprt! fh (open-input-file (filespec-fullpathname (first lfspcs))))
-             )
-           ))))))
+        (skip-to-non-zero-file! fh)
+        ))))
+
+(define (advance-fhead! fh)
+  (unless (fhdone? fh)
+    (let ([next-pos (read-bs->hcpos (fringehead-iprt fh))])
+      (when (eof-object? next-pos)
+        (close-input-port (fringehead-iprt fh))
+        (skip-to-non-zero-file! fh))
+      (cond [(hc-position? next-pos) 
+             (set-fringehead-readcount! fh (add1 (fringehead-readcount fh)))
+             next-pos]
+            [(empty? (fringehead-filespecs fh)) (set-fringehead-next! fh eof)]
+            [(positive? (filespec-pcount (car (fringehead-filespecs fh))))
+             (set-fringehead-iprt! (open-input-file (filespec-fullpathname (car (fringehead-filespecs fh)))))
+             (set-fringehead-next! (read-bs->hcpos (fringehead-iprt fh)))
+             (set-fringehead-readcount! fh (add1 (fringehead-readcount fh)))
+             (fringehead-next fh)]
+            [else (error 'advance-fhead! "unexpected fall through conditional")]))))
+          
 
 ;; position-in-fhead?: position fringehead -> boolean
 ;; determines if given position is present in the fringe headed by the given fringehead

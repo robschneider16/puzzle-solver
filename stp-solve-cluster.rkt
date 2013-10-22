@@ -231,7 +231,7 @@
           (when (is-goal? efpos) (vector-set! sample-stats 4 (hc-position-bs efpos)))
           (vector-set! slice-counts proto-slice-num (add1 (vector-ref slice-counts proto-slice-num))))
         (advance-fhead! an-fhead)
-        (unless (fhdone? an-fhead) ;;(eof-object? (peek-byte (fringehead-iprt an-fhead) 1))
+        (unless (and (eof-object? (fringehead-next an-fhead)) (fhdone? an-fhead)) ;;(eof-object? (peek-byte (fringehead-iprt an-fhead) 1))
           (heap-add! heap-o-fheads an-fhead))))
     ;(printf "remote-expand-part-fringe: HAVE EXPANSIONS:~%")
     ;; close input and output ports
@@ -408,7 +408,7 @@
                          (for ([an-fhead (in-heap/consume! heap-o-fheads)])
                            (set! keep-pos (fringehead-next an-fhead))
                            (advance-fhead! an-fhead)
-                           (unless (fhdone? an-fhead) ;;(eof-object? (peek-byte (fringehead-iprt an-fhead) 1))
+                           (unless (and (eof-object? (fringehead-next an-fhead)) (fhdone? an-fhead)) ;;(eof-object? (peek-byte (fringehead-iprt an-fhead) 1))
                              (heap-add! heap-o-fheads an-fhead))
                            (unless (bytes=? (hc-position-bs keep-pos) (hc-position-bs last-pos)) ;; don't write duplicates
                              (fprintf mrg-segment-oport "~a~%" (hc-position-bs keep-pos))
