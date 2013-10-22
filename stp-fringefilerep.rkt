@@ -78,36 +78,38 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
                  (empty? (rest (fringehead-filespecs fh))))
              (< (fringehead-readcount fh) (fringehead-total fh)))
     (error 'fhdone? (format "hit end of fringe reading only ~a of ~a positions~%" (fringehead-readcount fh) (fringehead-total fh))))
-  (or (> (fringehead-readcount fh) (fringehead-total fh))
-      (and (eof-object? (fringehead-next fh))
-           (or (empty? (fringehead-filespecs fh))
-               (empty? (rest (fringehead-filespecs fh)))))))
+  (>= (fringehead-readcount fh) (fringehead-total fh)))
 
 ;; advance-fhead!: fringehead -> position OR void
-;; move to the next position, but check to make sure something is available if expected
+;; read the next position (if it exists), setting the fringehead-next accordingly
+;; a fringehead-next should never be left as eof unless fhdone? true
 (define (advance-fhead! fh)
-  (do ([do-at-least-one #f #t])
-    ((or (fhdone? fh) 
-         (and (not (eof-object? (fringehead-next fh)))
-              do-at-least-one))
-     (when (fhdone? fh) (close-input-port (fringehead-iprt fh)))
-     (unless (eof-object? (fringehead-next fh)) (fringehead-next fh)))
-    ;; advance to next position in current file or to next file if at end of file
-    (set-fringehead-next! fh (read-bs->hcpos (fringehead-iprt fh)))
-    (cond [(not (eof-object? (fringehead-next fh)))
-           (set-fringehead-readcount! fh (add1 (fringehead-readcount fh)))]
-          [(and (eof-object? (fringehead-next fh)) (not (fhdone? fh))) 
-           (when (and (not (fhdone? fh)) (empty? (cdr (fringehead-filespecs fh))))
-             (error 'advance-fhead! "empty filespecs without being done"))
-            ; advance to next NON-EMPTY segment
-           (do ([lfspcs (cdr (fringehead-filespecs fh)) (cdr lfspcs)])
-             ((or (empty? lfspcs)
-                  (positive? (filespec-pcount (car lfspcs))))
-              (close-input-port (fringehead-iprt fh))
-              (set-fringehead-filespecs! fh lfspcs)
-              (unless (empty? lfspcs)
-                (set-fringehead-iprt! fh (open-input-file (filespec-fullpathname (first (fringehead-filespecs fh)))))
-                (set-fringehead-next! fh (read-bs->hcpos (fringehead-iprt fh))))))])))
+  (unless (fhdone? fh)
+    (do ((next-pos (read-bs->hcpos (fringehead-iprt fh)) (read-bs->hcpos (fringehead-iprt fh))))
+      ;; until either read a position or this fringehead is done
+      ((not (eof-object? next-pos))
+       (set-fringehead-readcount! fh (add1 (fringehead-readcount fh)))
+       (set-fringehead-next! fh next-pos)
+       (when (and (eof-object? next-pos) (fhdone? fh)) (error 'advance-fhead! "became fhdone? without finding a next-pos"))
+       (when (fhdone? fh) (close-input-port (fringehead-iprt fh)))
+       (unless (eof-object? (fringehead-next fh)) (fringehead-next fh)))
+      ;; must be eof -- advance to next position in current file or to next file if at end of file
+      (unless (eof-object? next-pos)
+        (error 'advance-fhead! (format "expected an eof object, got ~a" next-pos)))
+      (when (eof-object? next-pos)
+        (when (empty? (cdr (fringehead-filespecs fh)))
+          (error 'advance-fhead! (format "empty filespecs without being done having read ~a of ~a" 
+                                         (fringehead-readcount fh) (fringehead-total fh))))
+        ; advance to next NON-EMPTY segment
+        (do ([lfspcs (cdr (fringehead-filespecs fh)) (cdr lfspcs)])
+          ((or (empty? lfspcs)
+               (positive? (filespec-pcount (car lfspcs))))
+           (close-input-port (fringehead-iprt fh))
+           (set-fringehead-filespecs! fh lfspcs)
+           (unless (empty? lfspcs)
+             (set-fringehead-iprt! fh (open-input-file (filespec-fullpathname (first lfspcs))))
+             )
+           ))))))
 
 ;; position-in-fhead?: position fringehead -> boolean
 ;; determines if given position is present in the fringe headed by the given fringehead
@@ -115,6 +117,7 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 ;; if the given position is less than the head of the fringe, then we'll not find it further in the fringe
 ;; that is, advance the fh while it is strictly less-than the given position
 (define (position-in-fhead? p fh)
+  (when (eof-object? (fringehead-next fh)) (error 'position-in-fhead? "given an eof fringehead"))
   (let ([p-hc (hc-position-hc p)]
         [p-bs (hc-position-bs p)])
     (do ([fhp (fringehead-next fh) (advance-fhead! fh)])
