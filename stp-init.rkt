@@ -117,7 +117,7 @@
   (set! *num-spaces* (vector-ref *piece-type-template* 0))
   ;(set! *expandpos* (make-vector (vector-ref *piece-type-template* 0) #f)) ;; any single piece can never generate more than the number of spaces
   (set! *expandbuf* (build-vector (* (vector-ref *piece-type-template* 0) *num-pieces*) (lambda (_) (mcons 0 (make-bytes *num-pieces*)))))
-  (set! *expansion-space* (build-vector (+ EXPAND-SPACE-SIZE *bsz*) (lambda (_) (hc-position 0 (make-bytes *num-pieces*)))))
+  (set! *expansion-space* (build-vector (+ EXPAND-SPACE-SIZE *bsz*) (lambda (_) (hc-position 0 (make-bytes *num-pieces* *charify-offset*)))))
   (set! *piecelocvec* (make-vector *bsz* #f))
   ;(set! *bsbuffer* (make-bytes (* 4 *num-pieces*) 0))
   (set! *bs-ptype-index* (for/vector #:length *num-pieces* 

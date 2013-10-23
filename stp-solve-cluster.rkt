@@ -297,7 +297,8 @@
            (for ([i (in-range pcount (vector-length *expansion-space*))])
              (set! hc-to-scrub (vector-ref *expansion-space* i))
              (set-hc-position-hc! hc-to-scrub *most-positive-fixnum*)    ;; make vector-sort! put these at the very end, but if a positions has *most-positive-fixnum* ...
-             (bytes-copy! (hc-position-bs hc-to-scrub) 0 #"~~~~~~~~IgnoreMe~~" 0 *num-pieces*)) ;; #\~ (ASCII character 126) is greater than any of our positions
+             ;(bytes-copy! (hc-position-bs hc-to-scrub) 0 #"~~~~~~~~IgnoreMe~~" 0 *num-pieces*) ;; #\~ (ASCII character 126) is greater than any of our positions
+             )
            ;; sort the vector
            (set! sort-time (current-milliseconds))
            (vector-sort! hcposition<? *expansion-space*)
@@ -310,7 +311,6 @@
            (set! this-batch (write-fringe-to-disk *expansion-space* fullpath pcount #t))
            (inc-write-time! p1inf (- (current-milliseconds) write-time))
            ;; maintain written and duplicate position counts
-           (set! this-batch (write-fringe-to-disk *expansion-space* fullpath pcount #t))
            (inc-written! p1inf this-batch)
            (inc-dupes! p1inf (- pcount this-batch))
            ;; add the new filespec to the list of partial-expansions for the current responsibility range
@@ -352,8 +352,8 @@
       ;; advance the fringehead to the next position to be expanded
       (advance-fhead! cffh)
       )
-    #|(printf "remote-exp-part-fringe: PHASE 1: expanding ~a positions of assigned ~a~%" 
-            expanded-phase1 assignment-count);|#
+    (printf "expand-phase1: expanded ~a positions of assigned ~a resulting in ~a successor postions~%" 
+            expanded-phase1 assignment-count expansion-ptr)
     (when (< expanded-phase1 assignment-count)
       (error 'remote-expand-part-fringe
              (format "only expanded ~a of the assigned ~a (~a-~a) positions" expanded-phase1 assignment-count start end)))
@@ -575,7 +575,7 @@
       (distributed-expand-fringe prev-fringe current-fringe depth)))
 
 
-(define *max-depth* 10)(set! *max-depth* 27)
+(define *max-depth* 10)(set! *max-depth* 14)
 
 ;; cfs-file: fringe fringe int -> position
 ;; perform a file-based cluster-fringe-search at given depth

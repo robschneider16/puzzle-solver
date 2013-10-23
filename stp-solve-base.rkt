@@ -262,6 +262,7 @@
 
 
 ;(block10-init)
+(climb12-init)
 ;(climb15-init)
 ;(compile-ms-array! *piece-types* *bh* *bw*)
 ;(expand *start*)
