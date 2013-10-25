@@ -24,15 +24,19 @@
 (define *depth-start-time* "the time from current-seconds at the start of a given depth")
 (define *master-name* "the name of the host where the master process is running")
 (define *local-store* "the root portion of path to where workers can store temporary fringe files")
+(define *share-store* "the main folder where fringe files are stored (and possibly shared via NFS)")
 #|
 (set! *master-name* "localhost")
 (set! *local-store* "/space/fringefiles/")
+(set! *share-store* "./fringefiles/")
 ;(set! *local-store* "/state/partition1/fringefiles/")
 (define *n-processors* 4)
 |#
 ;#|
 (set! *master-name* "wcp")
 (set! *local-store* "/state/partition1/fringefiles/")
+;(set! *share-store* "/share/data1/fringefiles/")
+(set! *share-store* "fringefiles/")
 (define *n-processors* 32)
 ;|#
 (define *expand-multiplier* 1)
@@ -96,6 +100,7 @@
                           ([sgmnt (reverse (fringe-segments cf))])
                           (append (read-fringe-from-file (filespec-fullpathname sgmnt)) the-fringe)))]
          [new-cf-name (format "fringe-d~a" depth)]
+         [new-cf-fullpath (format "~a~a" *share-store* new-cf-name)]
          ;[prntmsg (printf "finished reading the fringes~%")]
          [exp-ptr 0]
          [expand-them (for ([p-to-expand current-fringe-vec])
@@ -110,8 +115,10 @@
     (for ([p res])
       (printf "pos: ~a~%~a~%" (stringify p) p))|#
     (for ([sgmnt (fringe-segments pf)]) (delete-file (filespec-fullpathname sgmnt)))
-    (write-fringe-to-disk (sort res hcposition<?) new-cf-name)
-    (make-fringe "" (list (make-filespec new-cf-name (length res) (file-size new-cf-name) "")) (length res))))
+    (write-fringe-to-disk (sort res hcposition<?) new-cf-fullpath)
+    (make-fringe *share-store*
+                 (list (make-filespec new-cf-name (length res) (file-size new-cf-fullpath) *share-store*))
+                 (length res))))
 
 
 
@@ -180,7 +187,7 @@
          ; write to one slice-ofile at a time, since everything is sorted
          [proto-slice-num 0]
          [slice-upper-bound (vector-ref *proto-fringe-slice-bounds* (add1 proto-slice-num))]
-         [proto-slice-ofile (open-output-file (string-append ofile-name "-" (~a proto-slice-num #:left-pad-string "0" #:width 3 #:align 'right)))]
+         [proto-slice-ofile (open-output-file (string-append *share-store* ofile-name "-" (~a proto-slice-num #:left-pad-string "0" #:width 3 #:align 'right)))]
          [unique-expansions 0]
          [slice-counts (make-vector *num-proto-fringe-slices* 0)]
          [sample-stats 
@@ -212,7 +219,7 @@
             ((< efpos-hc slice-upper-bound))
             (close-output-port proto-slice-ofile)
             (set! proto-slice-num (add1 proto-slice-num))
-            (set! proto-slice-ofile (open-output-file (string-append ofile-name "-" (~a proto-slice-num #:left-pad-string "0" #:width 3 #:align 'right))))
+            (set! proto-slice-ofile (open-output-file (string-append *share-store* ofile-name "-" (~a proto-slice-num #:left-pad-string "0" #:width 3 #:align 'right))))
             (set! slice-upper-bound (vector-ref *proto-fringe-slice-bounds* (add1 proto-slice-num))))
           (fprintf proto-slice-ofile "~a~%" (hc-position-bs efpos))
           (when (is-goal? efpos) (vector-set! sample-stats 4 (hc-position-bs efpos)))
@@ -225,11 +232,11 @@
     (for ([fh (cons pffh (cons cffh lo-effh))]) (close-input-port (fringehead-iprt fh)))
     (close-output-port proto-slice-ofile)
     (for ([i (in-range (add1 proto-slice-num) *num-proto-fringe-slices*)])
-      (touch (string-append ofile-name "-" (~a i #:left-pad-string "0" #:width 3 #:align 'right))))
+      (touch (string-append *share-store* ofile-name "-" (~a i #:left-pad-string "0" #:width 3 #:align 'right))))
     ;; complete the sampling-stat
     (vector-set! sample-stats 0 (for/sum ([i (vector-ref sample-stats 3)]) i))
     (vector-set! sample-stats 6 (for/vector ([i *num-proto-fringe-slices*]) 
-                                  (file-size (format "~a-~a" ofile-name (~a i #:left-pad-string "0" #:width 3 #:align 'right)))))
+                                  (file-size (format "~a~a-~a" *share-store* ofile-name (~a i #:left-pad-string "0" #:width 3 #:align 'right)))))
     ;; delete files that are no longer needed
     (for ([efspec lo-expand-fspec]) (delete-file (filespec-fullpathname efspec)))
     ;(unless (string=? *master-name* "localhost") (delete-fringe pf))
@@ -238,8 +245,6 @@
     ;(when (file-exists? (string-append *local-store* (fspec-fname pfspec))) (delete-file (string-append *local-store* (fspec-fname pfspec))))
     #|(printf "remove-dupes: starting w/ ~a positions, expansion has ~a/~a positions~%"
             (fspec-pcount expand-fspec) unique-expansions (position-count-in-file ofile-name))|#
-    #|(unless (check-sorted-fringe? ofile-name)
-      (error 'remove-dupes "phase 2: failed to generate a sorted fringe file ~a" ofile-name))|#
     sample-stats))
 
 ;; dump-partial-expansion: int string int (listof fspec) float float -> (values (listof fspec) int float float)
@@ -367,7 +372,7 @@
   ;; expand-files-specs are of pattern: "proto-fringe-dXX-NN" for depth XX and proc-id NN, pointing to working (shared) directory 
   ;; WAS: ofile-name is of pattern: "fringe-segment-dX-NN", where the X is the depth and the NN is a process identifier
   ;; NEW: ofile-name is of pattern: "fringe-segment-dX-NNN", where the X is the depth and the NN is a slice identifier
-  (let* ([mrg-segment-oport (open-output-file ofile-name)] ; try writing directly to NFS
+  (let* ([mrg-segment-oport (open-output-file (format "~a~a" *share-store* ofile-name))] ; try writing directly to NFS
          ;[local-protofringe-fspecs (for/list ([fs slice-fspecs] #:unless (zero? (filespec-pcount fs))) (rebase-filespec fs *local-store*))]
          [local-protofringe-fspecs (for/list ([fs slice-fspecs] #:unless (zero? (filespec-pcount fs))) fs)]
          ;[pmsg1 (printf "distmerge-debug1: ~a fspecs in ~a~%distmerge-debug1: or localfspecs=~a~%" (vector-length slice-fspecs) slice-fspecs local-protofringe-fspecs)]
@@ -462,7 +467,7 @@
                                   (make-filespec (string-append (vector-ref ss 5) "-" (~a i #:left-pad-string "0" #:width 3 #:align 'right)) ;; fname
                                                  (vector-ref (vector-ref ss 3) i) ;pcount
                                                  (vector-ref (vector-ref ss 6) i) ;file-size
-                                                 "")))]
+                                                 *share-store*)))]
          ;; need to wait for write to complete -- i.e., all data to appear on master
          ;; push this wait into the place we're trying to access the file ... [wait-for-partial-expansions (wait-for-files expand-files-specs)]
          ;; MERGE
@@ -519,10 +524,10 @@
               (for/sum ([n counts]) n) ; total number of expanded positions handled at this level
               (for/sum ([n sef-lengths]) n))) ; number of positions in the new fringe
     ;; make the new fringe to return
-    (make-fringe ""
+    (make-fringe *share-store*
                  (for/list ([segmentfile sorted-expansion-files]
                             [length sef-lengths])
-                   (make-filespec segmentfile length (file-size segmentfile) ""))
+                   (make-filespec segmentfile length (file-size (string-append *share-store* segmentfile)) *share-store*))
                  (for/sum ([len sef-lengths]) len))
     ))
 
@@ -564,29 +569,31 @@
 ;; start-cluster-fringe-search: hc-position -> ...
 (define (start-cluster-fringe-search start-position)
   ;; initialization of fringe files
-  (write-fringe-to-disk empty "fringe-d-1")
-  (write-fringe-to-disk (list start-position) "fringe-d0")
-  (cfs-file (make-fringe "" (list (make-filespec "fringe-d-1" 0 (file-size "fringe-d-1") "")) 0)
-            (make-fringe "" (list (make-filespec "fringe-d0" 1 (file-size "fringe-d0") "")) 1)
-            1))
+  (let ([d-1 (format "~afringe-d-1" *share-store*)]
+        [d0 (format "~afringe-d0" *share-store*)])
+    (write-fringe-to-disk empty d-1)
+    (write-fringe-to-disk (list start-position) d0)
+    (cfs-file (make-fringe *share-store* (list (make-filespec "fringe-d-1" 0 (file-size d-1) *share-store*)) 0)
+              (make-fringe *share-store* (list (make-filespec "fringe-d0" 1 (file-size d0) *share-store*)) 1)
+              1)))
 
 ;; make-fringe-from-files: string int -> fringe
 ;; given a base-string and number of processors (actually, segments), create the fringe
 (define (make-fringe-from-files base-string n-seg)
   (let ([pcount 0])
     (make-fringe 
-     "" 
+     *share-store*
      (for/list ([i n-seg])
        (let* ([f (format "~a~a" base-string (~a i #:left-pad-string "0" #:width 3 #:align 'right))]
               [lpcount (read-from-string (with-output-to-string (lambda () (system (format "wc -l ~a" f)))))])
          (set! pcount (+ pcount lpcount))
-         (make-filespec f lpcount (file-size f) "")))
+         (make-filespec f lpcount (file-size f) *share-store*)))
      pcount)))
 
 (define (make-fringe-from-file file)
   (let ([filepcount (read-from-string (with-output-to-string (lambda () (system (format "wc -l ~a" file)))))])
-    (make-fringe ""
-                 (list (make-filespec file filepcount (file-size file) ""))
+    (make-fringe *share-store*
+                 (list (make-filespec file filepcount (file-size file) *share-store*))
                  filepcount)))
 
 ;(block10-init)
@@ -601,9 +608,9 @@
   (connect-to-riot-server! *master-name*)
   (define search-result (time (start-cluster-fringe-search *start*)))
   #|
-  (define search-result (time (cfs-file (make-fringe-from-files "fringe-segment-d96-" 32)
-                                        (make-fringe-from-files "fringe-segment-d97-" 32)
-                                        98)))
+  (define search-result (time (cfs-file (make-fringe-from-files "fringe-segment-d106-" 32)
+                                        (make-fringe-from-files "fringe-segment-d107-" 32)
+                                        108)))
   |#
   #|
   (define search-result (time (cfs-file (make-fringe-from-file "c12d59fringe")
