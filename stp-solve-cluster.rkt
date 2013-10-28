@@ -160,15 +160,6 @@
       (list (- start-range (filespec-pcount fs)) start-range))))
 
 
-#|
-    ;; PHASE 2: now pass through the proto-fringe expansion file(s) as well as prev-fringe and current-fringe to remove duplicates
-    (remove-dupes pf cf pre-ofiles 
-                  (format "proto-fringe-d~a-~a" depth (~a process-id #:left-pad-string "0" #:width 2 #:align 'right)) ;; ofile-name
-                  depth
-                  minmax-hcpair
-                  dupes-caught-here sort-time write-time (- (current-milliseconds) expand-part-time))))
-|#
-
 ;; expand-phase2: fringe fringe int phase1-info (vectorof number) -> sampling-stat
 ;; Running in distributed worker processes:
 ;; Remove duplicate positions from the list of filespecs (i.e., partial-expansion... files),
@@ -233,7 +224,6 @@
         (advance-fhead! an-fhead)
         (unless (and (eof-object? (fringehead-next an-fhead)) (fhdone? an-fhead)) ;;(eof-object? (peek-byte (fringehead-iprt an-fhead) 1))
           (heap-add! heap-o-fheads an-fhead))))
-    ;(printf "remote-expand-part-fringe: HAVE EXPANSIONS:~%")
     ;; close input and output ports
     (for ([fh (cons pffh (cons cffh lo-effh))]) (close-input-port (fringehead-iprt fh)))
     (close-output-port proto-slice-ofile)
@@ -251,8 +241,6 @@
     (for ([efspec lo-expand-fspec]) (delete-file (filespec-fullpathname efspec)))
     ;(unless (string=? *master-name* "localhost") (delete-fringe pf))
     ;(delete-file use-ofilename)
-    ;;**** THIS STRIKES ME AS DANGEROUS: IF ONE PROCESS ON MULTI-CORE MACHINE FINISHES FIRST ....
-    ;(when (file-exists? (string-append *local-store* (fspec-fname pfspec))) (delete-file (string-append *local-store* (fspec-fname pfspec))))
     #|(printf "remove-dupes: starting w/ ~a positions, expansion has ~a/~a positions~%"
             (fspec-pcount expand-fspec) unique-expansions (position-count-in-file ofile-name))|#
     #|(unless (check-sorted-fringe? ofile-name)
@@ -352,8 +340,8 @@
       ;; advance the fringehead to the next position to be expanded
       (advance-fhead! cffh)
       )
-    (printf "expand-phase1: expanded ~a positions of assigned ~a resulting in ~a successor postions~%" 
-            expanded-phase1 assignment-count expansion-ptr)
+    #|(printf "expand-phase1: expanded ~a positions of assigned ~a resulting in ~a successor postions~%" 
+            expanded-phase1 assignment-count expansion-ptr)|#
     (when (< expanded-phase1 assignment-count)
       (error 'remote-expand-part-fringe
              (format "only expanded ~a of the assigned ~a (~a-~a) positions" expanded-phase1 assignment-count start end)))
@@ -575,7 +563,7 @@
       (distributed-expand-fringe prev-fringe current-fringe depth)))
 
 
-(define *max-depth* 10)(set! *max-depth* 14)
+(define *max-depth* 10)(set! *max-depth* 60)
 
 ;; cfs-file: fringe fringe int -> position
 ;; perform a file-based cluster-fringe-search at given depth
@@ -637,7 +625,7 @@
 ;#|
 (module+ main
   ;; Switch between these according to if using the cluster or testing on multi-core single machine
-  ;(connect-to-riot-server! *master-name*)
+  (connect-to-riot-server! *master-name*)
   (define search-result (time (start-cluster-fringe-search *start*)))
   #|
   (define search-result (time (cfs-file (make-fringe-from-files "fringe-segment-dX-" n)

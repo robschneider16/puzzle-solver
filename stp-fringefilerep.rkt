@@ -125,18 +125,21 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
         ))))
 
 (define (advance-fhead! fh)
+  ;(printf "advance-fhead!: fhdone?=~a~%" (fhdone? fh))
   (unless (fhdone? fh)
     (let ([next-pos (read-bs->hcpos (fringehead-iprt fh))])
+      ;(printf "advance-fhead!: having read ~a~%" (hc-position-bs next-pos))
       (when (eof-object? next-pos)
         (close-input-port (fringehead-iprt fh))
         (skip-to-non-zero-file! fh))
       (cond [(hc-position? next-pos) 
+             (set-fringehead-next! fh next-pos)
              (set-fringehead-readcount! fh (add1 (fringehead-readcount fh)))
              next-pos]
             [(empty? (fringehead-filespecs fh)) (set-fringehead-next! fh eof)]
             [(positive? (filespec-pcount (car (fringehead-filespecs fh))))
-             (set-fringehead-iprt! (open-input-file (filespec-fullpathname (car (fringehead-filespecs fh)))))
-             (set-fringehead-next! (read-bs->hcpos (fringehead-iprt fh)))
+             (set-fringehead-iprt! fh (open-input-file (filespec-fullpathname (car (fringehead-filespecs fh)))))
+             (set-fringehead-next! fh (read-bs->hcpos (fringehead-iprt fh)))
              (set-fringehead-readcount! fh (add1 (fringehead-readcount fh)))
              (fringehead-next fh)]
             [else (error 'advance-fhead! "unexpected fall through conditional")]))))
@@ -148,14 +151,15 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 ;; if the given position is less than the head of the fringe, then we'll not find it further in the fringe
 ;; that is, advance the fh while it is strictly less-than the given position
 (define (position-in-fhead? p fh)
-  (when (eof-object? (fringehead-next fh)) (error 'position-in-fhead? "given an eof fringehead"))
-  (let ([p-hc (hc-position-hc p)]
-        [p-bs (hc-position-bs p)])
-    (do ([fhp (fringehead-next fh) (advance-fhead! fh)])
-      ((or (fhdone? fh)
-           (not (hcposition<? fhp p)))
-       (and (hc-position? fhp)
-            (bytes=? p-bs (hc-position-bs fhp)))))))
+  ;(when (eof-object? (fringehead-next fh)) (error 'position-in-fhead? "given an eof fringehead"))
+  (and (hc-position? (fringehead-next fh)) ; fringehead should always be a hc-position until fhdone? is true
+       (let ([p-hc (hc-position-hc p)]
+             [p-bs (hc-position-bs p)])
+         (do ([fhp (fringehead-next fh) (advance-fhead! fh)])
+           ((or (fhdone? fh)
+                (not (hcposition<? fhp p)))
+            (and (hc-position? fhp)
+                 (bytes=? p-bs (hc-position-bs fhp))))))))
 
 ;; fh-from-fringe: fringe [int 0] -> fringehead
 ;; create a fringehead from a given fringe and advance it to the requested start point,

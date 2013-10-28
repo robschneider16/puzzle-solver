@@ -21,9 +21,10 @@
 
 ;; hcposition<?: hc-position hc-position -> boolean
 (define (hcposition<? p1 p2)
-  (or (< (hc-position-hc p1) (hc-position-hc p2))
-      (and (= (hc-position-hc p1) (hc-position-hc p2))
-           (blexi<? (hc-position-bs p1) (hc-position-bs p2)))))
+  (cond [(< (hc-position-hc p1) (hc-position-hc p2)) true]
+        [(> (hc-position-hc p1) (hc-position-hc p2)) false]
+        [else ;(and (= (hc-position-hc p1) (hc-position-hc p2))
+         (blexi<? (hc-position-bs p1) (hc-position-bs p2))]))
 
 ;; blexi<?: bytestring bytestring -> boolean
 ;; lexicographic fallback for hash collision starting at position 4
