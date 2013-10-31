@@ -53,6 +53,9 @@
        (set! *most-positive-fixnum* (fx+ (expt 2 29) (fx- (expt 2 29) 1)))  ;; ****** only on our cluster, wcp *****
        (set! *most-negative-fixnum* (fx+ (fx* -1 (expt 2 29)) (fx* -1 (expt 2 29))))]);; ***** likewise *****
 
+(define *num-hcfreq-bins* (* *n-expanders* 20))
+(define *hc-freqs* (make-vector *num-hcfreq-bins* 0))
+
 (define *found-goal* #f)
 
 ;;------------------------------------------
@@ -258,6 +261,7 @@
 ;; 6. total time in phase1 (estimate successor generation by subtracting sort- and write-times)
 ;; 7. listof partial-expansion files from this responsibility range
 ;; 8. process-identifier
+;; 9. hashcode frequency distribution -- vector of counts
 (define (update-minhc! p1inf hcv) (when (< hcv (vector-ref p1inf 0)) (vector-set! p1inf 0 hcv)))
 (define (update-maxhc! p1inf hcv) (when (> hcv (vector-ref p1inf 1)) (vector-set! p1inf 1 hcv)))
 (define (inc-written! p1inf morewritten) (vector-set! p1inf 2 (+ (vector-ref p1inf 2) morewritten)))
@@ -266,6 +270,12 @@
 (define (inc-write-time! p1inf morewritetime) (vector-set! p1inf 5 (+ (vector-ref p1inf 5) morewritetime)))
 (define (inc-tot-time! p1inf moretime) (vector-set! p1inf 6 (+ (vector-ref p1inf 6) moretime)))
 (define (add-pexpfspec! p1inf newfspec) (vector-set! p1inf 7 (cons newfspec (vector-ref p1inf 7))))
+(define (inc-hcfreqs! p1inf hc)
+  (local ([define (hcfreq-index hc) 
+            (floor (/ (- hc *most-negative-fixnum*) (/ (- *most-positive-fixnum* *most-negative-fixnum*) *num-hcfreq-bins*)))]
+          [define hcfreqs (vector-ref p1inf 9)]
+          [define hcindex (hcfreq-index hc)])
+    (vector-set! hcfreqs hcindex (add1 (vector-ref hcfreqs hcindex)))))
 ;;----------------------------------------------------------------------------------------------------------
 
 ;; dump-partial-expansion: int string int phase1-info -> void
@@ -296,7 +306,8 @@
            (update-maxhc! p1inf (hc-position-hc (vector-ref *expansion-space* (sub1 pcount))))
            ;; write the first pcount positions to the file
            (set! write-time (current-milliseconds))
-           (set! this-batch (write-fringe-to-disk *expansion-space* fullpath pcount #t))
+           (set! this-batch (write-fringe-to-disk *expansion-space* fullpath pcount #t 
+                                                  (lambda (p) (inc-hcfreqs! p1inf (hc-position-hc p)))))
            (inc-write-time! p1inf (- (current-milliseconds) write-time))
            ;; maintain written and duplicate position counts
            (inc-written! p1inf this-batch)
@@ -313,7 +324,8 @@
   ;; prev-fringe spec points to default shared directory; current-fringe spec points to *local-store* folder
   ;(printf "remote-expand-part-fringe: starting with pf: ~a, and cf: ~a~%" pf cf)
   ;; EXPAND PHASE 1
-  (let* ([phase1-info (vector *most-positive-fixnum* *most-negative-fixnum* 0 0 0 0 0 empty process-id)]
+  (vector-fill! *hc-freqs* 0)
+  (let* ([phase1-info (vector *most-positive-fixnum* *most-negative-fixnum* 0 0 0 0 0 empty process-id *hc-freqs*)]
          [expand-part-time (current-milliseconds)]
          [pre-ofile-template-fname (format "partial-expansion~a-" (~a process-id #:left-pad-string "0" #:width 2 #:align 'right))]
          [pre-ofile-counter 0]
@@ -346,6 +358,11 @@
       (error 'remote-expand-part-fringe
              (format "only expanded ~a of the assigned ~a (~a-~a) positions" expanded-phase1 assignment-count start end)))
     (close-input-port (fringehead-iprt cffh))
+    (let*-values ([(non-zero-bins) (for/sum ([c *hc-freqs*] #:when (positive? c)) 1)]
+                  [(avg) (if (zero? non-zero-bins) 0 (/ (for/sum ([c *hc-freqs*]) c) (* 1.0 non-zero-bins)))]
+                  [(minc maxc) (for/fold ([minc assignment-count][maxc 0])
+                                 ([c *hc-freqs*]) (values (min minc c) (max maxc c)))])
+      (printf "hashcode freqs: ~a non-zero-count bins, average bin size = ~a w/ min/max ~a/~a~%" non-zero-bins avg minc maxc))
     phase1-info))
 
 
@@ -625,7 +642,7 @@
 ;#|
 (module+ main
   ;; Switch between these according to if using the cluster or testing on multi-core single machine
-  (connect-to-riot-server! *master-name*)
+  ;(connect-to-riot-server! *master-name*)
   (define search-result (time (start-cluster-fringe-search *start*)))
   #|
   (define search-result (time (cfs-file (make-fringe-from-files "fringe-segment-dX-" n)

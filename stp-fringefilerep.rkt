@@ -206,7 +206,7 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 ;; write-fringe-to-disk: (listof or vectorof hc-position) string -> int
 ;; writes the bytestring portions of the hc-positions from the given fringe (whether list or vector) into a file with given file-name.
 ;; return the number written, not counting duplicates if remove-dupes is non-false
-(define (write-fringe-to-disk fringe file-name [how-many -1] [remove-dupes #f])
+(define (write-fringe-to-disk fringe file-name [how-many -1] [remove-dupes #f] [count-freqs #f])
   (let ([my-output (open-output-file file-name #:exists 'replace)]
         [stop-at (if (negative? how-many)
                      (or (and (vector? fringe) (vector-length fringe))
@@ -220,8 +220,10 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
              (unless (bytes=? (hc-position-bs hcposition) last-pos)
                (set! last-pos (hc-position-bs hcposition))
                (fprintf my-output "~a~%" (hc-position-bs hcposition))
+               (when count-freqs (count-freqs hcposition))
                (set! num-written (add1 num-written)))]
             [else (fprintf my-output "~a~%" (hc-position-bs hcposition))
+                  (when count-freqs (count-freqs hcposition))
                   (set! num-written (add1 num-written))]))
     (close-output-port my-output)
     num-written))
