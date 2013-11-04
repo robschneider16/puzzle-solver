@@ -12,16 +12,26 @@
 (require mzlib/string) ;; supposedly depricated but seems to need the require for 5.3.5
 
 
-(require "stp-init.rkt")
-(require "stp-solve-base.rkt")
-(require "stp-fringefilerep.rkt")
+(require "stp-init.rkt"
+         "stp-solve-base.rkt"
+         "stp-fringefilerep.rkt"
+         "stp-timer.rkt")
 ;(require profile)
 ;(instrumenting-enabled #t)
 ;(profiling-enabled #t)
 
 (provide (all-defined-out))
 
+;; Timer and timing related definitions
 (define *depth-start-time* "the time from current-seconds at the start of a given depth")
+(define *phase1-time* (make-timer))
+(define *phase1-read-pos-time* (make-timer))
+(define *phase1-sort-time* (make-timer))
+(define *phase1-write-time* (make-timer))
+(define *phase2-prev-curr-dupecheck-time* (make-timer))
+(define *phase2-heap-insert-time* (make-timer))
+(define *phase2-write-pos-time* (make-timer))
+
 (define *master-name* "the name of the host where the master process is running")
 (define *local-store* "the root portion of path to where workers can store temporary fringe files")
 ;#|
@@ -201,6 +211,9 @@
                   )]
          [last-pos-bs #"~~~~~~~~~~~~NoLastPos"]
          )
+    (reset-timer *phase2-prev-curr-dupecheck-time*)
+    (reset-timer *phase2-heap-insert-time*)
+    (reset-timer *phase2-write-pos-time*)
     ;; locally merge the pre-proto-fringes, removing duplicates from prev- and current-fringes
     (for ([an-fhead (in-heap/consume! heap-o-fheads)])
       (let ([efpos (fringehead-next an-fhead)])
@@ -208,8 +221,10 @@
             (or (eof-object? efpos) ;(fhdone? an-fhead)
                 (and (bytes=? (hc-position-bs efpos) last-pos-bs) ; duplicate from most recently written 
                      (vector-set! sample-stats 2 (add1 (vector-ref sample-stats 2))))
-                (and (position-in-fhead? efpos pffh) (vector-set! sample-stats 1 (add1 (vector-ref sample-stats 1))))
-                (and (position-in-fhead? efpos cffh) (vector-set! sample-stats 1 (add1 (vector-ref sample-stats 1)))))
+                (and (time-this *phase2-prev-curr-dupecheck-time* (position-in-fhead? efpos pffh))
+                     (vector-set! sample-stats 1 (add1 (vector-ref sample-stats 1))))
+                (and (time-this *phase2-prev-curr-dupecheck-time* (position-in-fhead? efpos cffh))
+                     (vector-set! sample-stats 1 (add1 (vector-ref sample-stats 1)))))
           (set! last-pos-bs (hc-position-bs efpos))
           (do ([efpos-hc (hc-position-hc efpos)])
             ;; if efpos-hc is >= to the slice-upper-bound, advance the proto-slice-num/ofile/upper-bound until it is not
@@ -218,12 +233,12 @@
             (set! proto-slice-num (add1 proto-slice-num))
             (set! proto-slice-ofile (open-output-file (string-append ofile-name "-" (~a proto-slice-num #:left-pad-string "0" #:width 3 #:align 'right))))
             (set! slice-upper-bound (vector-ref slice-bounds (add1 proto-slice-num))))
-          (fprintf proto-slice-ofile "~a~%" (hc-position-bs efpos))
+          (time-this *phase2-write-pos-time* (fprintf proto-slice-ofile "~a~%" (hc-position-bs efpos)))
           (when (is-goal? efpos) (vector-set! sample-stats 4 (hc-position-bs efpos)))
           (vector-set! slice-counts proto-slice-num (add1 (vector-ref slice-counts proto-slice-num))))
         (advance-fhead! an-fhead)
         (unless (and (eof-object? (fringehead-next an-fhead)) (fhdone? an-fhead)) ;;(eof-object? (peek-byte (fringehead-iprt an-fhead) 1))
-          (heap-add! heap-o-fheads an-fhead))))
+          (time-this *phase2-heap-insert-time* (heap-add! heap-o-fheads an-fhead)))))
     ;; close input and output ports
     (for ([fh (cons pffh (cons cffh lo-effh))]) (close-input-port (fringehead-iprt fh)))
     (close-output-port proto-slice-ofile)
@@ -243,6 +258,10 @@
     ;(delete-file use-ofilename)
     #|(printf "remove-dupes: starting w/ ~a positions, expansion has ~a/~a positions~%"
             (fspec-pcount expand-fspec) unique-expansions (position-count-in-file ofile-name))|#
+    (printf "phase2 (dupecheck, heap-insert, write-pos):\t~a\t~a\t~a~%"
+            (timer-total *phase2-prev-curr-dupecheck-time*)
+            (timer-total *phase2-heap-insert-time*)
+            (timer-total *phase2-write-pos-time*))
     #|(unless (check-sorted-fringe? ofile-name)
       (error 'remove-dupes "phase 2: failed to generate a sorted fringe file ~a" ofile-name))|#
     sample-stats))
@@ -288,16 +307,12 @@
              ;(bytes-copy! (hc-position-bs hc-to-scrub) 0 #"~~~~~~~~IgnoreMe~~" 0 *num-pieces*) ;; #\~ (ASCII character 126) is greater than any of our positions
              )
            ;; sort the vector
-           (set! sort-time (current-milliseconds))
-           (vector-sort! hcposition<? *expansion-space*)
-           (inc-sort-time! p1inf (- (current-milliseconds) sort-time))
+           (time-this *phase1-sort-time* (vector-sort! hcposition<? *expansion-space*))
            ;; maintain min and max hash-code values
            (update-minhc! p1inf (hc-position-hc (vector-ref *expansion-space* 0)))
            (update-maxhc! p1inf (hc-position-hc (vector-ref *expansion-space* (sub1 pcount))))
            ;; write the first pcount positions to the file
-           (set! write-time (current-milliseconds))
-           (set! this-batch (write-fringe-to-disk *expansion-space* fullpath pcount #t))
-           (inc-write-time! p1inf (- (current-milliseconds) write-time))
+           (time-this *phase1-write-time* (set! this-batch (write-fringe-to-disk *expansion-space* fullpath pcount #t)))
            ;; maintain written and duplicate position counts
            (inc-written! p1inf this-batch)
            (inc-dupes! p1inf (- pcount this-batch))
@@ -310,11 +325,11 @@
 ;; and the prev- and current-fringes, and the depth ...
 ;; expand the positions in the indices range, ignoring duplicates other than within the new fringe being constructed.
 (define (expand-phase1 ipair process-id pf cf depth)
+  (reset-timer *phase1-time*)
   ;; prev-fringe spec points to default shared directory; current-fringe spec points to *local-store* folder
   ;(printf "remote-expand-part-fringe: starting with pf: ~a, and cf: ~a~%" pf cf)
   ;; EXPAND PHASE 1
   (let* ([phase1-info (vector *most-positive-fixnum* *most-negative-fixnum* 0 0 0 0 0 empty process-id)]
-         [expand-part-time (current-milliseconds)]
          [pre-ofile-template-fname (format "partial-expansion~a-" (~a process-id #:left-pad-string "0" #:width 2 #:align 'right))]
          [pre-ofile-counter 0]
          [start (first ipair)]
@@ -325,6 +340,9 @@
          [cffh (fh-from-fringe cf start)]
          [expansion-ptr 0]
          )
+    (reset-timer *phase1-read-pos-time*)
+    (reset-timer *phase1-sort-time*)
+    (reset-timer *phase1-write-time*)
     ;; do the actual expansions
     (do ([exp-phase1 0 (add1 exp-phase1)])
       ((>= exp-phase1 assignment-count)
@@ -338,10 +356,16 @@
         (set! pre-ofile-counter (add1 pre-ofile-counter))
         (set! expansion-ptr 0))
       ;; advance the fringehead to the next position to be expanded
-      (advance-fhead! cffh)
+      (time-this *phase1-read-pos-time* (advance-fhead! cffh))
       )
     #|(printf "expand-phase1: expanded ~a positions of assigned ~a resulting in ~a successor postions~%" 
             expanded-phase1 assignment-count expansion-ptr)|#
+    (printf "phase1 (sort, write, read-pos):\t~a\t~a\t~a~%"
+            (timer-total *phase1-sort-time*)
+            (timer-total *phase1-write-time*)
+            (timer-total *phase1-read-pos-time*))
+    (inc-sort-time! phase1-info (timer-total *phase1-sort-time*))
+    (inc-write-time! phase1-info (timer-total *phase1-write-time*))
     (when (< expanded-phase1 assignment-count)
       (error 'remote-expand-part-fringe
              (format "only expanded ~a of the assigned ~a (~a-~a) positions" expanded-phase1 assignment-count start end)))
@@ -625,7 +649,7 @@
 ;#|
 (module+ main
   ;; Switch between these according to if using the cluster or testing on multi-core single machine
-  (connect-to-riot-server! *master-name*)
+  ;(connect-to-riot-server! *master-name*)
   (define search-result (time (start-cluster-fringe-search *start*)))
   #|
   (define search-result (time (cfs-file (make-fringe-from-files "fringe-segment-dX-" n)
