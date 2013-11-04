@@ -307,9 +307,7 @@
   (let* ([hc-to-scrub 'hcpos-to-scrub]
          [f (format "~a~a" ofile-template ofile-counter)]
          [fullpath (string-append *local-store* f)]
-         [this-batch 0]
-         [sort-time 0]
-         [write-time 0])
+         [this-batch 0])
     (cond [(zero? pcount) (touch fullpath) (add-pexpfspec! p1inf (make-filespec f 0 0 *local-store*))]
           [else
            ;; scrub the last part of the vector with bogus positions
@@ -343,7 +341,7 @@
   ;(printf "remote-expand-part-fringe: starting with pf: ~a, and cf: ~a~%" pf cf)
   ;; EXPAND PHASE 1
   (vector-fill! *hc-freqs* 0)
-  (let* ([phase1-info (vector *most-positive-fixnum* *most-negative-fixnum* 0 0 0 0 0 empty process-id *hc-freqs*)]
+  (let* ([phase1-info (vector *most-positive-fixnum* *most-negative-fixnum* 0 0 0 0 0 empty process-id *hc-freqs* 0)]
          [pre-ofile-template-fname (format "partial-expansion~a-" (~a process-id #:left-pad-string "0" #:width 2 #:align 'right))]
          [pre-ofile-counter 0]
          [start (first ipair)]
@@ -515,7 +513,6 @@
                                    (when (> depth *max-depth*) (error 'phase2-exapnd "ran off end (finessing Riot caching)"))
                                    (expand-phase2 pf cf depth p1inf dynamic-slice-bounds))]
          [end-expand (current-seconds)]
-
 
          ;; -----------------------------------------------------------------
          ;; delete previous fringe as duplicates have already been removed
