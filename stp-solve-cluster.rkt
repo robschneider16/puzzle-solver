@@ -474,6 +474,10 @@
                                  (when (> depth *max-depth*) (error 'phase1-exapnd "ran off end (finessing Riot caching)"))
                                  (expand-phase1 range-pair i pf cf depth))]
          ;; compute the slice boundaries based on the data in phase1-infos
+         [agg-hcfreqs
+          (for/vector #:length *num-hcfreq-bins* ([i *num-hcfreq-bins*]) 
+                      (for/sum ([p1inf phase1-infos]) (vector-ref (vector-ref p1inf 9) i)))]
+         [hcfreq-msg (printf "~a non-zero of ~a slices~%" (for/sum ([c agg-hcfreqs] #:when (positive? c)) 1) *num-hcfreq-bins*)]
          [dynamic-slice-bounds (find-fringe-slices (for/fold ([minhc *most-positive-fixnum*]) ([p1inf phase1-infos]) (min minhc (vector-ref p1inf 0)))
                                                    (for/fold ([maxhc *most-negative-fixnum*]) ([p1inf phase1-infos]) (max maxhc (vector-ref p1inf 1)))
                                                    (length ranges))]
