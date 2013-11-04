@@ -277,6 +277,7 @@
 ;; 6. total time in phase1 (estimate successor generation by subtracting sort- and write-times)
 ;; 7. listof partial-expansion files from this responsibility range
 ;; 8. process-identifier
+;; 9. cumulative time spent reading positions from the current-fringe fhead
 (define (update-minhc! p1inf hcv) (when (< hcv (vector-ref p1inf 0)) (vector-set! p1inf 0 hcv)))
 (define (update-maxhc! p1inf hcv) (when (> hcv (vector-ref p1inf 1)) (vector-set! p1inf 1 hcv)))
 (define (inc-written! p1inf morewritten) (vector-set! p1inf 2 (+ (vector-ref p1inf 2) morewritten)))
@@ -285,6 +286,7 @@
 (define (inc-write-time! p1inf morewritetime) (vector-set! p1inf 5 (+ (vector-ref p1inf 5) morewritetime)))
 (define (inc-tot-time! p1inf moretime) (vector-set! p1inf 6 (+ (vector-ref p1inf 6) moretime)))
 (define (add-pexpfspec! p1inf newfspec) (vector-set! p1inf 7 (cons newfspec (vector-ref p1inf 7))))
+(define (inc-read-pos-time! p1inf morereadpostime) (vector-set! p1inf 9 (+ (vector-ref p1inf 9) morereadpostime)))
 ;;----------------------------------------------------------------------------------------------------------
 
 ;; dump-partial-expansion: int string int phase1-info -> void
@@ -366,6 +368,7 @@
             (timer-total *phase1-read-pos-time*))
     (inc-sort-time! phase1-info (timer-total *phase1-sort-time*))
     (inc-write-time! phase1-info (timer-total *phase1-write-time*))
+    (inc-read-pos-time! phase1-info (timer-total *phase1-read-pos-time*))
     (when (< expanded-phase1 assignment-count)
       (error 'remote-expand-part-fringe
              (format "only expanded ~a of the assigned ~a (~a-~a) positions" expanded-phase1 assignment-count start end)))
