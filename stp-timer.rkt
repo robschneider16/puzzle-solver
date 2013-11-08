@@ -33,8 +33,8 @@
 
 ; wraps a call in a timer
 (define-syntax-rule (time-this t e)
-  (let ([res #f])
+  (let ([result #f])
     (start-timer t)
-    (set! res e)
+    (set! result e)
     (stop-timer t)
-    res))
+    result))

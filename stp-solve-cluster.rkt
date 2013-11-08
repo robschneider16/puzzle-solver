@@ -65,6 +65,9 @@
 
 (define *num-hcfreq-bins* (* *n-expanders* 20))
 (define *hc-freqs* (make-vector *num-hcfreq-bins* 0))
+(define *hc-freq-boundaries*
+  (build-vector (add1 *num-hcfreq-bins*)
+                (lambda (i) (* i (ceiling (/ (- *most-positive-fixnum* *most-negative-fixnum*) *num-hcfreq-bins*))))))
 
 (define *found-goal* #f)
 
@@ -82,22 +85,34 @@
     slices))
 
 (define *num-proto-fringe-slices* *n-mergers*)
-;; define the fixed hash-code bounds to be used for repsonsibility ranges and proto-fringe slicing
-#|
-(define *proto-fringe-slice-bounds* (find-fringe-slices *most-negative-fixnum* *most-positive-fixnum* *num-proto-fringe-slices*))
 
-;; get-slice-num: fixnum [low number] [hi number] -> number
-;; use binary search to find index for given hash-code within ranges defined by *proto-fringe-slice-bounds*
-(define (get-slice-num phc (low 0) (hi *num-proto-fringe-slices*))
-  (let ([mid (floor (/ (+ low hi) 2))])
-    (cond [(= low mid)
-           (when (>= phc (vector-ref *proto-fringe-slice-bounds* (add1 mid)))
-             (error (format "get-slice-num: missed the mark with index ~a for hc=~a~%" mid phc)))
-           mid]
-          [(< phc (vector-ref *proto-fringe-slice-bounds* mid))
-           (get-slice-num phc low mid)]
-          [else (get-slice-num phc mid hi)])))
-|#
+;; based on the collected distribution of positions,
+;; determine the hash-code bounds to be used for proto-fringe slicing
+
+; (vectorof N) -> (vectorof N)
+; create a vector containing the hash-code boundaries so that each range between consecutive boundaries
+; contains about the same number of positions
+(define (derive-boundaries frequency-counts total)
+  (let ([k (/ total *num-proto-fringe-slices*)]
+        [slice-low *most-negative-fixnum*]
+        [slice-high 'unknown]
+        [slice-boundaries (make-vector (add1 *num-proto-fringe-slices*))]
+        [current-bin 0])
+    ;; for each slice
+    (do ([i 1 (add1 i)])
+      ((> i *num-proto-fringe-slices*)
+       ; finish and clean up
+       )
+      ;; for bins until slice-count accumulated
+      (do ([j current-bin (add1 j)]
+           [this-slice-count 0 (+ this-slice-count (vector-ref frequency-counts j))])
+        ((> (+ this-slice-count (vector-ref frequency-counts j)) k)
+         ; determine the boundary within the current bin based on the proportion of ...
+         ; update current-bin
+         )
+        )
+      )
+    ))
 
 ;;----------------------------------------------------------------------------------------
 
