@@ -23,10 +23,30 @@
                 (lambda (i) (cons (* i (/ (- *most-positive-fixnum* *most-negative-fixnum*) *num-bins*))
                                   (* (add1 i) (/ (- *most-positive-fixnum* *most-negative-fixnum*) *num-bins*))))))
 
+;; simple-interpolate: N N N -> number
+;; compute the value within the bin-range expected to account for k of the bin-count positions
 (define (simple-interpolate bin-count k bin-index)
   (let ([bin-range (vector-ref *bin-boundaries* bin-index)])
     (+ (car bin-range)
        (ceiling (* bin-count (/ k (- (cdr bin-range) (car bin-range))))))))
+
+
+;; goble-one: (vectorof N) N number N N -> number
+;; span the range of bins to gather one slice, returning the value expected to cover slice count
+;; given the vector of counts, the starting bin, the starting value of the new rang, how many of bin still available, and how many needed
+;; compute the upper boundary, possibly in another bin -- return values: current-bin, boundary-value, how many remain
+(define (goble-one fcounts bin0 bin-start bin-remain need-count)
+  (do ([g need-count (- g (vector-ref fcounts bi))]
+       [bi bin0 (add1 bi)])
+    ((or (= bi (vector-length fcounts))
+         (> (vector-ref fcounts bi) g))
+     ; values here?
+     (values bi
+             ;;*** find value here, maybe using simple-interpolate
+             (- (vector-ref fcounts bi) g ;;*** maybe previously consumed/used counts if one bin spans several slices
+                ))
+     )
+    ))
 
 
 (define (derive-boundaries frequency-counts total)
