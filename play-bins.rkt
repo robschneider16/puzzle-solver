@@ -28,25 +28,27 @@
 (define (simple-interpolate bin-count k bin-index)
   (let ([bin-range (vector-ref *bin-boundaries* bin-index)])
     (+ (car bin-range)
-       (ceiling (* bin-count (/ k (- (cdr bin-range) (car bin-range))))))))
+       (ceiling (* (/ k bin-count) (- (cdr bin-range) (car bin-range)))))))
 
 
 ;; goble-one: (vectorof N) N number N N -> number
 ;; span the range of bins to gather one slice, returning the value expected to cover slice count
 ;; given the vector of counts, the starting bin, the starting value of the new rang, how many of bin still available, and how many needed
-;; compute the upper boundary, possibly in another bin -- return values: current-bin, boundary-value, how many remain
+;; compute the upper boundary, possibly in another bin --
+;; return list: current-bin, boundary-value, how many of this bin consumed, how many of this bin remain
 (define (goble-one fcounts bin0 bin-start bin-remain need-count)
   (do ([g need-count (- g (vector-ref fcounts bi))]
        [bi bin0 (add1 bi)])
     ((or (= bi (vector-length fcounts))
          (> (vector-ref fcounts bi) g))
-     ; values here?
-     (values bi
-             ;;*** find value here, maybe using simple-interpolate
-             (- (vector-ref fcounts bi) g ;;*** maybe previously consumed/used counts if one bin spans several slices
-                ))
-     )
-    ))
+     ;;*** find value here, maybe using simple-interpolate
+     (if (= bi (vector-length fcounts))
+         (list bi *most-positive-fixnum* (vector-ref fcounts (sub1 bi)) 0)
+         (list bi
+               (simple-interpolate (vector-ref fcounts bi) (+ (if (= bin0 bi) bin-start 0) g) bi)
+               (+ (if (= bin0 bi) bin-start 0) g)
+               (- (vector-ref fcounts bi) (+ (if (= bin0 bi) bin-start 0) g))))
+     )))
 
 
 (define (derive-boundaries frequency-counts total)
@@ -54,19 +56,15 @@
         [slice-low *most-negative-fixnum*]
         [slice-high 'unknown]
         [slice-boundaries (make-vector (add1 *num-proto-fringe-slices*))]
-        [current-bin 0])
+        [current-bin 1])
     ;; for each slice
-    (do ([i 1 (add1 i)])
-      ((> i *num-proto-fringe-slices*)
+    (do ([gobleres (goble-one frequency-counts 0 0 (vector-ref frequency-counts 0) k)
+                   (goble-one frequency-counts (first gobleres) (third gobleres) (fourth gobleres) k)])
+      ((> current-bin *num-proto-fringe-slices*)
        ; finish and clean up
+       slice-boundaries
        )
-      ;; for bins until slice-count accumulated
-      (do ([j current-bin (add1 j)]
-           [this-slice-count 0 (+ this-slice-count (vector-ref frequency-counts j))])
-        ((> (+ this-slice-count (vector-ref frequency-counts j)) k)
-         ; determine the boundary within the current bin based on the proportion of ...
-         ; update current-bin
-         )
-        )
-      )
-    ))
+      (vector-set! slice-boundaries current-bin (second gobleres))
+      (set! current-bin (add1 current-bin)))))
+      
+      
