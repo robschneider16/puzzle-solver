@@ -22,6 +22,7 @@
          decharify intify
          ;old-positionify ;** temp for testing
          list->bwrep ;; used only during initialization in compile-ms-array! via better-move-schema
+         bwrep->list
          ;bwrep->list
          cell-to-loc
          loc-to-cell
