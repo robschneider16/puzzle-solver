@@ -10,10 +10,18 @@
  "stp-solve-base.rkt"
  )
 
-;(provide )
+(provide (all-defined-out))
+
+(define *spaceindex* "the hashtable to hold the possible moves indexed by space configurations")
+
 
 ;;------------------------------------------------------------------------------------------------------
 ;; Support for creating an index from blank configurations to valid move schemas
+
+;; compile-spaceindex:  -> void
+;; initialize the *spaceindex* identifier to the hashtable
+(define (compile-spaceindex)
+  (set! *spaceindex* (all-space-config)))
 
 ; create the hash of possible moves for indexed by all possible configurations of blanks
 (define (all-space-config)
@@ -67,14 +75,80 @@
 ;; ------------------------
 ;; Using the new spaceindex structure
 
+;; generate-and-write-new-pos: N byte-string EBMS -> void
+;; generate the new position and write it into the expansion buffer
+(define (generate-and-write-new-pos bufindex src-bspos spaceint an-ebms)
+  (let* ([piece-type (first an-ebms)]
+         [mv-schema (fourth an-ebms)]
+         [nu-ploc (fourth mv-schema)]
+         ;
+         [the-hcpos (vector-ref *expansion-space* bufindex)]
+         [targetbs (hc-position-bs the-hcpos)]
+         [piece-start (for/sum ([i piece-type]) (vector-ref *piece-type-template* i))]
+         [piece-end (+ piece-start (vector-ref *piece-type-template* piece-type))]
+         )
+    ;; set spaces
+    (bytes-copy! targetbs 0 
+                 (charify-int (bitwise-xor spaceint ;; do the spaces at the front
+                                           (second mv-schema))))
+    ;; copy unchanged
+    (bytes-copy! targetbs *num-spaces* src-bspos *num-spaces* piece-start)
+    ;; set moved piece
+    (bytes-copy! targetbs piece-start
+                 (charify-int (bitwise-xor (intify src-bspos piece-start piece-end)
+                                           (third mv-schema))))
+    ;; copy remaining
+    (bytes-copy! targetbs piece-end
+                 src-bspos piece-end)
+    ;; set the hashcode
+    (set-hc-position-hc! the-hcpos (equal-hash-code targetbs))
+    ))
+
+
 ;; expand*: hc-position
 ;; the new successor generation utilizing the spaceindex
+;; expand: hc-position int -> int
+;; generate next states from this one
+;; *expandbuf*: holds all the pairs of piece-loc and bytstring expansions/successors of the given hc-position
+;; *piecelocvec*: holds the bytestring successors of a single piece
+;; expand-count: counts expansions/successors for a single piece
+(define expand*
+  (local ([define expand-count (box 0)]
+          )
+    (lambda (hc-s exp-ptr)
+      (let* ([bs (hc-position-bs hc-s)]     ; 
+             [bwrep (decharify bs)]         ; bitwise vector representation of board state
+             [spaceint (vector-ref bwrep 0)]
+             [moves-to-check (hash-ref *spaceindex* spaceint)]
+             [expanded-ptr exp-ptr]
+             ;
+             [target-hc-pos 'mutable-hc-pos-in-*expansion-space*]
+             )
+        (set-box! expand-count 0)
+        (for ([m moves-to-check])
+          ; get m's piecetype-int and see if one of the pieces of that type is in m's location
+          (when (positive? (bitwise-and (vector-ref bwrep (first m)) (arithmetic-shift 1 (second m))))
+            ; if so,
+            ; create the new position, and write it to the buffer 
+            (generate-and-write-new-pos expanded-ptr bs spaceint m)
+            ; and go to the next one
+            (set! expanded-ptr (add1 expanded-ptr))
+            ))
 
+
+        (for ([i (unbox expand-count)])
+          (set! target-hc-pos (vector-ref *expansion-space* (+ exp-ptr i)))
+          (set-hc-position-hc! target-hc-pos (equal-hash-code (mcdr (vector-ref *expandbuf* i))))
+          ;; copy bytes to the *expansion-space*
+          (bytes-copy! (hc-position-bs target-hc-pos) 0 (mcdr (vector-ref *expandbuf* i))))
+        (+ exp-ptr (unbox expand-count))))))
+                 
 
 
 
 (block10-init)   ;  131179 prospective even-better-move-schema
 ;(climb15-init)   ; 2280811
 (compile-ms-array! *piece-types* *bh* *bw*)
+(compile-spaceindex)
 ;(expand *start*)
 ;(test)

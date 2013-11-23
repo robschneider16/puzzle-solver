@@ -18,8 +18,7 @@
          *start*
          *piece-type-template*
          *num-spaces*
-         charify charify-int
-         decharify intify
+         charify charify-int decharify intify
          ;old-positionify ;** temp for testing
          list->bwrep ;; used only during initialization in compile-ms-array! via better-move-schema
          bwrep->list

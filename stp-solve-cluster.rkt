@@ -12,9 +12,10 @@
 (require mzlib/string) ;; supposedly depricated but seems to need the require for 5.3.5
 
 
-(require "stp-init.rkt")
-(require "stp-solve-base.rkt")
-(require "stp-fringefilerep.rkt")
+(require "stp-init.rkt"
+         "stp-solve-base.rkt"
+         "stp-fringefilerep.rkt"
+         "stp-spaceindex.rkt")
 ;(require profile)
 ;(instrumenting-enabled #t)
 ;(profiling-enabled #t)
@@ -99,7 +100,7 @@
          ;[prntmsg (printf "finished reading the fringes~%")]
          [exp-ptr 0]
          [expand-them (for ([p-to-expand current-fringe-vec])
-                        (set! exp-ptr (expand p-to-expand exp-ptr)))]
+                        (set! exp-ptr (expand* p-to-expand exp-ptr)))]
          [res (set->list (for/set ([i exp-ptr]
                                    #:unless (or (set-member? prev-fringe-set (vector-ref *expansion-space* i))
                                                 (position-in-vec? current-fringe-vec (vector-ref *expansion-space* i))))
@@ -298,8 +299,8 @@
          )
     ;; do the actual expansions
     (do ([i 1 (add1 i)]
-         [expansion-ptr (expand (fringehead-next cffh) 0)
-                        (expand (fringehead-next cffh) expansion-ptr)])
+         [expansion-ptr (expand* (fringehead-next cffh) 0)
+                        (expand* (fringehead-next cffh) expansion-ptr)])
       ((>= i assignment-count)
        (set!-values (pre-ofiles dupes-caught-here sort-time write-time)
                     (dump-partial-expansion expansion-ptr pre-ofile-template-fname pre-ofile-counter pre-ofiles dupes-caught-here sort-time write-time)))
@@ -331,7 +332,7 @@
 ;; where the copy is arranged-for by the master also
 (define (remote-expand-fringe ranges pf cf depth)
   ;;(printf "remote-expand-fringe: current-fringe of ~a split as: ~a~%" cur-fringe-size (map (lambda (pr) (- (second pr) (first pr))) ranges))
-  (let* ([distrib-results (for/work ([range-pair ranges]
+  (let* ([distrib-results (for/list #|work|# ([range-pair ranges]
                                      [i (in-range (length ranges))])
                                     (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end")) ;;prevent riot cache-failure
                                     ;; need alternate version of wait-for-files that just checks on the assigned range
@@ -413,7 +414,7 @@
     (for ([efs expand-files-specs]) (bring-local-partial-expansions efs)))|#
   ;(printf "remote-merge: n-protof-slices=~a, and length expand-files-specs=~a~%" *num-proto-fringe-slices* (vector-length expand-files-specs))
   (let ([merge-results
-         (for/work ([i *num-proto-fringe-slices*]
+         (for/list #|work|# ([i *num-proto-fringe-slices*]
                     [expand-fspecs-slice expand-files-specs])
                    (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end")) ;finesse Riot caching
                    (let* ([ofile-name (format "fringe-segment-d~a-~a" depth (~a i #:left-pad-string "0" #:width 3 #:align 'right))]
@@ -589,16 +590,17 @@
                  (list (make-filespec file filepcount (file-size file) ""))
                  filepcount)))
 
-;(block10-init)
-(climb12-init)
+(block10-init)
+;(climb12-init)
 ;(climb15-init)
 ;(climbpro24-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
+(compile-spaceindex)
 
 ;#|
 (module+ main
   ;; Switch between these according to if using the cluster or testing on multi-core single machine
-  (connect-to-riot-server! *master-name*)
+  ;(connect-to-riot-server! *master-name*)
   (define search-result (time (start-cluster-fringe-search *start*)))
   #|
   (define search-result (time (cfs-file (make-fringe-from-files "fringe-segment-d96-" 32)
