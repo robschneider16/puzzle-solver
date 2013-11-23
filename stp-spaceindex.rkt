@@ -105,43 +105,29 @@
     ))
 
 
-;; expand*: hc-position
+;; expand*: hc-position int -> int
 ;; the new successor generation utilizing the spaceindex
 ;; expand: hc-position int -> int
 ;; generate next states from this one
-;; *expandbuf*: holds all the pairs of piece-loc and bytstring expansions/successors of the given hc-position
-;; *piecelocvec*: holds the bytestring successors of a single piece
-;; expand-count: counts expansions/successors for a single piece
-(define expand*
-  (local ([define expand-count (box 0)]
-          )
-    (lambda (hc-s exp-ptr)
-      (let* ([bs (hc-position-bs hc-s)]     ; 
-             [bwrep (decharify bs)]         ; bitwise vector representation of board state
-             [spaceint (vector-ref bwrep 0)]
-             [moves-to-check (hash-ref *spaceindex* spaceint)]
-             [expanded-ptr exp-ptr]
-             ;
-             [target-hc-pos 'mutable-hc-pos-in-*expansion-space*]
-             )
-        (set-box! expand-count 0)
-        (for ([m moves-to-check])
-          ; get m's piecetype-int and see if one of the pieces of that type is in m's location
-          (when (positive? (bitwise-and (vector-ref bwrep (first m)) (arithmetic-shift 1 (second m))))
-            ; if so,
-            ; create the new position, and write it to the buffer 
-            (generate-and-write-new-pos expanded-ptr bs spaceint m)
-            ; and go to the next one
-            (set! expanded-ptr (add1 expanded-ptr))
-            ))
-
-
-        (for ([i (unbox expand-count)])
-          (set! target-hc-pos (vector-ref *expansion-space* (+ exp-ptr i)))
-          (set-hc-position-hc! target-hc-pos (equal-hash-code (mcdr (vector-ref *expandbuf* i))))
-          ;; copy bytes to the *expansion-space*
-          (bytes-copy! (hc-position-bs target-hc-pos) 0 (mcdr (vector-ref *expandbuf* i))))
-        (+ exp-ptr (unbox expand-count))))))
+(define (expand* hc-s exp-ptr)
+  (let* ([bs (hc-position-bs hc-s)]     ; 
+         [bwrep (decharify bs)]         ; bitwise vector representation of board state
+         [spaceint (vector-ref bwrep 0)]
+         [moves-to-check (hash-ref *spaceindex* spaceint)]
+         [expanded-ptr exp-ptr]
+         ;
+         [target-hc-pos 'mutable-hc-pos-in-*expansion-space*]
+         )
+    (for ([m moves-to-check])
+      ; get m's piecetype-int and see if one of the pieces of that type is in m's location
+      (when (positive? (bitwise-and (vector-ref bwrep (first m)) (arithmetic-shift 1 (second m))))
+        ; if so,
+        ; create the new position, and write it to the buffer 
+        (generate-and-write-new-pos expanded-ptr bs spaceint m)
+        ; and go to the next one
+        (set! expanded-ptr (add1 expanded-ptr))
+        ))
+    expanded-ptr))
                  
 
 
