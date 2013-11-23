@@ -41,16 +41,16 @@
 ;; collect all the possible even-better-move-schemas for a given space configuration
 (define (one-space-config spaceint)
   (let ([plocvec (make-vector *bsz* #f)])
-    (for*/fold ([r (set)])
+    (for*/fold ([r empty])
       ([ptype (in-range 1 (vector-length *piece-types*))]
        [loc *bsz*])
-      (for*/list
-          ([dir 4]
-           [ms (list (array-ref *ms-array* ptype loc dir))]
-           #:when (can-move spaceint ptype loc dir plocvec ms))
-        ; bundle the piece-type, location, direction and corresponding move-schema
-        (list ptype loc dir ms))
-      r)))
+      (append (for*/list
+                  ([dir 4]
+                   [ms (list (array-ref *ms-array* ptype loc dir))]
+                   #:when (can-move spaceint ptype loc dir plocvec ms))
+                ; bundle the piece-type, location, direction and corresponding move-schema
+                (list ptype loc dir ms))
+              r))))
 
 ;; can-move : fixnum N N (vectorof boolean) move-schema -> boolean
 ;; determine if the proposed move can work
