@@ -595,7 +595,7 @@
 ;(climb15-init)
 ;(climbpro24-init)
 (compile-ms-array! *piece-types* *bh* *bw*)
-(compile-spaceindex)
+(compile-spaceindex (format "~a~a-spaceindex.rkt" "stpconfigs/" *puzzle-name*))
 
 ;#|
 (module+ main

@@ -20,10 +20,15 @@
 ;; an even-better-move-schema (EBMS) is a (list N N move-schema)
 ;; where the first is the piece-type, the second is the location, third is the old-style move-schema
 
-;; compile-spaceindex:  -> void
-;; initialize the *spaceindex* identifier to the hashtable
-(define (compile-spaceindex)
-  (set! *spaceindex* (all-space-config)))
+;; compile-spaceindex: string -> void
+;; read or, if not present, initialize-and-write the *spaceindex* hashtable from or to the given file
+(define (compile-spaceindex fname)
+  (set! *spaceindex* 
+        (if (file-exists? fname)
+            (with-input-from-file fname read)
+            (let ([ht (all-space-config)])
+              (with-output-to-file fname (lambda () (write ht)))
+              ht))))
 
 ; create the hash of possible moves for indexed by all possible configurations of blanks
 (define (all-space-config)
@@ -162,9 +167,10 @@
 
 
 
-(block10-init)   ;  131179 prospective even-better-move-schema
+;(block10-init)   ;  131179 prospective even-better-move-schema
+(climb12-init)
 ;(climb15-init)   ; 2280811
 (compile-ms-array! *piece-types* *bh* *bw*)
-(compile-spaceindex)
+(compile-spaceindex (format "~a~a-spaceindex.rkt" "stpconfigs/" *puzzle-name*))
 ;(expand *start*)
 ;(test)

@@ -7,6 +7,7 @@
          hc-position hc-position-hc hc-position-bs hc-position? set-hc-position-hc!
          make-hcpos
          *prim-move-translations* *charify-offset* *max-board-size*
+         *puzzle-name*
          *invalid-locs*
          *num-piece-types* *piece-types* *num-pieces*
          *bs-ptype-index*
@@ -77,6 +78,7 @@
 (define *max-board-size* 64)
 
 ;; puzzle specific parameters
+(define *puzzle-name* "a string identifying the puzzle for selecting possible configuration files")
 (define *invalid-locs* empty)
 (define *num-piece-types* 0)
 (define *piece-types* empty)
@@ -97,7 +99,8 @@
 
 ;; set-em!: piece-type-vector pre-position-list target int int (listof int) -> void
 ;; generic setter for use by puzzle-specific initialization functions
-(define (set-em! ptv s t nrow ncol invalid)
+(define (set-em! ptv s t nrow ncol invalid pzlname)
+  (set! *puzzle-name* pzlname)
   (set! *bh* nrow)
   (set! *bw* ncol)
   (set! *bsz* (* nrow ncol))
@@ -247,11 +250,12 @@
     ((0 1) (0 2) (1 1) (1 2)) ; spaces
     ))
 
+(define *block10-name* "block10v12")
 (define *block10-target* '((1 0 1)))
 (define *block10-invalid-locs* '(0 3))
 
 (define (block10-init)
-  (set-em! *block10-piece-types* *block10-start* *block10-target* 6 4 *block10-invalid-locs*))
+  (set-em! *block10-piece-types* *block10-start* *block10-target* 6 4 *block10-invalid-locs* *block10-name*))
 
 ;;------------------------------------------------------------------------------------------------------
 ;; CLIMB-12 PUZZLE INIT
@@ -283,11 +287,12 @@
     ))
 
 ;; specify target as triple: piece-type, board-row, board-col
+(define *climb12-name* "climb12")
 (define *climb12-target* '((1 0 2)))
 (define *climb12-invalid-locs* '(0 1 3 4))
 
 (define (climb12-init)
-  (set-em! *climb12-piece-types* *climb12-start* *climb12-target* 6 5 *climb12-invalid-locs*))
+  (set-em! *climb12-piece-types* *climb12-start* *climb12-target* 6 5 *climb12-invalid-locs* *climb12-name*))
 
 ;;------------------------------------------------------------------------------------------------------
 ;; CLIMB-15 PUZZLE INIT
@@ -322,11 +327,12 @@
     ((0 2)(1 1)(1 2)(1 3))
     ))
 
+(define *climb15-name* "climb15")
 (define *climb15-target* '((1 0 2)))
 (define *climb15-invalid-locs* '(0 1 3 4))
 
 (define (climb15-init)
-  (set-em! *climb15-piece-types* *climb15-start* *climb15-target* 8 5 *climb15-invalid-locs*))
+  (set-em! *climb15-piece-types* *climb15-start* *climb15-target* 8 5 *climb15-invalid-locs* *climb15-name*))
 
 ;;------------------------------------------------------------------------------------------------------
 ;; CLIMB-24-PRO PUZZLE INIT
@@ -344,6 +350,7 @@
 ;; 8  |   |_| |_|   |
 ;; 9  |___|_____|___|
 
+(define *climbpro24-name* "climbpro24")
 (define *climbpro24-target* '((2 0 3)))
 (define *climbpro24-invalid-locs* '(0 1 2 4 5 6))
 
@@ -388,7 +395,7 @@
     ))
 
 (define (climbpro24-init)
-  (set-em! *climbpro24-piece-types* *climbpro24-start* *climbpro24-target* 10 7 *climbpro24-invalid-locs*))
+  (set-em! *climbpro24-piece-types* *climbpro24-start* *climbpro24-target* 10 7 *climbpro24-invalid-locs* *climbpro24-name*))
 
 
 ;;------------------------------------------------------------------------------------------------------
