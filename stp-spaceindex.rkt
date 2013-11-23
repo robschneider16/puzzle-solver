@@ -45,26 +45,37 @@
       ([ptype (in-range 1 (vector-length *piece-types*))]
        [loc *bsz*])
       (vector-fill! plocvec #f)
-      (append (inner-search spaceint spaceint ptype loc loc plocvec)
+      (append (inner-search spaceint spaceint ptype loc loc plocvec 0 0 0)
               r))))
 
-;; inner-serch: fixnum fixnum N N N (vectorof boolean) -> (listof EBMS)
+;; inner-serch: fixnum fixnum N N N (vectorof boolean) fixnum fixnum fixnum -> (listof EBMS)
 ;; perform the inner-search for multi-place moves of this piece.  the loc0 parameter is the origin for the moves
 ;; currently under consideration.  the nu-loc is the position to which has been moved with the corresponding spaceint.
-(define (inner-search spaceint0 spaceint ptype loc0 moved-loc plocvec)
+;; the accumulators (blank-prerequisits, blank-change-bits, piece-change-bits) get built up for the creation of the stored moveschema
+(define (inner-search spaceint0 spaceint ptype loc0 moved-loc plocvec b-prereq-acc b-chgbit-acc p-chgbit-acc)
   (for*/fold ([r empty])
     ([dir 4]
      [ms (list (array-ref *ms-array* ptype moved-loc dir))]
      #:when (can-move spaceint ptype moved-loc dir plocvec ms)) ; prevents moves that have already been processed in the search
     ; bundle the piece-type, location, direction and corresponding move-schema
     (vector-set! plocvec moved-loc #t)
-    (append (cons (list ptype loc0 ms) ;**** need to create a tailored old-style move-schema from loc0
+    (vector-set! plocvec (fourth ms) #t)
+    (append (cons (list ptype loc0 
+                        (if (= loc0 moved-loc)
+                            ms
+                            (list (bitwise-ior b-prereq-acc (first ms))
+                                  (bitwise-xor b-chgbit-acc (second ms))
+                                  (bitwise-xor p-chgbit-acc (third ms))
+                                  (fourth ms)))) ; create a tailored old-style move-schema
                   (inner-search spaceint0
                                 (bitwise-xor spaceint (second ms))   ; the new spaceint from this move-schema
                                 ptype
                                 loc0
                                 (fourth ms)
-                                plocvec))                            ; the plocvec vector to prevent infinite loop
+                                plocvec                              ; the plocvec vector to prevent infinite loop
+                                (bitwise-ior b-prereq-acc (first ms))
+                                (bitwise-xor b-chgbit-acc (second ms))
+                                (bitwise-xor p-chgbit-acc (third ms))))
             r)))
 
 ;; can-move : fixnum N N (vectorof boolean) move-schema -> boolean
@@ -81,10 +92,12 @@
        ; is the move valid
        (bw-valid-move? spaceint (first ms))
        ;; 3. does the piece not overlay with the spaces
-       (not-on-blanks ms spaceint ptype loc dir)
+       (not-on-blanks? spaceint ptype loc dir)
        ))
 
-(define (not-on-blanks ms spaceint ptype loc dir)
+;; not-on-blanks?: fixnum N N N -> boolean
+;; make sure the piece-type in this location is not overlapping where the spaces are as given in spaceint
+(define (not-on-blanks? spaceint ptype loc dir)
   (let ([pcells (vector-ref *piece-types* ptype)])
     (zero? (bitwise-and spaceint (list->bwrep (for/list ([cell (translate-piece pcells (loc-to-cell loc))]) (cell-to-loc cell)))))))
 
