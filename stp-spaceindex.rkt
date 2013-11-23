@@ -14,9 +14,11 @@
 
 (define *spaceindex* "the hashtable to hold the possible moves indexed by space configurations")
 
-
 ;;------------------------------------------------------------------------------------------------------
 ;; Support for creating an index from blank configurations to valid move schemas
+
+;; an even-better-move-schema (EBMS) is a (list N N N move-schema)
+;; where the first is the piece-type, the second is the location, third the direction and the fourth is the move-schema
 
 ;; compile-spaceindex:  -> void
 ;; initialize the *spaceindex* identifier to the hashtable
@@ -35,20 +37,20 @@
     (let ([spaceint (list->bwrep (list b1 b2 b3 b4))])
       (values spaceint (one-space-config spaceint)))))
 
-
-;; extract moves for given space configuration
+;; one-space-config: fixnum -> (setof EBMS)
+;; collect all the possible even-better-move-schemas for a given space configuration
 (define (one-space-config spaceint)
   (let ([plocvec (make-vector *bsz* #f)])
-    (for*/fold ([r empty])
+    (for*/fold ([r (set)])
       ([ptype (in-range 1 (vector-length *piece-types*))]
        [loc *bsz*])
-      (append (for*/list
-                  ([dir 4]
-                   [ms (list (array-ref *ms-array* ptype loc dir))]
-                   #:when (can-move spaceint ptype loc dir plocvec ms))
-                ; bundle the piece-type, location, direction and corresponding move-schema
-                (list ptype loc dir ms))
-              r))))
+      (for*/list
+          ([dir 4]
+           [ms (list (array-ref *ms-array* ptype loc dir))]
+           #:when (can-move spaceint ptype loc dir plocvec ms))
+        ; bundle the piece-type, location, direction and corresponding move-schema
+        (list ptype loc dir ms))
+      r)))
 
 ;; can-move : fixnum N N (vectorof boolean) move-schema -> boolean
 ;; determine if the proposed move can work
