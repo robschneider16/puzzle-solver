@@ -17,8 +17,8 @@
 ;;------------------------------------------------------------------------------------------------------
 ;; Support for creating an index from blank configurations to valid move schemas
 
-;; an even-better-move-schema (EBMS) is a (list N N N move-schema)
-;; where the first is the piece-type, the second is the location, third the direction and the fourth is the move-schema
+;; an even-better-move-schema (EBMS) is a (list N N move-schema)
+;; where the first is the piece-type, the second is the location, third is the old-style move-schema
 
 ;; compile-spaceindex:  -> void
 ;; initialize the *spaceindex* identifier to the hashtable
@@ -44,22 +44,37 @@
     (for*/fold ([r empty])
       ([ptype (in-range 1 (vector-length *piece-types*))]
        [loc *bsz*])
-      (append (for*/list
-                  ([dir 4]
-                   [ms (list (array-ref *ms-array* ptype loc dir))]
-                   #:when (can-move spaceint ptype loc dir plocvec ms))
-                ; bundle the piece-type, location, direction and corresponding move-schema
-                (list ptype loc dir ms))
+      (vector-fill! plocvec #f)
+      (append (inner-search spaceint spaceint ptype loc loc plocvec)
               r))))
+
+;; inner-serch: fixnum fixnum N N N (vectorof boolean) -> (listof EBMS)
+;; perform the inner-search for multi-place moves of this piece.  the loc0 parameter is the origin for the moves
+;; currently under consideration.  the nu-loc is the position to which has been moved with the corresponding spaceint.
+(define (inner-search spaceint0 spaceint ptype loc0 moved-loc plocvec)
+  (for*/fold ([r empty])
+    ([dir 4]
+     [ms (list (array-ref *ms-array* ptype moved-loc dir))]
+     #:when (can-move spaceint ptype moved-loc dir plocvec ms)) ; prevents moves that have already been processed in the search
+    ; bundle the piece-type, location, direction and corresponding move-schema
+    (vector-set! plocvec moved-loc #t)
+    (append (cons (list ptype loc0 ms) ;**** need to create a tailored old-style move-schema from loc0
+                  (inner-search spaceint0
+                                (bitwise-xor spaceint (second ms))   ; the new spaceint from this move-schema
+                                ptype
+                                loc0
+                                (fourth ms)
+                                plocvec))                            ; the plocvec vector to prevent infinite loop
+            r)))
 
 ;; can-move : fixnum N N (vectorof boolean) move-schema -> boolean
 ;; determine if the proposed move can work
 (define (can-move spaceint ptype loc dir plocvec ms)
   (and ms ;; the retrieved move-schema non-false
-       ;; loc is on the board
-       (not (member loc *invalid-locs*))
        ; have we been there already
        (not (vector-ref plocvec (fourth ms)))
+       ;; loc is on the board
+       (not (member loc *invalid-locs*))
        ; piece-on-board
        (andmap onboard? 
                (for/list ([cell (translate-piece (vector-ref *piece-types* ptype) (loc-to-cell loc))]) cell))
@@ -81,7 +96,7 @@
 ;; generate the new position and write it into the expansion buffer
 (define (generate-and-write-new-pos bufindex src-bspos spaceint an-ebms)
   (let* ([piece-type (first an-ebms)]
-         [mv-schema (fourth an-ebms)]
+         [mv-schema (third an-ebms)]
          [nu-ploc (fourth mv-schema)]
          ;
          [the-hcpos (vector-ref *expansion-space* bufindex)]
