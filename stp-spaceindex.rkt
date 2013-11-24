@@ -68,7 +68,7 @@
   (for*/fold ([r empty])
     ([dir 4]
      [ms (list (array-ref *ms-array* ptype moved-loc dir))]
-     #:when (can-move spaceint ptype moved-loc dir plocvec ms)) ; prevents moves that have already been processed in the search
+     #:when (can-move? spaceint ptype moved-loc dir plocvec ms)) ; prevents moves that have already been processed in the search
     ; bundle the piece-type, location, direction and corresponding move-schema
     (vector-set! plocvec moved-loc #t)
     (vector-set! plocvec (fourth ms) #t)
@@ -87,9 +87,9 @@
                                 (bitwise-xor p-chgbit-acc (third ms))))
             r)))
 
-;; can-move : fixnum N N (vectorof boolean) move-schema -> boolean
+;; can-move?: fixnum N N (vectorof boolean) move-schema -> boolean
 ;; determine if the proposed move can work
-(define (can-move spaceint ptype loc dir plocvec ms)
+(define (can-move? spaceint ptype loc dir plocvec ms)
   (and ms ;; the retrieved move-schema non-false
        ; have we been there already
        (not (vector-ref plocvec (fourth ms)))
