@@ -35,8 +35,8 @@
 ;#|
 (set! *master-name* "wcp")
 (set! *local-store* "/state/partition1/fringefiles/")
-;(set! *share-store* "/share/data1/fringefiles/")
-(set! *share-store* "fringefiles/")
+(set! *share-store* "/share/data2/fringefiles/")
+;(set! *share-store* "fringefiles/")
 (define *n-processors* 32)
 ;|#
 (define *expand-multiplier* 1)
@@ -585,9 +585,10 @@
      *share-store*
      (for/list ([i n-seg])
        (let* ([f (format "~a~a" base-string (~a i #:left-pad-string "0" #:width 3 #:align 'right))]
-              [lpcount (read-from-string (with-output-to-string (lambda () (system (format "wc -l ~a" f)))))])
+              [lpcount (read-from-string (with-output-to-string 
+                                          (lambda () (system (format "wc -l ~a" (string-append *share-store* f))))))])
          (set! pcount (+ pcount lpcount))
-         (make-filespec f lpcount (file-size f) *share-store*)))
+         (make-filespec f lpcount (file-size (string-append *share-store* f)) *share-store*)))
      pcount)))
 
 (define (make-fringe-from-file file)
@@ -608,9 +609,9 @@
   (connect-to-riot-server! *master-name*)
   (define search-result (time (start-cluster-fringe-search *start*)))
   #|
-  (define search-result (time (cfs-file (make-fringe-from-files "fringe-segment-d106-" 32)
-                                        (make-fringe-from-files "fringe-segment-d107-" 32)
-                                        108)))
+  (define search-result (time (cfs-file (make-fringe-from-files "fringe-segment-d115-" 32)
+                                        (make-fringe-from-files "fringe-segment-d116-" 32)
+                                        117)))
   |#
   #|
   (define search-result (time (cfs-file (make-fringe-from-file "c12d59fringe")
