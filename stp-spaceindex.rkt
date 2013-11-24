@@ -39,13 +39,13 @@
 
 ; create the hash of possible moves for indexed by all possible configurations of blanks
 (define (all-space-config)
-  (for*/hasheq ([b1 (- *bsz* 3)]
-                [b2 (in-range (add1 b1) (- *bsz* 2))]
-                [b3 (in-range (add1 b2) (- *bsz* 1))]
-                [b4 (in-range (add1 b3) *bsz*)]
-                #:when (andmap (lambda (loc) (not (member loc *invalid-locs*))) (list b1 b2 b3 b4))
-                ;;(andmap onboard? (map loc-to-cell (list b1 b2 b3 b4)))
-                )
+  (for*/hash ([b1 (- *bsz* 3)]
+              [b2 (in-range (add1 b1) (- *bsz* 2))]
+              [b3 (in-range (add1 b2) (- *bsz* 1))]
+              [b4 (in-range (add1 b3) *bsz*)]
+              #:when (andmap (lambda (loc) (not (member loc *invalid-locs*))) (list b1 b2 b3 b4))
+              ;;(andmap onboard? (map loc-to-cell (list b1 b2 b3 b4)))
+              )
     (let ([spaceint (list->bwrep (list b1 b2 b3 b4))])
       (values spaceint (one-space-config spaceint)))))
 
