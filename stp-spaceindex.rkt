@@ -17,8 +17,13 @@
 ;;------------------------------------------------------------------------------------------------------
 ;; Support for creating an index from blank configurations to valid move schemas
 
-;; an even-better-move-schema (EBMS) is a (list N N move-schema)
-;; where the first is the piece-type, the second is the location, third is the old-style move-schema
+;; an even-better-move-schema (EBMS) is a (vector N N fixnum fixnum N)
+;; where:
+;; 0. piece-type
+;; 1. starting location of piece of this piece-type
+;; 2. bitwise rep of blank change-bits
+;; 3. bitwise rep of piece change-bits
+
 
 ;; compile-spaceindex: string -> void
 ;; read or, if not present, initialize-and-write the *spaceindex* hashtable from or to the given file
@@ -26,7 +31,9 @@
   (set! *spaceindex* 
         (if (file-exists? fname)
             (with-input-from-file fname read)
-            (let ([ht (all-space-config)])
+            (let ([ht "hash-table of possible moves indexed by space configuration"])
+              (compile-ms-array! *piece-types* *bh* *bw*)
+              (set! ht (all-space-config))
               (with-output-to-file fname (lambda () (write ht)))
               ht))))
 
@@ -65,13 +72,10 @@
     ; bundle the piece-type, location, direction and corresponding move-schema
     (vector-set! plocvec moved-loc #t)
     (vector-set! plocvec (fourth ms) #t)
-    (append (cons (list ptype loc0 
-                        (if (= loc0 moved-loc)
-                            ms
-                            (list (bitwise-ior b-prereq-acc (first ms))
-                                  (bitwise-xor b-chgbit-acc (second ms))
-                                  (bitwise-xor p-chgbit-acc (third ms))
-                                  (fourth ms)))) ; create a tailored old-style move-schema
+    (append (cons (vector ptype
+                          loc0 
+                          (bitwise-xor b-chgbit-acc (second ms))
+                          (bitwise-xor p-chgbit-acc (third ms)))
                   (inner-search spaceint0
                                 (bitwise-xor spaceint (second ms))   ; the new spaceint from this move-schema
                                 ptype
@@ -113,10 +117,7 @@
 ;; generate-and-write-new-pos: N byte-string EBMS -> void
 ;; generate the new position and write it into the expansion buffer
 (define (generate-and-write-new-pos bufindex src-bspos spaceint an-ebms)
-  (let* ([piece-type (first an-ebms)]
-         [mv-schema (third an-ebms)]
-         [nu-ploc (fourth mv-schema)]
-         ;
+  (let* ([piece-type (vector-ref an-ebms 0)]
          [the-hcpos (vector-ref *expansion-space* bufindex)]
          [targetbs (hc-position-bs the-hcpos)]
          [piece-start (for/sum ([i piece-type]) (vector-ref *piece-type-template* i))]
@@ -125,13 +126,13 @@
     ;; set spaces
     (bytes-copy! targetbs 0 
                  (charify-int (bitwise-xor spaceint ;; do the spaces at the front
-                                           (second mv-schema))))
+                                           (vector-ref an-ebms 2))))
     ;; copy unchanged
     (bytes-copy! targetbs *num-spaces* src-bspos *num-spaces* piece-start)
     ;; set moved piece
     (bytes-copy! targetbs piece-start
                  (charify-int (bitwise-xor (intify src-bspos piece-start piece-end)
-                                           (third mv-schema))))
+                                           (vector-ref an-ebms 3))))
     ;; copy remaining
     (bytes-copy! targetbs piece-end
                  src-bspos piece-end)
@@ -155,7 +156,7 @@
          )
     (for ([m moves-to-check])
       ; get m's piecetype-int and see if one of the pieces of that type is in m's location
-      (when (positive? (bitwise-and (vector-ref bwrep (first m)) (arithmetic-shift 1 (second m))))
+      (when (positive? (bitwise-and (vector-ref bwrep (vector-ref m 0)) (arithmetic-shift 1 (vector-ref m 1))))
         ; if so,
         ; create the new position, and write it to the buffer 
         (generate-and-write-new-pos expanded-ptr bs spaceint m)
@@ -167,10 +168,10 @@
 
 
 
-;(block10-init)   ;  131179 prospective even-better-move-schema
-(climb12-init)
-;(climb15-init)   ; 2280811
-(compile-ms-array! *piece-types* *bh* *bw*)
-(compile-spaceindex (format "~a~a-spaceindex.rkt" "stpconfigs/" *puzzle-name*))
+;(block10-init)   ;  160010 possible even-better-move-schema
+;(climb12-init)
+;(climb15-init)   ; 
+;(compile-ms-array! *piece-types* *bh* *bw*)
+;(compile-spaceindex (format "~a~a-spaceindex.rkt" "stpconfigs/" *puzzle-name*))
 ;(expand *start*)
 ;(test)
