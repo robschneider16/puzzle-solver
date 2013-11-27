@@ -58,7 +58,11 @@
       ([ptype (in-range 1 (vector-length *piece-types*))]
        [loc *bsz*])
       (vector-fill! plocvec #f)
-      (hash-set! rh (+ (* ptype *bsz*) loc) (inner-search spaceint spaceint ptype loc loc plocvec 0 0 0))
+      (let ([inner-search-result (inner-search spaceint spaceint ptype loc loc plocvec 0 0 0)])
+        (unless (empty? inner-search-result)
+          (hash-set! rh 
+                     (+ (* ptype *bsz*) loc)
+                     inner-search-result)))
       rh)))
 
 ;; inner-serch: fixnum fixnum N N N (vectorof boolean) fixnum fixnum fixnum -> (listof EBMS)
@@ -73,7 +77,7 @@
     ; bundle the piece-type, location, direction and corresponding move-schema
     (vector-set! plocvec moved-loc #t)
     (vector-set! plocvec (fourth ms) #t)
-    (append (cons (vector ;ptype
+    (append (cons (cons ;vector ;ptype
                           ;loc0 
                           (bitwise-xor spaceint0 (bitwise-xor b-chgbit-acc (second ms))) ; bitwise new blank-bits
                           (bitwise-xor p-chgbit-acc (third ms)))                         ; bitwise piece change-bits
@@ -128,11 +132,13 @@
     (bytes-copy! targetbs 0 src-bspos)
     ;; overwrite the new blank-locations
     (bytes-copy! targetbs 0 
-                 (charify-int (vector-ref an-ebms 0))) ;; do the spaces at the front ;; was 2
+                 (charify-int (car an-ebms) ;(vector-ref an-ebms 0)
+                              )) ;; do the spaces at the front ;; was 2
     ;; set moved piece
     (bytes-copy! targetbs piece-start
                  (charify-int (bitwise-xor (intify src-bspos piece-start piece-end)
-                                           (vector-ref an-ebms 1)))) ;; was 3
+                                           (cdr an-ebms) ;(vector-ref an-ebms 1) ;; vector-ref was 3 when storing ptype & loc
+                                           )))
     ;; set the hashcode
     (set-hc-position-hc! the-hcpos (equal-hash-code targetbs))
     ))
@@ -182,15 +188,18 @@
            ;[loc (bwrep->list (vector-ref bwrep i))]
            ;[loc (in-range (integer-length (vector-ref ptnum i)))]
            ;#:when (bitwise-bit-set? ptnum loc)
-           [m (hash-ref possible-moves-hash 
-                        (+ (* (vector-ref *bs-ptype-index* i) *bsz*) (- (bytes-ref bs i) *charify-offset*))
-                        (lambda () #f))]
-           #:when m)
-      ; create the new position, and write it to the buffer 
-      (generate-and-write-new-pos expanded-ptr bs spaceint m (vector-ref *bs-ptype-index* i))
-      ; and go to the next one
-      (set! expanded-ptr (add1 expanded-ptr))
-      )
+           )
+      (let ([moves-for-ptype-at-location
+             (hash-ref possible-moves-hash 
+                       (+ (* (vector-ref *bs-ptype-index* i) *bsz*) (- (bytes-ref bs i) *charify-offset*))
+                       (lambda () #f))])
+        (when moves-for-ptype-at-location
+          (for ([ebms moves-for-ptype-at-location])
+            ; create the new position, and write it to the buffer 
+            (generate-and-write-new-pos expanded-ptr bs spaceint ebms (vector-ref *bs-ptype-index* i))
+            ; and go to the next one
+            (set! expanded-ptr (add1 expanded-ptr))
+            ))))
     expanded-ptr))
                  
 
