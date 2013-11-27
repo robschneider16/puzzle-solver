@@ -21,7 +21,7 @@
 ;; where:
 ;; 0. piece-type
 ;; 1. starting location of piece of this piece-type
-;; 2. bitwise rep of blank change-bits
+;; 2. bitwise rep of the new blank-bits
 ;; 3. bitwise rep of piece change-bits
 
 
@@ -74,8 +74,8 @@
     (vector-set! plocvec (fourth ms) #t)
     (append (cons (vector ptype
                           loc0 
-                          (bitwise-xor b-chgbit-acc (second ms))
-                          (bitwise-xor p-chgbit-acc (third ms)))
+                          (bitwise-xor spaceint0 (bitwise-xor b-chgbit-acc (second ms))) ; bitwise new blank-bits
+                          (bitwise-xor p-chgbit-acc (third ms)))                         ; bitwise piece change-bits
                   (inner-search spaceint0
                                 (bitwise-xor spaceint (second ms))   ; the new spaceint from this move-schema
                                 ptype
@@ -123,19 +123,15 @@
          [piece-start (for/sum ([i piece-type]) (vector-ref *piece-type-template* i))]
          [piece-end (+ piece-start (vector-ref *piece-type-template* piece-type))]
          )
-    ;; set spaces
+    ;; initialize the target bytestring to the source position
+    (bytes-copy! targetbs 0 src-bspos)
+    ;; overwrite the new blank-locations
     (bytes-copy! targetbs 0 
-                 (charify-int (bitwise-xor spaceint ;; do the spaces at the front
-                                           (vector-ref an-ebms 2))))
-    ;; copy unchanged
-    (bytes-copy! targetbs *num-spaces* src-bspos *num-spaces* piece-start)
+                 (charify-int (vector-ref an-ebms 2))) ;; do the spaces at the front
     ;; set moved piece
     (bytes-copy! targetbs piece-start
                  (charify-int (bitwise-xor (intify src-bspos piece-start piece-end)
                                            (vector-ref an-ebms 3))))
-    ;; copy remaining
-    (bytes-copy! targetbs piece-end
-                 src-bspos piece-end)
     ;; set the hashcode
     (set-hc-position-hc! the-hcpos (equal-hash-code targetbs))
     ))
