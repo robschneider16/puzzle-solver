@@ -164,13 +164,14 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
         [num-written 0])
     (for ([i stop-at]
           [hcposition fringe])
-      (cond [remove-dupes
-             (unless (bytes=? (hc-position-bs hcposition) last-pos)
-               (set! last-pos (hc-position-bs hcposition))
-               (fprintf my-output "~a~%" (hc-position-bs hcposition))
-               (set! num-written (add1 num-written)))]
-            [else (fprintf my-output "~a~%" (hc-position-bs hcposition))
-                  (set! num-written (add1 num-written))]))
+      (let ([hc-bs (hc-position-bs hcposition)])
+        (cond [remove-dupes
+               (unless (bytes=? hc-bs last-pos)
+                 (set! last-pos hc-bs)
+                 (write-bs->file hc-bs my-output)
+                 (set! num-written (add1 num-written)))]
+              [else (write-bs->file hc-bs my-output)
+                    (set! num-written (add1 num-written))])))
     (close-output-port my-output)
     num-written))
 
@@ -179,9 +180,7 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 ;; and returns the fringe made up of hc-positions that was in that file.
 (define (read-fringe-from-file file-name)
   (let* ([iport (open-input-file file-name)]
-         [the-fringe (port->list (lambda (in)
-                                   (let ([bspos (read-bytes-line in)])
-                                     (if (eof-object? bspos) bspos (make-hcpos bspos))))
+         [the-fringe (port->list read-bs->hcpos
                                  iport)])
     (close-input-port iport)
     the-fringe))
@@ -190,10 +189,16 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 ;; -----------------------------------------------------------------------------------
 ;; --- MISC UTILITIES ----------------------------------------------------------------
 
+;; write-bs->file: byte-string output-port -> void or error
+;; writes the bs to the ofile and checks to make sure the right number of bytes were written
+(define (write-bs->file bspos oprt)
+  (unless (= (write-bytes bspos oprt) *num-pieces*)
+    (error "write-bs->file: failed to write an exact position")))
+
 ;; read-bs->hcpos: input-port -> hc-position
 ;; read a bytestring from the given input-port and create hc-position
 (define (read-bs->hcpos in)
-  (let ([bspos (read-bytes-line in)])
+  (let ([bspos (read-bytes *num-pieces* in)])
     (if (eof-object? bspos) bspos (make-hcpos bspos))))
 
 ;; fringe-exists?: fringe -> boolean
@@ -258,10 +263,7 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 ;; position-count-in-file: string -> number
 ;; reports the number of positions in the given fringe file assuming the file was written with write-fringe-to-disk
 (define (position-count-in-file f)
-  (read-from-string (with-output-to-string 
-                     (lambda () (system (if (string=? (substring f (- (string-length f) 3)) ".gz")
-                                            (format "zcat ~a | wc -l" f)
-                                            (format "wc -l ~a" f)))))))
+  (/ (file-size f) *num-pieces*))
                     
 ;; check-sorted-fringe?: string -> boolean
 ;; assuming the string, f, points to a sorted file of positions, check to make sure they are sorted

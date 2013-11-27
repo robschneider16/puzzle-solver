@@ -215,7 +215,7 @@
             (set! proto-slice-num (add1 proto-slice-num))
             (set! proto-slice-ofile (open-output-file (string-append ofile-name "-" (~a proto-slice-num #:left-pad-string "0" #:width 3 #:align 'right))))
             (set! slice-upper-bound (vector-ref *proto-fringe-slice-bounds* (add1 proto-slice-num))))
-          (fprintf proto-slice-ofile "~a~%" (hc-position-bs efpos))
+          (write-bytes  (hc-position-bs efpos) proto-slice-ofile)
           (when (is-goal? efpos) (vector-set! sample-stats 4 (hc-position-bs efpos)))
           (vector-set! slice-counts proto-slice-num (add1 (vector-ref slice-counts proto-slice-num))))
         (advance-fhead! an-fhead)
@@ -237,8 +237,6 @@
     ;(delete-file use-ofilename)
     ;;**** THIS STRIKES ME AS DANGEROUS: IF ONE PROCESS ON MULTI-CORE MACHINE FINISHES FIRST ....
     ;(when (file-exists? (string-append *local-store* (fspec-fname pfspec))) (delete-file (string-append *local-store* (fspec-fname pfspec))))
-    #|(printf "remove-dupes: starting w/ ~a positions, expansion has ~a/~a positions~%"
-            (fspec-pcount expand-fspec) unique-expansions (position-count-in-file ofile-name))|#
     #|(unless (check-sorted-fringe? ofile-name)
       (error 'remove-dupes "phase 2: failed to generate a sorted fringe file ~a" ofile-name))|#
     sample-stats))
@@ -393,7 +391,7 @@
                            (unless (fhdone? an-fhead) ;;(eof-object? (peek-byte (fringehead-iprt an-fhead) 1))
                              (heap-add! heap-o-fheads an-fhead))
                            (unless (bytes=? (hc-position-bs keep-pos) (hc-position-bs last-pos)) ;; don't write duplicates
-                             (fprintf mrg-segment-oport "~a~%" (hc-position-bs keep-pos))
+                             (write-bytes (hc-position-bs keep-pos) mrg-segment-oport)
                              (set! num-written (add1 num-written))
                              (set! last-pos keep-pos)))
                          num-written)])
@@ -469,10 +467,6 @@
          ;; -------------------------------------------
          [sorted-expansion-files (map first sorted-segment-fspecs)]
          [sef-lengths (map second sorted-segment-fspecs)]
-         #|[error-check2 (for/first ([f sorted-expansion-files]
-                                   [len sef-lengths]
-                                   #:unless (= len (position-count-in-file f)))
-                         (error 'distributed-expand-fringe (format "err-chk2: partial-merges do not match up for ~a which should be ~a" f len)))]|#
          [new-cf-name (format "fringe-d~a" depth)]
          )
     ;; create the _new_ current-fringe
@@ -579,13 +573,13 @@
      "" 
      (for/list ([i n-seg])
        (let* ([f (format "~a~a" base-string (~a i #:left-pad-string "0" #:width 3 #:align 'right))]
-              [lpcount (read-from-string (with-output-to-string (lambda () (system (format "wc -l ~a" f)))))])
+              [lpcount (read-from-string (with-output-to-string (lambda () (position-count-in-file f))))])
          (set! pcount (+ pcount lpcount))
          (make-filespec f lpcount (file-size f) "")))
      pcount)))
 
 (define (make-fringe-from-file file)
-  (let ([filepcount (read-from-string (with-output-to-string (lambda () (system (format "wc -l ~a" file)))))])
+  (let ([filepcount (read-from-string (with-output-to-string (lambda () (position-count-in-file file))))])
     (make-fringe ""
                  (list (make-filespec file filepcount (file-size file) ""))
                  filepcount)))

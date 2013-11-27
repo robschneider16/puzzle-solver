@@ -108,8 +108,7 @@
   (set! *piece-types* (for/vector ([cell-specs ptv])
                                   (list->set cell-specs)));****
   (set! *invalid-locs* invalid)
-  (set! *num-pieces* (+ (length s) -1
-                        (length (last s))))
+  (set! *num-pieces* (+ (length s) -1 (length (last s)))) ;; includes spaces -- may be used as length of position bytestring instead of bytes-length
   (set! *start* (make-hcpos (charify (bw-positionify (pre-compress s)))))
   (set! *piece-type-template* (for/vector ([pt (old-positionify (bw-positionify (pre-compress s)))]) (length pt)))
   (set! *num-spaces* (vector-ref *piece-type-template* 0))
@@ -167,7 +166,7 @@
   (for/fold ([newnum 0])
     ([ploc bs])
     (+ newnum (arithmetic-shift 1 (- ploc *charify-offset*)))))|#
-(define (intify bs (start 0) (end (bytes-length bs)))
+(define (intify bs (start 0) (end *num-pieces*))
   (for/fold ([newnum 0])
     ([pref (in-range start end)])
     (+ newnum (arithmetic-shift 1 (- (bytes-ref bs pref) *charify-offset*)))))
