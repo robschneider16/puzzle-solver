@@ -84,7 +84,7 @@
 (define *piece-types* empty)
 (define *num-pieces* 0)
 (define *start* empty)
-(define *piece-type-template* (vector))
+(define *piece-type-template* (vector)) ; for each piece-type index, stores how many blocks of that type there are
 (define *num-spaces* 0)
 (define *bs-ptype-index* (vector));; for a byte's index in a position, store the byte's piece-type
 (define *target* empty)

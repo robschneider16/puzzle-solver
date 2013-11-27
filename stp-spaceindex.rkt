@@ -51,14 +51,15 @@
 
 ;; one-space-config: fixnum -> (setof EBMS)
 ;; collect all the possible even-better-move-schemas for a given space configuration
+;; within a hash-table indexed by the combination of piece-type and location
 (define (one-space-config spaceint)
   (let ([plocvec (make-vector *bsz* #f)])
-    (for*/fold ([r empty])
+    (for*/fold ([rh (make-hasheq)])
       ([ptype (in-range 1 (vector-length *piece-types*))]
        [loc *bsz*])
       (vector-fill! plocvec #f)
-      (append (inner-search spaceint spaceint ptype loc loc plocvec 0 0 0)
-              r))))
+      (hash-set! rh (+ (* ptype *bsz*) loc) (inner-search spaceint spaceint ptype loc loc plocvec 0 0 0))
+      rh)))
 
 ;; inner-serch: fixnum fixnum N N N (vectorof boolean) fixnum fixnum fixnum -> (listof EBMS)
 ;; perform the inner-search for multi-place moves of this piece.  the loc0 parameter is the origin for the moves
@@ -72,8 +73,8 @@
     ; bundle the piece-type, location, direction and corresponding move-schema
     (vector-set! plocvec moved-loc #t)
     (vector-set! plocvec (fourth ms) #t)
-    (append (cons (vector ptype
-                          loc0 
+    (append (cons (vector ;ptype
+                          ;loc0 
                           (bitwise-xor spaceint0 (bitwise-xor b-chgbit-acc (second ms))) ; bitwise new blank-bits
                           (bitwise-xor p-chgbit-acc (third ms)))                         ; bitwise piece change-bits
                   (inner-search spaceint0
@@ -114,10 +115,10 @@
 ;; ------------------------
 ;; Using the new spaceindex structure
 
-;; generate-and-write-new-pos: N byte-string EBMS -> void
+;; generate-and-write-new-pos: N byte-string EBMS N -> void
 ;; generate the new position and write it into the expansion buffer
-(define (generate-and-write-new-pos bufindex src-bspos spaceint an-ebms)
-  (let* ([piece-type (vector-ref an-ebms 0)]
+(define (generate-and-write-new-pos bufindex src-bspos spaceint an-ebms piece-type)
+  (let* (;[piece-type (vector-ref an-ebms 0)]
          [the-hcpos (vector-ref *expansion-space* bufindex)]
          [targetbs (hc-position-bs the-hcpos)]
          [piece-start (for/sum ([i piece-type]) (vector-ref *piece-type-template* i))]
@@ -127,11 +128,11 @@
     (bytes-copy! targetbs 0 src-bspos)
     ;; overwrite the new blank-locations
     (bytes-copy! targetbs 0 
-                 (charify-int (vector-ref an-ebms 2))) ;; do the spaces at the front
+                 (charify-int (vector-ref an-ebms 0))) ;; do the spaces at the front ;; was 2
     ;; set moved piece
     (bytes-copy! targetbs piece-start
                  (charify-int (bitwise-xor (intify src-bspos piece-start piece-end)
-                                           (vector-ref an-ebms 3))))
+                                           (vector-ref an-ebms 1)))) ;; was 3
     ;; set the hashcode
     (set-hc-position-hc! the-hcpos (equal-hash-code targetbs))
     ))
@@ -141,7 +142,7 @@
 ;; the new successor generation utilizing the spaceindex
 ;; expand: hc-position int -> int
 ;; generate next states from this one
-(define (expand* hc-s exp-ptr)
+#|(define (expand* hc-s exp-ptr)
   (let* ([bs (hc-position-bs hc-s)]     ; 
          [bwrep (decharify bs)]         ; bitwise vector representation of board state
          [spaceint (vector-ref bwrep 0)]
@@ -159,6 +160,37 @@
         ; and go to the next one
         (set! expanded-ptr (add1 expanded-ptr))
         ))
+    expanded-ptr))
+|#
+;; make-piece-type-loc-pairs: (vectorof fixnum) -> (listof (N . N))
+;; extract the locations of each piece pairing it after the piece-type
+#|(define (make-piece-type-loc-pairs bwrep) 
+  (for/list ([i (in-range 1 (vector-length bwrep))])
+    (cons i |#
+
+(define (expand* hc-s exp-ptr)
+  (let* ([bs (hc-position-bs hc-s)]     ; 
+         ;[bwrep (decharify bs)]         ; bitwise vector representation of board state
+         [spaceint (intify bs 0 4)]
+         [possible-moves-hash (hash-ref *spaceindex* spaceint)]
+
+         ;
+         [expanded-ptr exp-ptr]
+         [target-hc-pos 'mutable-hc-pos-in-*expansion-space*]
+         )
+    (for* ([i (in-range 4 (bytes-length bs))]
+           ;[loc (bwrep->list (vector-ref bwrep i))]
+           ;[loc (in-range (integer-length (vector-ref ptnum i)))]
+           ;#:when (bitwise-bit-set? ptnum loc)
+           [m (hash-ref possible-moves-hash 
+                        (+ (* (vector-ref *bs-ptype-index* i) *bsz*) (- (bytes-ref bs i) *charify-offset*))
+                        (lambda () #f))]
+           #:when m)
+      ; create the new position, and write it to the buffer 
+      (generate-and-write-new-pos expanded-ptr bs spaceint m (vector-ref *bs-ptype-index* i))
+      ; and go to the next one
+      (set! expanded-ptr (add1 expanded-ptr))
+      )
     expanded-ptr))
                  
 
