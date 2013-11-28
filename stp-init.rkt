@@ -7,6 +7,8 @@
          hc-position hc-position-hc hc-position-bs hc-position? set-hc-position-hc!
          make-hcpos
          *prim-move-translations* *charify-offset* *max-board-size*
+         *puzzle-name*
+         *invalid-locs*
          *num-piece-types* *piece-types* *num-pieces*
          *bs-ptype-index*
          *target* *bw* *bh* *bsz*
@@ -17,10 +19,10 @@
          *start*
          *piece-type-template*
          *num-spaces*
-         charify charify-int
-         decharify intify
+         charify charify-int decharify intify
          ;old-positionify ;** temp for testing
          list->bwrep ;; used only during initialization in compile-ms-array! via better-move-schema
+         bwrep->list
          ;bwrep->list
          cell-to-loc
          loc-to-cell
@@ -77,11 +79,13 @@
 (define *max-board-size* 64)
 
 ;; puzzle specific parameters
+(define *puzzle-name* "a string identifying the puzzle for selecting possible configuration files")
+(define *invalid-locs* empty)
 (define *num-piece-types* 0)
 (define *piece-types* empty)
 (define *num-pieces* 0)
 (define *start* empty)
-(define *piece-type-template* (vector))
+(define *piece-type-template* (vector)) ; for each piece-type index, stores how many blocks of that type there are
 (define *num-spaces* 0)
 (define *bs-ptype-index* (vector));; for a byte's index in a position, store the byte's piece-type
 (define *target* empty)
@@ -94,17 +98,18 @@
 (define *piecelocvec* (vector));; vector boolean representing used move locations where the index is the location to which a single piece was moved
 ;(define *bsbuffer* #"") ;; a reusable buffer for holding expansions of a given position
 
-;; set-em!: piece-type-vector pre-position-list target int int -> void
+;; set-em!: piece-type-vector pre-position-list target int int (listof int) -> void
 ;; generic setter for use by puzzle-specific initialization functions
-(define (set-em! ptv s t nrow ncol)
+(define (set-em! ptv s t nrow ncol invalid pzlname)
+  (set! *puzzle-name* pzlname)
   (set! *bh* nrow)
   (set! *bw* ncol)
   (set! *bsz* (* nrow ncol))
   (set! *num-piece-types* (vector-length ptv)) ;; must come before bw-positionify/(pre-compress)
   (set! *piece-types* (for/vector ([cell-specs ptv])
                                   (list->set cell-specs)));****
-  (set! *num-pieces* (+ (length s) -1
-                        (length (last s))))
+  (set! *invalid-locs* invalid)
+  (set! *num-pieces* (+ (length s) -1 (length (last s)))) ;; includes spaces -- may be used as length of position bytestring instead of bytes-length
   (set! *start* (make-hcpos (charify (bw-positionify (pre-compress s)))))
   (set! *piece-type-template* (for/vector ([pt (old-positionify (bw-positionify (pre-compress s)))]) (length pt)))
   (set! *num-spaces* (vector-ref *piece-type-template* 0))
@@ -162,7 +167,7 @@
   (for/fold ([newnum 0])
     ([ploc bs])
     (+ newnum (arithmetic-shift 1 (- ploc *charify-offset*)))))|#
-(define (intify bs (start 0) (end (bytes-length bs)))
+(define (intify bs (start 0) (end *num-pieces*))
   (for/fold ([newnum 0])
     ([pref (in-range start end)])
     (+ newnum (arithmetic-shift 1 (- (bytes-ref bs pref) *charify-offset*)))))
@@ -245,10 +250,12 @@
     ((0 1) (0 2) (1 1) (1 2)) ; spaces
     ))
 
+(define *block10-name* "block10v12")
 (define *block10-target* '((1 0 1)))
+(define *block10-invalid-locs* '(0 3))
 
 (define (block10-init)
-  (set-em! *block10-piece-types* *block10-start* *block10-target* 6 4))
+  (set-em! *block10-piece-types* *block10-start* *block10-target* 6 4 *block10-invalid-locs* *block10-name*))
 
 ;;------------------------------------------------------------------------------------------------------
 ;; CLIMB-12 PUZZLE INIT
@@ -280,10 +287,12 @@
     ))
 
 ;; specify target as triple: piece-type, board-row, board-col
+(define *climb12-name* "climb12")
 (define *climb12-target* '((1 0 2)))
+(define *climb12-invalid-locs* '(0 1 3 4))
 
 (define (climb12-init)
-  (set-em! *climb12-piece-types* *climb12-start* *climb12-target* 6 5))
+  (set-em! *climb12-piece-types* *climb12-start* *climb12-target* 6 5 *climb12-invalid-locs* *climb12-name*))
 
 ;;------------------------------------------------------------------------------------------------------
 ;; CLIMB-15 PUZZLE INIT
@@ -318,10 +327,12 @@
     ((0 2)(1 1)(1 2)(1 3))
     ))
 
+(define *climb15-name* "climb15")
 (define *climb15-target* '((1 0 2)))
+(define *climb15-invalid-locs* '(0 1 3 4))
 
 (define (climb15-init)
-  (set-em! *climb15-piece-types* *climb15-start* *climb15-target* 8 5))
+  (set-em! *climb15-piece-types* *climb15-start* *climb15-target* 8 5 *climb15-invalid-locs* *climb15-name*))
 
 ;;------------------------------------------------------------------------------------------------------
 ;; CLIMB-24-PRO PUZZLE INIT
@@ -339,7 +350,9 @@
 ;; 8  |   |_| |_|   |
 ;; 9  |___|_____|___|
 
+(define *climbpro24-name* "climbpro24")
 (define *climbpro24-target* '((2 0 3)))
+(define *climbpro24-invalid-locs* '(0 1 2 4 5 6))
 
 (define *climbpro24-piece-types*
   '#((reserved-spaces)
@@ -382,7 +395,7 @@
     ))
 
 (define (climbpro24-init)
-  (set-em! *climbpro24-piece-types* *climbpro24-start* *climbpro24-target* 10 7))
+  (set-em! *climbpro24-piece-types* *climbpro24-start* *climbpro24-target* 10 7 *climbpro24-invalid-locs* *climbpro24-name*))
 
 
 ;;------------------------------------------------------------------------------------------------------

@@ -9,15 +9,17 @@
  "stp-init.rkt"
  )
                   
-
+#|
 (provide hcposition<?
          blexi<?
+         *ms-array*
          compile-ms-array!
          position-in-vec?
          expand
          is-goal?
          seconds->time)
-
+|#
+(provide (all-defined-out))
 
 ;; hcposition<?: hc-position hc-position -> boolean
 (define (hcposition<? p1 p2)

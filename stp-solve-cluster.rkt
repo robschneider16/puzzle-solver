@@ -12,9 +12,10 @@
 (require mzlib/string) ;; supposedly depricated but seems to need the require for 5.3.5
 
 
-(require "stp-init.rkt")
-(require "stp-solve-base.rkt")
-(require "stp-fringefilerep.rkt")
+(require "stp-init.rkt"
+         "stp-solve-base.rkt"
+         "stp-fringefilerep.rkt"
+         "stp-spaceindex.rkt")
 ;(require profile)
 ;(instrumenting-enabled #t)
 ;(profiling-enabled #t)
@@ -25,20 +26,20 @@
 (define *master-name* "the name of the host where the master process is running")
 (define *local-store* "the root portion of path to where workers can store temporary fringe files")
 (define *share-store* "the main folder where fringe files are stored (and possibly shared via NFS)")
-#|
+;#|
 (set! *master-name* "localhost")
 (set! *local-store* "/space/fringefiles/")
 (set! *share-store* "./fringefiles/")
 ;(set! *local-store* "/state/partition1/fringefiles/")
 (define *n-processors* 4)
-|#
-;#|
+;|#
+#|
 (set! *master-name* "wcp")
 (set! *local-store* "/state/partition1/fringefiles/")
 (set! *share-store* "/share/data2/fringefiles/")
 ;(set! *share-store* "fringefiles/")
 (define *n-processors* 32)
-;|#
+|#
 (define *expand-multiplier* 1)
 (define *merge-multiplier* 1)
 (define *n-expanders* (* *n-processors* *expand-multiplier*))
@@ -104,7 +105,7 @@
          ;[prntmsg (printf "finished reading the fringes~%")]
          [exp-ptr 0]
          [expand-them (for ([p-to-expand current-fringe-vec])
-                        (set! exp-ptr (expand p-to-expand exp-ptr)))]
+                        (set! exp-ptr (expand* p-to-expand exp-ptr)))]
          [res (set->list (for/set ([i exp-ptr]
                                    #:unless (or (set-member? prev-fringe-set (vector-ref *expansion-space* i))
                                                 (position-in-vec? current-fringe-vec (vector-ref *expansion-space* i))))
@@ -221,7 +222,7 @@
             (set! proto-slice-num (add1 proto-slice-num))
             (set! proto-slice-ofile (open-output-file (string-append *share-store* ofile-name "-" (~a proto-slice-num #:left-pad-string "0" #:width 3 #:align 'right))))
             (set! slice-upper-bound (vector-ref *proto-fringe-slice-bounds* (add1 proto-slice-num))))
-          (fprintf proto-slice-ofile "~a~%" (hc-position-bs efpos))
+          (write-bytes  (hc-position-bs efpos) proto-slice-ofile)
           (when (is-goal? efpos) (vector-set! sample-stats 4 (hc-position-bs efpos)))
           (vector-set! slice-counts proto-slice-num (add1 (vector-ref slice-counts proto-slice-num))))
         (advance-fhead! an-fhead)
@@ -243,8 +244,6 @@
     ;(delete-file use-ofilename)
     ;;**** THIS STRIKES ME AS DANGEROUS: IF ONE PROCESS ON MULTI-CORE MACHINE FINISHES FIRST ....
     ;(when (file-exists? (string-append *local-store* (fspec-fname pfspec))) (delete-file (string-append *local-store* (fspec-fname pfspec))))
-    #|(printf "remove-dupes: starting w/ ~a positions, expansion has ~a/~a positions~%"
-            (fspec-pcount expand-fspec) unique-expansions (position-count-in-file ofile-name))|#
     sample-stats))
 
 ;; dump-partial-expansion: int string int (listof fspec) float float -> (values (listof fspec) int float float)
@@ -303,8 +302,8 @@
          )
     ;; do the actual expansions
     (do ([i 1 (add1 i)]
-         [expansion-ptr (expand (fringehead-next cffh) 0)
-                        (expand (fringehead-next cffh) expansion-ptr)])
+         [expansion-ptr (expand* (fringehead-next cffh) 0)
+                        (expand* (fringehead-next cffh) expansion-ptr)])
       ((>= i assignment-count)
        (set!-values (pre-ofiles dupes-caught-here sort-time write-time)
                     (dump-partial-expansion expansion-ptr pre-ofile-template-fname pre-ofile-counter pre-ofiles dupes-caught-here sort-time write-time)))
@@ -397,7 +396,7 @@
                            (unless (fhdone? an-fhead) ;;(eof-object? (peek-byte (fringehead-iprt an-fhead) 1))
                              (heap-add! heap-o-fheads an-fhead))
                            (unless (bytes=? (hc-position-bs keep-pos) (hc-position-bs last-pos)) ;; don't write duplicates
-                             (fprintf mrg-segment-oport "~a~%" (hc-position-bs keep-pos))
+                             (write-bytes (hc-position-bs keep-pos) mrg-segment-oport)
                              (set! num-written (add1 num-written))
                              (set! last-pos keep-pos)))
                          num-written)])
@@ -477,10 +476,6 @@
          ;; -------------------------------------------
          [sorted-expansion-files (map first sorted-segment-fspecs)]
          [sef-lengths (map second sorted-segment-fspecs)]
-         #|[error-check2 (for/first ([f sorted-expansion-files]
-                                   [len sef-lengths]
-                                   #:unless (= len (position-count-in-file f)))
-                         (error 'distributed-expand-fringe (format "err-chk2: partial-merges do not match up for ~a which should be ~a" f len)))]|#
          [new-cf-name (format "fringe-d~a" depth)]
          )
     ;; create the _new_ current-fringe
@@ -586,13 +581,14 @@
      (for/list ([i n-seg])
        (let* ([f (format "~a~a" base-string (~a i #:left-pad-string "0" #:width 3 #:align 'right))]
               [lpcount (read-from-string (with-output-to-string 
-                                          (lambda () (system (format "wc -l ~a" (string-append *share-store* f))))))])
+                                          (lambda () (position-count-in-file (string-append *share-store* f)))))])
          (set! pcount (+ pcount lpcount))
          (make-filespec f lpcount (file-size (string-append *share-store* f)) *share-store*)))
      pcount)))
 
+;;???? Not really sure how this is intended to be useful: where is the source file and where should the fringe file go?
 (define (make-fringe-from-file file)
-  (let ([filepcount (read-from-string (with-output-to-string (lambda () (system (format "wc -l ~a" file)))))])
+  (let ([filepcount (read-from-string (with-output-to-string (lambda () (position-count-in-file file))))])
     (make-fringe *share-store*
                  (list (make-filespec file filepcount (file-size file) *share-store*))
                  filepcount)))
@@ -601,7 +597,8 @@
 (climb12-init)
 ;(climb15-init)
 ;(climbpro24-init)
-(compile-ms-array! *piece-types* *bh* *bw*)
+;(compile-ms-array! *piece-types* *bh* *bw*)
+(compile-spaceindex (format "~a~a-spaceindex.rkt" "stpconfigs/" *puzzle-name*))
 
 ;#|
 (module+ main
