@@ -62,15 +62,20 @@
 ;; where the vector is the piece-type specification, *piece-types*, and the ints are the width and height
 (define (compile-ms-array! piece-type-specs bh bw)
   (when (or (zero? bh) (zero? bw)) (error 'compile-ms-array "must be called after an appropriate initialization call"))
-  (let ((a (make-array (shape 1 (vector-length piece-type-specs) 0 (* bh bw) 0 4))))
+  (let ((a (make-array (shape 1 (vector-length piece-type-specs) 0 *bsz* 0 4))))
     (for ([piece-type-spec (vector-drop piece-type-specs 1)]
           [pti (in-range 1 (vector-length piece-type-specs))])
-      (for ([loc (in-range (* bh bw))])
-        (for ([dir (in-range (length *prim-move-translations*))])
-          (array-set! a pti loc dir
-                      (if (andmap onboard? (translate-piece piece-type-spec (translate-cell (list-ref *prim-move-translations* dir) (loc-to-cell loc))))
-                          (better-move-schema (cons pti (loc-to-cell loc)) (list-ref *prim-move-translations* dir))
-                          #f)))))
+      (for ([loc *bsz*])
+        (for ([dir (in-range (length *prim-move-translations*))]
+              [dir-trans *prim-move-translations*])
+          (let* ([loc-cell (loc-to-cell loc)]
+                 [start-spots (translate-piece piece-type-spec loc-cell)]
+                 [moved-spots (translate-piece piece-type-spec (translate-cell loc-cell dir-trans))])
+            (array-set! a pti loc dir
+                        (if (and (andmap onboard? start-spots)
+                                 (andmap onboard? moved-spots))
+                            (better-move-schema (loc-to-cell loc) dir-trans start-spots moved-spots)
+                            #f))))))
     (set! *ms-array* a)))
 
 ;; translate-loc: loc trans-spec -> loc
@@ -78,8 +83,9 @@
   (cell-to-loc (translate-cell (loc-to-cell l) trans)))
 
 ;; translate-cell: cell trans-spec -> cell
+;; given a trans-spec as (delta-row . delta-col) pair, return a new pair
 (define (translate-cell c trans) 
-  (list (+ (first c) (first trans)) (+ (second c) (second trans))))
+  (cons (+ (car c) (car trans)) (+ (cdr c) (cdr trans))))
 
 ;; translate-piece: (listof cells) trans-spec -> (listof cells)
 (define (translate-piece cell-list trans)
@@ -87,23 +93,21 @@
     (translate-cell cell trans)))
 
 
-;; better-move-schema: tile-spec trans-spec -> (list int int int)
+;; better-move-schema: cell trans-spec (listof cell) (listof cell) -> (list int int int)
 ;; a better-move-schema (better-ms) is a list:
 ;; first:   bit-rep of space preconditions
 ;; second:  xor of space preconditions and space postconditions ("changed-blanks": all that change)
 ;; third:   xor of current location and translated location (origin) of the piece
 ;; fourth:  new location of the moved tile's origin
-(define (better-move-schema tile trans)
-  (let* ([current-cell-list (translate-piece (vector-ref *piece-types* (first tile)) (cdr tile))]
-         [current-loc-list (sort (map cell-to-loc current-cell-list) <)]
-         [cell-list-to (translate-piece current-cell-list trans)]
-         [loc-list-to (sort (map cell-to-loc cell-list-to) <)])
+(define (better-move-schema cell trans start-cell-list moved-cell-list)
+  (let* ([current-loc-list (sort (map cell-to-loc start-cell-list) <)]
+         [loc-list-to (sort (map cell-to-loc moved-cell-list) <)])
     (list (list->bwrep (list-subtract loc-list-to  current-loc-list <))
           (bitwise-xor (list->bwrep (list-subtract loc-list-to  current-loc-list <))
                        (list->bwrep (list-subtract current-loc-list loc-list-to <)))
-          (list->bwrep (list (cell-to-loc (cdr tile))
-                               (cell-to-loc (translate-cell (cdr tile) trans))))
-          (cell-to-loc (translate-cell (cdr tile) trans)))))
+          (list->bwrep (list (cell-to-loc cell)
+                             (cell-to-loc (translate-cell cell trans))))
+          (cell-to-loc (translate-cell cell trans)))))
 
 ;; position-in-vec?: (vectorof position) position -> boolean
 ;; determine if given position is in vector of positions
@@ -226,8 +230,9 @@
   
 ;; onboard?: cell -> boolean
 (define (onboard? c)
-  (and (< -1 (first c) *bh*)
-       (< -1 (second c) *bw*)))
+  (and (< -1 (car c) *bh*)
+       (< -1 (cdr c) *bw*)
+       (array-ref *cell-to-loc* (car c) (cdr c))))
 ;; loc-onboard?: loc -> boolean
 (define (loc-onboard? loc)
   (< -1 loc *bsz*))

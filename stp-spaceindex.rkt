@@ -46,8 +46,6 @@
               [b2 (in-range (add1 b1) (- *bsz* 2))]
               [b3 (in-range (add1 b2) (- *bsz* 1))]
               [b4 (in-range (add1 b3) *bsz*)]
-              #:when (andmap (lambda (loc) (not (member loc *invalid-locs*))) (list b1 b2 b3 b4))
-              ;;(andmap onboard? (map loc-to-cell (list b1 b2 b3 b4)))
               )
     (let ([spaceint (list->bwrep (list b1 b2 b3 b4))])
       (values spaceint (list->vector (one-space-config spaceint))))))
@@ -100,7 +98,7 @@
        ; have we been there already
        (not (vector-ref plocvec (fourth ms)))
        ;; loc is on the board
-       (not (member loc *invalid-locs*))
+       ;(not (member loc *invalid-locs*)) ;; onboard? now checks invalid-locs implicitly
        ; piece-on-board
        (andmap onboard? 
                (for/list ([cell (translate-piece (vector-ref *piece-types* ptype) (loc-to-cell loc))]) cell))
