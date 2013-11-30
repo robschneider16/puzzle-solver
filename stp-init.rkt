@@ -22,6 +22,7 @@
          charify charify-int decharify intify
          ;old-positionify ;** temp for testing
          list->bwrep ;; used only during initialization in compile-ms-array! via better-move-schema
+         bwrep-direct
          bwrep->list
          ;bwrep->list
          cell-to-loc *cell-to-loc*
@@ -216,10 +217,20 @@
 ;; list->bwrep: (listof loc) -> int
 ;; convert the list of locations into a bitwise representation
 (define (list->bwrep lo-loc)
-  (foldl (lambda (a-loc bwint)
+  #|(foldl (lambda (a-loc bwint)
            (+ (arithmetic-shift 1 a-loc) bwint))
          0
-         lo-loc))
+         lo-loc)|#
+  (for/sum ([a-loc lo-loc]) (arithmetic-shift 1 a-loc)))
+
+;; bwrep-direct: N N N N -> fixnum
+;; get the blank-int directly from the locations of the four blanks
+(define (bwrep-direct b1 b2 b3 b4)
+  (+ (arithmetic-shift 1 b1)
+     (arithmetic-shift 1 b2)
+     (arithmetic-shift 1 b3)
+     (arithmetic-shift 1 b4)))
+
 
 ;; bwrep->list: int -> (listof loc)
 ;; extract the locs encoded in the given int
@@ -227,7 +238,6 @@
   (for/list ([i (in-range (integer-length n))]
              #:when (bitwise-bit-set? n i))
     i))    
-
 
 
 ;; pre-spaces: pre-position -> (listof cell)
@@ -369,13 +379,13 @@
 ;; 9  |___|_____|___|
 
 (define *climbpro24-name* "climbpro24")
-(define *climbpro24-target* '((2 0 . 3)))
+(define *climbpro24-target* '((1 0 . 3)))
 (define *climbpro24-invalid-cells* '((0 . 0)(0 . 1)(0 . 2)(0 . 4)(0 . 5)(0 . 6)))
 
 (define *climbpro24-piece-types*
   '#((reserved-spaces)
-     ((0 . 0)(0 . 1)(1 . 0)(1 . 1))            ; 1  2x2 square
-     ((0 . 0)(1 . -1)(1 . 0)(1 . 1))           ; 2  4 square T (stem up)
+     ((0 . 0)(1 . -1)(1 . 0)(1 . 1))           ; 1  4 square T (stem up)
+     ((0 . 0)(0 . 1)(1 . 0)(1 . 1))            ; 2  2x2 square
      ((0 . 0)(0 . 1)(1 . 0))                   ; 3  Upper Left pointing L
      ((0 . 0)(0 . 1)(1 . 1))                   ; 4  Upper Right pointing L
      ((0 . 0)(1 . -1)(1 . 0))                  ; 5  Lower Right pointing L
@@ -386,11 +396,11 @@
      ((0 . 0))))                               ; 10 1x1 unit square
 
 (define *climbpro24-start*
-  '((1 2 . 0)    ; 2x2
-    (1 2 . 5)    ; 2x2
-    (1 8 . 0)    ; 2x2
-    (1 8 . 5)    ; 2x2
-    (2 8 . 3)    ; T piece
+  '((1 8 . 3)    ; T piece
+    (2 2 . 0)    ; 2x2
+    (2 2 . 5)    ; 2x2
+    (2 8 . 0)    ; 2x2
+    (2 8 . 5)    ; 2x2
     (3 4 . 5)    ; up-left L
     (4 3 . 3)    ; up-right L
     (4 4 . 0)    ; up-right L
