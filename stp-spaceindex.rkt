@@ -4,7 +4,7 @@
  srfi/25 ;; multi-dimensional arrays
  racket/fixnum
  racket/set
- ;test-engine/racket-tests
+ test-engine/racket-tests
  ;racket/generator
  "stp-init.rkt"
  "stp-solve-base.rkt"
@@ -24,15 +24,23 @@
 ;;------------------------------------------------------------------------------------------------------
 ;; Support for creating an index from blank configurations to valid move schemas
 
-(struct ebms (loc0 newblanks p-chgbits) #:transparent)
-;; an even-better-move-schema (EBMS) is a (ebms N fixnum fixnum)
-;; loc0: is the starting location of the piece to which this ebms applies
-;; newblanks: is the bitwise-representation of the new blank postions (useable as index)
-;; p-chgbits: bitwise rep of piece change-bits
+(struct ebms (pt cloc newcloc newcbconf cbref) #:transparent)
+;; an even-better-move-schema (EBMS) is a (ebms N (N . N) (N . N) byte-string (N . N))
+;; pt: is the piecetype number
+;; cloc: is the canonicalized row-col pair for the piece to move
+;; newcloc: in the canonicalized row-col pair for the piece location after the move
+;; newcbconf: is the three-byte canonical-blank-config of the blanks after the move
+;; cbref: provides the drow-dcol reference for the new canonicalized blank-config
 
+;; an rcbyte is a byte where the first four bits represent the row difference
+;;   and the next four bits represent a signed column difference
 
+;; a canonical-blank-config is a byte-string of three bytes, where each byte represents the row and column difference between:
+;; rcbyte 1: first blank to second
+;; rcbyte 2: second to third
+;; rcbyte 3: third to fourth
 
-;; a space(blank)-index is a hash-table: {fixnum : (vectorof (listof EBMS))}
+;; a space(blank)-index is a hash-table: {blankconfig : (vectorof (listof EBMS))}
 ;; where the fixnum is the bitwise representation of the (typically 4) blanks.
 
 
@@ -42,61 +50,98 @@
   (set! *spaceindex* 
         (if (file-exists? fname)
             (with-input-from-file fname read)
-            (let ([ht (make-hash)]) ; hash-table of possible moves indexed by space configuration
+            (let ([ht (make-hash)]) ; mutable hash-table of possible moves indexed by space configuration
               (compile-ms-array! *piece-types* *bh* *bw*)
               (all-space-config ht)
               (with-output-to-file fname (lambda () (write ht)))
               ht))))
 
 ;; all-space-config: (hash-table: spaceint (vectorof EBMS)) -> void
-;; create the hash of possible moves for indexed by all possible configurations of blanks
+;; populates the hash of possible moves for indexed by all possible configurations of blanks
 (define (all-space-config ht)
   (for* ([b1 (- *bsz* 3)] ;; board-size minus the remaining blanks that still need to be placed
          [b2 (in-range (add1 b1) (- *bsz* 2))]
          [b3 (in-range (add1 b2) (- *bsz* 1))]
          [b4 (in-range (add1 b3) *bsz*)]
          )
-    (let ([spaceint (bwrep-direct b1 b2 b3 b4)])
-      (unless (hash-ref ht spaceint ret-false)
-        (hash-set! ht spaceint (one-space-config ht spaceint))))))
-                 
+    (let ([spaceint (bwrep-direct b1 b2 b3 b4)]
+          [canonical-blankindex (canonize b1 b2 b3 b4)]
+          )
+      (unless (hash-ref ht canonical-blankindex ret-false)
+        (hash-set! ht canonical-blankindex (make-hash)))
+      (one-space-config (hash-ref ht canonical-blankindex) spaceint (loc-to-cell b1) canonical-blankindex)
+      )))
 
-;; one-space-config: (hash-table spaceint (vectorof EBMS)) fixnum -> (listof EBMS)
+;; canonize: N N N N -> byte-string
+;; convert the four blank locations into a canonical (3-byte) blank-configuration
+(define (canonize b1 b2 b3 b4)
+  (bytes (locs->rcbyte b1 b2) (locs->rcbyte b2 b3) (locs->rcbyte b3 b4)))
+
+;; locs->rcbyte: N N -> rcbyte
+;; convert the  difference between two locations to single rcbyte
+(define (locs->rcbyte loc1 loc2)
+  (let* ([c1 (loc-to-cell loc1)]
+         [c2 (loc-to-cell loc2)]
+         [drow (- (car c2) (car c1))]
+         [dcol (- (cdr c2) (cdr c1))])
+    (rcpair->rcbyte (cons drow dcol))))
+
+;; rcpair->rcbyte: (N . N) -> byte
+;; convert a row-col pair where the row value in range [0,*bh*) and col in range [-*bw*,+*bw*] into a rcbyte
+(define (rcpair->rcbyte rcp)
+  (+ (bitwise-ior (arithmetic-shift (car rcp) 4)
+                  (+ *bw* (cdr rcp)))
+     *charify-offset*))
+
+;; rcbyte->rcpair: byte -> (N . N)
+;; recover the row-col pair from the byte
+(define (rcbyte->rcpair b)
+  (let ([decharified-b (- b *charify-offset*)])
+    (cons (arithmetic-shift (bitwise-and decharified-b 240) -4)
+          (- (bitwise-and decharified-b 15) *bw*))))
+   
+
+;; one-space-config: (hash-table: pt-loc-bytes . (setof EBMS)) fixnum (N . N) blank-config -> void
 ;; collect all the possible even-better-move-schemas for a given space configuration
 ;; within a hash-table indexed by the combination of piece-type and location
-(define (one-space-config ht spaceint)
-  (for/vector ([ptype (in-range 1 (vector-length *piece-types*))])
-    (for/fold ([r empty])
-      ([loc *bsz*])
+(define (one-space-config ht spaceint config-ref-pair blank-config)
+  (for* ([ptype (in-range 1 (vector-length *piece-types*))]
+         [loc *bsz*])
       (vector-set! *piecelocvec* loc #t)
-      (let* ([inner-search-result (inner-search ht spaceint spaceint ptype loc loc *piecelocvec*
-                                                0 0 0)]
-             [res (if (empty? inner-search-result)
-                      r
-                      (append inner-search-result r))])
+      (let ([inner-search-result (inner-search ht spaceint spaceint ptype loc loc *piecelocvec*
+                                               0 0 0 
+                                               config-ref-pair blank-config)]
+            )
         (vector-fill! *piecelocvec* #f)
-        res))))
+        )))
           
 
-;; inner-serch: (hash-table spaceint (vectorof EBMS)) fixnum fixnum N N N (vectorof boolean) fixnum fixnum fixnum -> (listof EBMS)
+;; inner-serch: (hash-table spaceint (vectorof EBMS)) fixnum fixnum N N N (vectorof boolean) fixnum fixnum fixnum (N . N) blank-config -> (listof EBMS)
 ;; perform the inner-search for multi-place moves of this piece.  the loc0 parameter is the origin for the moves
 ;; currently under consideration.  the nu-loc is the position to which has been moved with the corresponding spaceint.
 ;; the accumulators (blank-prerequisits, blank-change-bits, piece-change-bits) get built up for the creation of the stored moveschema
-(define (inner-search ht spaceint0 spaceint ptype loc0 moved-loc plocvec b-prereq-acc b-chgbit-acc p-chgbit-acc)
+(define (inner-search ht spaceint0 spaceint ptype loc0 moved-loc plocvec b-prereq-acc b-chgbit-acc p-chgbit-acc config-ref-pair blank-config)
   (for/fold ([r empty])
     ([dir 4])
     (let ([ms (array-ref *ms-array* ptype moved-loc dir)])
       (cond [(can-move? spaceint ptype moved-loc plocvec ms) ; prevents moves that have already been processed in the search
              ; bundle the piece-type, location, direction and corresponding move-schema
-             (let ([new-spaceint (bitwise-xor spaceint (second ms))] ; the new spaceint from this move-schema
-                   [xored-b-chgbits (bitwise-xor b-chgbit-acc (second ms))]
-                   [xored-p-chgbits (bitwise-xor p-chgbit-acc (third ms))])
+             (let* ([new-spaceint (bitwise-xor spaceint (second ms))] ; the new spaceint from this move-schema
+                    [xored-b-chgbits (bitwise-xor b-chgbit-acc (second ms))]
+                    [xored-p-chgbits (bitwise-xor p-chgbit-acc (third ms))]
+                    [canonical-rc (cons (- (car (loc-to-cell loc0)) (car config-ref-pair))
+                                         (- (cdr (loc-to-cell loc0)) (cdr config-ref-pair)))]
+                    [an-ebms (ebms loc0 
+                                   (bitwise-xor spaceint0 xored-b-chgbits)  ; bitwise new blank-bits
+                                   xored-p-chgbits)                         ; bitwise piece change-bits
+                            ]
+                   )
                (vector-set! plocvec (fourth ms) #t)
-               (append (cons (ebms ;ptype
-                              loc0 
-                              (bitwise-xor spaceint0 xored-b-chgbits) ; bitwise new blank-bits
-                              xored-p-chgbits)                         ; bitwise piece change-bits
-                             (inner-search ht 
+               (hash-update! ht (cons ptype canonical-rc)
+                             (lambda (prev)
+                               (if (member an-ebms prev) prev (cons an-ebms prev)))
+                             (lambda () empty))
+               (inner-search ht 
                                            spaceint0
                                            new-spaceint   
                                            ptype
@@ -105,8 +150,9 @@
                                            plocvec                              ; the plocvec vector to prevent infinite loop
                                            (bitwise-ior b-prereq-acc (first ms))
                                            xored-b-chgbits
-                                           xored-p-chgbits))
-                       r))]
+                                           xored-p-chgbits
+                                           blank-config))
+                       ]
             [else r]))))
 
 ;; can-move?: fixnum N N (vectorof boolean) move-schema -> boolean
@@ -148,12 +194,12 @@
     (bytes-copy! targetbs 0 src-bspos)
     ;; overwrite the new blank-locations
     (bytes-copy! targetbs 0 
-                 (charify-int (ebms-newblanks an-ebms)
+                 (charify-int (ebms-newcbconf an-ebms)
                               )) ;; do the spaces at the front ;; was 2
     ;; set moved piece
     (bytes-copy! targetbs piece-start
                  (charify-int (bitwise-xor (intify src-bspos piece-start piece-end)
-                                           (ebms-p-chgbits an-ebms) ;; vector-ref was 3 when storing ptype & loc
+                                           (ebms-newcloc an-ebms) ;; vector-ref was 3 when storing ptype & loc
                                            )))
     ;; set the hashcode
     (set-hc-position-hc! the-hcpos (equal-hash-code targetbs))
@@ -172,7 +218,7 @@
     (for* ([pti (in-range 1 *num-piece-types*)]
            [m (vector-ref moves-to-check (sub1 pti))])
       ; get m's piecetype-int and see if one of the pieces of that type is in m's location
-      (when (positive? (bitwise-and (vector-ref bwrep pti) (arithmetic-shift 1 (ebms-loc0 m))))
+      (when (positive? (bitwise-and (vector-ref bwrep pti) (arithmetic-shift 1 (ebms-cloc m))))
         ; if so,
         ; create the new position, and write it to the buffer 
         (generate-and-write-new-pos expanded-ptr bs spaceint pti m)
@@ -213,10 +259,10 @@
 
 
 
-;(block10-init)   ;  160010 possible even-better-move-schema
+(block10-init)   ;  160010 possible even-better-move-schema
 ;(climb12-init)
 ;(climb15-init)   ; 
-(climbpro24-init)
+;(climbpro24-init)
 ;(time (compile-ms-array! *piece-types* *bh* *bw*))
 (time (compile-spaceindex (format "~a~a-spaceindex.rkt" "stpconfigs/" *puzzle-name*)))
 ;(expand *start*)
