@@ -196,9 +196,8 @@
     ([ploc bs])
     (+ newnum (arithmetic-shift 1 (- ploc *charify-offset*)))))|#
 (define (intify bs (start 0) (end *num-pieces*))
-  (for/fold ([newnum 0])
-    ([pref (in-range start end)])
-    (+ newnum (arithmetic-shift 1 (- (bytes-ref bs pref) *charify-offset*)))))
+  (for/sum ([pref (in-range start end)])
+    (arithmetic-shift 1 (- (bytes-ref bs pref) *charify-offset*))))
 
 ;; bw-positionify: old-position -> bw-position
 ;; create a bitwise-'position' representation of a board state based on the given start-list pre-position format
