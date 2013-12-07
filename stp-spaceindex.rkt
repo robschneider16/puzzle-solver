@@ -2,9 +2,9 @@
 
 (require
  srfi/25 ;; multi-dimensional arrays
- racket/fixnum
- racket/set
- test-engine/racket-tests
+ ;racket/fixnum
+ ;racket/set
+ ;test-engine/racket-tests
  ;racket/generator
  "stp-init.rkt"
  "stp-solve-base.rkt"
@@ -24,7 +24,7 @@
 ;;------------------------------------------------------------------------------------------------------
 ;; Support for creating an index from blank configurations to valid move schemas
 
-(struct ebms (pt cloc newcloc newcbconf cbref) #:transparent)
+(struct ebms (pt cloc newcloc newcbconf cbref) #:prefab)
 ;; an even-better-move-schema (EBMS) is a (ebms N (N . N) (N . N) byte-string (N . N))
 ;; pt: is the piecetype number
 ;; cloc: is the canonicalized row-col pair for the piece to move
@@ -55,9 +55,9 @@
 ;; map a canonical rep into list of locations
 (define (decanonize bs rcref)
   (list (cell-to-loc rcref)
-        (cell-to-loc (rcbyte->rcpair (bytes-ref bs 0)))
-        (cell-to-loc (rcbyte->rcpair (bytes-ref bs 1)))
-        (cell-to-loc (rcbyte->rcpair (bytes-ref bs 2)))))
+        (cell-to-loc (rc+ rcref (rcbyte->rcpair (bytes-ref bs 0))))
+        (cell-to-loc (rc+ rcref (rcbyte->rcpair (bytes-ref bs 1))))
+        (cell-to-loc (rc+ rcref (rcbyte->rcpair (bytes-ref bs 2))))))
 
 ;; locs->rcbyte: N N -> rcbyte
 ;; convert the  difference between two locations to single rcbyte
@@ -90,11 +90,15 @@
 ;; register-cell-to-pair: (N . N) (N . N) -> (N . N)
 ;; given actual cell and reference for blank-config, convert cell to canonical row-col pair
 (define (register-cell-to-pair cell ref)
-  (cons (- (car cell) (car ref))
-        (- (cdr cell) (cdr ref))))
+  (rc- cell ref))
 
 (define (deregister-pair-to-cell ref pair)
   (register-cell-to-pair ref pair))
+
+;; rc+/-: (N . N) (N . N) -> (N . N)
+;; add or subtract the given cons pairs
+(define (rc+ p1 p2) (cons (+ (car p1) (car p2)) (+ (cdr p1) (cdr p2))))
+(define (rc- p1 p2) (cons (- (car p1) (car p2)) (- (cdr p1) (cdr p2))))
 
 ;;-------------------------------------------------------------------------
 
@@ -209,9 +213,9 @@
 ;; ------------------------
 ;; Using the new spaceindex structure
 
-;; generate-and-write-new-pos: N byte-string N EBMS -> void
+;; generate-and-write-new-pos: N byte-string EBMS N N (int . int) -> void
 ;; generate the new position and write it into the expansion buffer
-(define (generate-and-write-new-pos bufindex src-bspos spaceint piece-type an-ebms)
+(define (generate-and-write-new-pos bufindex src-bspos an-ebms piece-type ploc0 crc)
   (let* ([the-hcpos (vector-ref *expansion-space* bufindex)]
          [targetbs (hc-position-bs the-hcpos)]
          [piece-start (for/sum ([i piece-type]) (vector-ref *piece-type-template* i))]
@@ -221,49 +225,33 @@
     (bytes-copy! targetbs 0 src-bspos)
     ;; overwrite the new blank-locations
     (bytes-copy! targetbs 0 
-                 (charify-int (decanonize (ebms-newcbconf an-ebms) (ebms-cbref an-ebms))
-                              ))
+                 (charify-int (decanonize (ebms-newcbconf an-ebms) 
+                                          (rc+ (ebms-cbref an-ebms) crc))))
     ;; set moved piece
     (bytes-copy! targetbs piece-start
-                 (charify-int (bitwise-xor (intify src-bspos piece-start piece-end)
-                                           (deregister-pair-to-cell (ebms-cbref an-ebms)
-                                                                    (ebms-newcloc an-ebms)) 
-                                           )))
+                 (charify-int (bitwise-xor (intify src-bspos piece-start piece-end) ; piece(s) of this type in source position
+                                           ; piece change-bits
+                                           (bitwise-ior
+                                            ; starting location of moved-piece
+                                            ploc0
+                                            ; ending location of moved-piece
+                                            (cell-to-loc (deregister-pair-to-cell crc ;(ebms-cbref an-ebms)
+                                                                                  (ebms-newcloc an-ebms) ; canonical new-loc of piece
+                                                                                    ))
+                                           ))))
     ;; set the hashcode
     (set-hc-position-hc! the-hcpos (equal-hash-code targetbs))
     ))
 
-
 ;; expand*: hc-position int -> int
 ;; the new successor generation utilizing the spaceindex
-;; -> four-part EBMS version <-
-#|
-(define (expand* hc-s exp-ptr)
-  (let* ([bs (hc-position-bs hc-s)]     ; 
-         [bwrep (decharify bs)]         ; bitwise vector representation of board state
-         [spaceint (vector-ref bwrep 0)]
-         [moves-to-check (hash-ref *spaceindex* spaceint)]
-         [expanded-ptr exp-ptr])
-    (for* ([pti (in-range 1 *num-piece-types*)]
-           [m (vector-ref moves-to-check (sub1 pti))])
-      ; get m's piecetype-int and see if one of the pieces of that type is in m's location
-      (when (positive? (bitwise-and (vector-ref bwrep pti) (arithmetic-shift 1 (ebms-cloc m))))
-        ; if so,
-        ; create the new position, and write it to the buffer 
-        (generate-and-write-new-pos expanded-ptr bs spaceint pti m)
-        ; and go to the next one
-        (set! expanded-ptr (add1 expanded-ptr))
-        ))
-    expanded-ptr))
-|#
 ; -> two-part double-hash version <-
 (define (expand* hc-s exp-ptr)
   (let* ([bs (hc-position-bs hc-s)]     ; 
-         ;[bwrep (decharify bs)]         ; bitwise vector representation of board state
          [spaceint (intify bs 0 4)]
-         [spacelistrep  (bwrep->list spaceint)]
+         [spacelistrep  (bwrep->list spaceint)] ; this and spaceint can be consolidated to avoid the additions and decompositions in bwrep->list
          [canonical-blank-config (apply canonize spacelistrep)]
-         [config-ref (car spacelistrep)]
+         [config-ref-cell (loc-to-cell (car spacelistrep))] ; the row-col translation of the blank-config
          [possible-moves-hash (hash-ref *spaceindex* canonical-blank-config)]
          ;
          [expanded-ptr exp-ptr]
@@ -274,15 +262,17 @@
            ;[loc (in-range (integer-length (vector-ref ptnum i)))]
            ;#:when (bitwise-bit-set? ptnum loc)
            )
-      (let ([moves-for-ptype-at-location
-             (hash-ref possible-moves-hash 
-                       (cons (vector-ref *bs-ptype-index* i)
-                             (loc-to-cell (- (bytes-ref bs i) *charify-offset*)))
-                       ret-false)])
+      (let* ([ptype (vector-ref *bs-ptype-index* i)]
+             [ploc0 (- (bytes-ref bs i) *charify-offset*)]
+             [canonical-pieceloc (register-loc-to-pair ploc0 config-ref-cell)]
+             [moves-for-ptype-at-location
+              (hash-ref possible-moves-hash 
+                        (cons ptype canonical-pieceloc)
+                        ret-false)])
         (when moves-for-ptype-at-location
           (for ([ebms moves-for-ptype-at-location])
             ; create the new position, and write it to the buffer 
-            (generate-and-write-new-pos expanded-ptr bs spaceint ebms (vector-ref *bs-ptype-index* i))
+            (generate-and-write-new-pos expanded-ptr bs ebms ptype ploc0 config-ref-cell)
             ; and go to the next one
             (set! expanded-ptr (add1 expanded-ptr))
             ))))
@@ -296,5 +286,5 @@
 ;(climbpro24-init)
 ;(time (compile-ms-array! *piece-types* *bh* *bw*))
 (time (compile-spaceindex (format "~a~a-spaceindex.rkt" "stpconfigs/" *puzzle-name*)))
-;(expand *start*)
+(expand* *start* 0)
 ;(test)
