@@ -54,10 +54,16 @@
 ;; decanonize: byte-string (N . N) -> (listof loc)
 ;; map a canonical rep into list of locations
 (define (decanonize bs rcref)
-  (list (cell-to-loc rcref)
-        (cell-to-loc (rc+ rcref (rcbyte->rcpair (bytes-ref bs 0))))
-        (cell-to-loc (rc+ rcref (rcbyte->rcpair (bytes-ref bs 1))))
-        (cell-to-loc (rc+ rcref (rcbyte->rcpair (bytes-ref bs 2))))))
+  (let* ([b1b2 (rcbyte->rcpair (bytes-ref bs 0))]
+         [b2b3 (rcbyte->rcpair (bytes-ref bs 1))]
+         [b3b4 (rcbyte->rcpair (bytes-ref bs 2))]
+         [b2 (rc+ rcref b1b2)]
+         [b3 (rc+ b2 b2b3)]
+         [b4 (rc+ b3 b3b4)])
+    (list (cell-to-loc rcref)
+          (cell-to-loc b2)
+          (cell-to-loc b3)
+          (cell-to-loc b4))))
 
 ;; locs->rcbyte: N N -> rcbyte
 ;; convert the  difference between two locations to single rcbyte
@@ -149,7 +155,7 @@
 ;; currently under consideration.  the nu-loc is the position to which has been moved with the corresponding spaceint.
 ;; the accumulators (blank-prerequisits, blank-change-bits, piece-change-bits) get built up for the creation of the stored moveschema
 ;; the config-ref-pair specifies delta-row/col between actual blank-config and canonical-config, blank-config is the canonical rep
-(define (inner-search ht spaceint0 spaceint ptype loc0 moved-loc plocvec b-prereq-acc b-chgbit-acc p-chgbit-acc config-ref-pair blank-config)
+(define (inner-search ht spaceint0 spaceint ptype loc0 moved-loc plocvec b-prereq-acc b-chgbit-acc p-chgbit-acc config-ref-pair0 blank-config)
   (for ([dir 4])
     (let ([ms (array-ref *ms-array* ptype moved-loc dir)])
       (when (can-move? spaceint ptype moved-loc plocvec ms) ; prevents moves that have already been processed in the search
@@ -157,14 +163,14 @@
         (let* ([new-spaceint (bitwise-xor spaceint (second ms))] ; the new spaceint from this move-schema
                [xored-b-chgbits (bitwise-xor b-chgbit-acc (second ms))]
                [xored-p-chgbits (bitwise-xor p-chgbit-acc (third ms))]
-               [canonical-rcloc (register-loc-to-pair loc0 config-ref-pair)]
-               [new-locs (bwrep->list (bitwise-xor spaceint0 xored-b-chgbits))]
-               [new-blank-config (apply canonize new-locs)]
-               [new-config-ref-pair (register-loc-to-pair (car new-locs) config-ref-pair)]
+               [canonical-rcloc (register-loc-to-pair loc0 config-ref-pair0)]      ;; canonicalized location of piece before move
+               [new-blanks (bwrep->list (bitwise-xor spaceint0 xored-b-chgbits))] ;; actual new locations of blanks
+               [new-blank-config (apply canonize new-blanks)]                     ;; canonical config of the new blanks
+               [new-config-ref-pair (register-loc-to-pair (car new-blanks) config-ref-pair0)]
                [an-ebms (ebms ptype 
                               canonical-rcloc
-                              (register-loc-to-pair (fourth ms) config-ref-pair)
-                              new-blank-config                               ; new canonical config of blanks
+                              (rc- (loc-to-cell (fourth ms)) config-ref-pair0) ; canonical loc where the piece ends up 
+                              new-blank-config                                   ; new canonical config of blanks
                               new-config-ref-pair)  ; reference for new config
                         ]
                )
@@ -184,7 +190,7 @@
                         (bitwise-ior b-prereq-acc (first ms))
                         xored-b-chgbits
                         xored-p-chgbits
-                        new-config-ref-pair
+                        config-ref-pair0
                         new-blank-config))))))
 
 ;; can-move?: fixnum N N (vectorof boolean) move-schema -> boolean
@@ -286,5 +292,5 @@
 ;(climbpro24-init)
 ;(time (compile-ms-array! *piece-types* *bh* *bw*))
 (time (compile-spaceindex (format "~a~a-spaceindex.rkt" "stpconfigs/" *puzzle-name*)))
-(expand* *start* 0)
+;(expand* *start* 0)
 ;(test)
