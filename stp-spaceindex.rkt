@@ -231,20 +231,21 @@
     (bytes-copy! targetbs 0 src-bspos)
     ;; overwrite the new blank-locations
     (bytes-copy! targetbs 0 
-                 (charify-int (decanonize (ebms-newcbconf an-ebms) 
-                                          (rc+ (ebms-cbref an-ebms) crc))))
+                 (charify-int (list->bwrep (decanonize (ebms-newcbconf an-ebms) 
+                                                       (rc+ (ebms-cbref an-ebms) crc)))))
     ;; set moved piece
     (bytes-copy! targetbs piece-start
                  (charify-int (bitwise-xor (intify src-bspos piece-start piece-end) ; piece(s) of this type in source position
                                            ; piece change-bits
-                                           (bitwise-ior
+                                           (+
                                             ; starting location of moved-piece
-                                            ploc0
+                                            (arithmetic-shift 1 ploc0)
                                             ; ending location of moved-piece
-                                            (cell-to-loc (deregister-pair-to-cell crc ;(ebms-cbref an-ebms)
-                                                                                  (ebms-newcloc an-ebms) ; canonical new-loc of piece
-                                                                                    ))
-                                           ))))
+                                            (arithmetic-shift 1
+                                                              (cell-to-loc (rc+ crc ;(ebms-cbref an-ebms)
+                                                                                (ebms-newcloc an-ebms) ; canonical new-loc of piece
+                                                                                )))
+                                            ))))
     ;; set the hashcode
     (set-hc-position-hc! the-hcpos (equal-hash-code targetbs))
     ))
@@ -292,5 +293,5 @@
 ;(climbpro24-init)
 ;(time (compile-ms-array! *piece-types* *bh* *bw*))
 (time (compile-spaceindex (format "~a~a-spaceindex.rkt" "stpconfigs/" *puzzle-name*)))
-;(expand* *start* 0)
+(expand* *start* 0)
 ;(test)
