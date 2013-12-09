@@ -24,7 +24,13 @@
 ;;------------------------------------------------------------------------------------------------------
 ;; Support for creating an index from blank configurations to valid move schemas
 
-(struct ebms (newcloc newcbconf cbref) #:prefab)
+;(struct ebms (newcloc newcbconf cbref) #:prefab)
+;; EBMS: bytestring of 5-bytes
+(define (ebms-newcloc e) (bytes-ref e 0))
+(define (ebms-newcbconf e) (subbytes e 1 4))
+(define (ebms-cbref e) (bytes-ref e 4))
+(define (ebms nuloc nucbconf cbref)
+  (bytes-append nuloc nucbconf cbref))
 ;; an even-better-move-schema (EBMS) is a (ebms N (N . N) (N . N) byte-string (N . N))
 ;; newcloc: in the canonicalized row-col pair for the piece location after the move
 ;; newcbconf: is the three-byte canonical-blank-config of the blanks after the move
@@ -165,9 +171,9 @@
                [new-blanks (bwrep->list (bitwise-xor spaceint0 xored-b-chgbits))] ;; actual new locations of blanks
                [new-blank-config (apply canonize new-blanks)]                     ;; canonical config of the new blanks
                [new-config-ref-pair (register-loc-to-pair (car new-blanks) config-ref-pair0)]
-               [an-ebms (ebms (integer->char (rcpair->rcbyte (rc- (loc-to-cell (fourth ms)) config-ref-pair0))) ; canonical loc where the piece ends up 
+               [an-ebms (ebms (bytes (rcpair->rcbyte (rc- (loc-to-cell (fourth ms)) config-ref-pair0))) ; canonical loc where the piece ends up 
                               new-blank-config                                   ; new canonical config of blanks
-                              (integer->char (rcpair->rcbyte new-config-ref-pair)))  ; reference for new config
+                              (bytes (rcpair->rcbyte new-config-ref-pair)))  ; reference for new config
                         ]
                )
           (vector-set! plocvec (fourth ms) #t)
@@ -228,7 +234,7 @@
     ;; overwrite the new blank-locations
     (bytes-copy! targetbs 0 
                  (charify-int (list->bwrep (decanonize (ebms-newcbconf an-ebms) 
-                                                       (rc+ (rcbyte->rcpair (char->integer (ebms-cbref an-ebms))) crc)))))
+                                                       (rc+ (rcbyte->rcpair (ebms-cbref an-ebms)) crc)))))
     ;; set moved piece
     (bytes-copy! targetbs piece-start
                  (charify-int (bitwise-xor (intify src-bspos piece-start piece-end) ; piece(s) of this type in source position
@@ -239,7 +245,7 @@
                                             ; ending location of moved-piece
                                             (arithmetic-shift 1
                                                               (cell-to-loc (rc+ crc ;(ebms-cbref an-ebms)
-                                                                                (rcbyte->rcpair (char->integer (ebms-newcloc an-ebms))) ; canonical new-loc of piece
+                                                                                (rcbyte->rcpair (ebms-newcloc an-ebms)) ; canonical new-loc of piece
                                                                                 )))
                                             ))))
     ;; set the hashcode
