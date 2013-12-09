@@ -335,7 +335,7 @@
 ;; where the copy is arranged-for by the master also
 (define (remote-expand-fringe ranges pf cf depth)
   ;;(printf "remote-expand-fringe: current-fringe of ~a split as: ~a~%" cur-fringe-size (map (lambda (pr) (- (second pr) (first pr))) ranges))
-  (let* ([distrib-results (for/list #|work|# ([range-pair ranges]
+  (let* ([distrib-results (for/work ([range-pair ranges]
                                      [i (in-range (length ranges))])
                                     (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end")) ;;prevent riot cache-failure
                                     ;; need alternate version of wait-for-files that just checks on the assigned range
@@ -417,7 +417,7 @@
     (for ([efs expand-files-specs]) (bring-local-partial-expansions efs)))|#
   ;(printf "remote-merge: n-protof-slices=~a, and length expand-files-specs=~a~%" *num-proto-fringe-slices* (vector-length expand-files-specs))
   (let ([merge-results
-         (for/list #|work|# ([i *num-proto-fringe-slices*]
+         (for/work ([i *num-proto-fringe-slices*]
                     [expand-fspecs-slice expand-files-specs])
                    (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end")) ;finesse Riot caching
                    (let* ([ofile-name (format "fringe-segment-d~a-~a" depth (~a i #:left-pad-string "0" #:width 3 #:align 'right))]
@@ -593,8 +593,8 @@
                  (list (make-filespec file filepcount (file-size file) *share-store*))
                  filepcount)))
 
-(block10-init)
-;(climb12-init)
+;(block10-init)
+(climb12-init)
 ;(climb15-init)
 ;(climbpro24-init)
 ;(compile-ms-array! *piece-types* *bh* *bw*)
@@ -603,7 +603,7 @@
 ;#|
 (module+ main
   ;; Switch between these according to if using the cluster or testing on multi-core single machine
-  ;(connect-to-riot-server! *master-name*)
+  (connect-to-riot-server! *master-name*)
   (define search-result (time (start-cluster-fringe-search *start*)))
   #|
   (define search-result (time (cfs-file (make-fringe-from-files "fringe-segment-d115-" 32)
