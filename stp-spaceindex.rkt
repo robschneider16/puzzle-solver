@@ -29,12 +29,11 @@
 (define (ebms-newcloc e) (bytes-ref e 0))
 (define (ebms-newcbconf e) (subbytes e 1 4))
 (define (ebms-cbref e) (bytes-ref e 4))
-(define (ebms nuloc nucbconf cbref)
-  (bytes-append nuloc nucbconf cbref))
-;; an even-better-move-schema (EBMS) is a (ebms N (N . N) (N . N) byte-string (N . N))
-;; newcloc: in the canonicalized row-col pair for the piece location after the move
-;; newcbconf: is the three-byte canonical-blank-config of the blanks after the move
-;; cbref: provides the drow-dcol reference for the new canonicalized blank-config
+(define (ebms nuloc nucbconf cbref) (bytes-append nuloc nucbconf cbref))
+;; an even-better-move-schema (EBMS) is a five-byte string where
+;; byte 0: newcloc: in the canonicalized rcbyte for the piece location after the move
+;; bytes 1-3: newcbconf: is the three-byte canonical-blank-config of the blanks after the move
+;; byte 4: cbref: provides the rcbyte reference for the new canonicalized blank-config
 
 ;; an rcbyte is a byte where the first four bits represent the row difference
 ;;   and the next four bits represent a signed column difference
@@ -203,8 +202,6 @@
        (not (vector-ref plocvec (fourth ms)))
        ; is the move valid
        (bw-valid-move? spaceint (first ms))
-       ;; loc is on the board
-       ;(not (member loc *invalid-locs*)) ;; onboard? now checks invalid-locs implicitly
        ; and
        (let ([loc-cell (loc-to-cell loc)]
              [translated-base-cell "piece cells translated to loc-cell"])
@@ -232,9 +229,9 @@
     ;; initialize the target bytestring to the source position
     (bytes-copy! targetbs 0 src-bspos)
     ;; overwrite the new blank-locations
-    (bytes-copy! targetbs 0 
-                 (charify-int (list->bwrep (decanonize (ebms-newcbconf an-ebms) 
-                                                       (rc+ (rcbyte->rcpair (ebms-cbref an-ebms)) crc)))))
+    (bytes-set! targetbs 0 (rcpair->rcbyte (rc+ crc (rcbyte->rcpair (ebms-cbref an-ebms)))))
+    (bytes-copy! targetbs 1
+                 (ebms-newcbconf an-ebms))
     ;; set moved piece
     (bytes-copy! targetbs piece-start
                  (charify-int (bitwise-xor (intify src-bspos piece-start piece-end) ; piece(s) of this type in source position
@@ -257,19 +254,14 @@
 ; -> two-part double-hash version <-
 (define (expand* hc-s exp-ptr)
   (let* ([bs (hc-position-bs hc-s)]     ; 
-         [spaceint (intify bs 0 4)]
-         [spacelistrep  (bwrep->list spaceint)] ; this and spaceint can be consolidated to avoid the additions and decompositions in bwrep->list
-         [canonical-blank-config (apply canonize spacelistrep)]
-         [config-ref-cell (loc-to-cell (car spacelistrep))] ; the row-col translation of the blank-config
+         [config-ref-cell (rcbyte->rcpair (bytes-ref bs 0))] ; the row-col translation of the blank-config
+         [canonical-blank-config (subbytes bs 1 4)]
          [possible-moves-hash (hash-ref *spaceindex* canonical-blank-config)]
          ;
          [expanded-ptr exp-ptr]
          [target-hc-pos 'mutable-hc-pos-in-*expansion-space*]
          )
     (for* ([i (in-range 4 *num-pieces*)]
-           ;[loc (bwrep->list (vector-ref bwrep i))]
-           ;[loc (in-range (integer-length (vector-ref ptnum i)))]
-           ;#:when (bitwise-bit-set? ptnum loc)
            )
       (let* ([ptype (vector-ref *bs-ptype-index* i)]
              [ploc0 (- (bytes-ref bs i) *charify-offset*)]
@@ -295,5 +287,15 @@
 ;(climbpro24-init)
 ;(time (compile-ms-array! *piece-types* *bh* *bw*))
 ;(time (compile-spaceindex (format "~a~a-spaceindex.rkt" "stpconfigs/" *puzzle-name*)))
+
+;; canonicalize the *start* blank-configuration
+#|
+(let* ([spacelist (bwrep->list (intify (hc-position-bs *start*) 0 4))]
+       [cbref (rcpair->rcbyte (loc-to-cell (car spacelist)))]
+       [canonical-spaces (apply canonize spacelist)])
+  (bytes-set! (hc-position-bs *start*) 0 cbref)
+  (bytes-copy! (hc-position-bs *start*) 1 canonical-spaces)
+  (hc-position-bs *start*))
+|#
 ;(expand* *start* 0)
 ;(test)

@@ -600,6 +600,14 @@
 ;(compile-ms-array! *piece-types* *bh* *bw*)
 (compile-spaceindex (format "~a~a-spaceindex.rkt" "stpconfigs/" *puzzle-name*))
 
+;; canonicalize the *start* blank-configuration
+(let* ([spacelist (bwrep->list (intify (hc-position-bs *start*) 0 4))]
+       [cbref (rcpair->rcbyte (loc-to-cell (car spacelist)))]
+       [canonical-spaces (apply canonize spacelist)])
+  (bytes-set! (hc-position-bs *start*) 0 cbref)
+  (bytes-copy! (hc-position-bs *start*) 1 canonical-spaces)
+  (hc-position-bs *start*))
+
 ;#|
 (module+ main
   ;; Switch between these according to if using the cluster or testing on multi-core single machine

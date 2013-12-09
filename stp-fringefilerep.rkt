@@ -1,10 +1,6 @@
 #lang racket
 
 (require 
- ;(planet soegaard/gzip:2:2))
- ;file/gzip
- ;file/gunzip
- mzlib/string
  ;racket/generator
  "stp-init.rkt"
  "stp-solve-base.rkt")

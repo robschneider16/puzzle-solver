@@ -2,8 +2,6 @@
 
 (require
  srfi/25 ;; multi-dimensional arrays
- racket/fixnum
- racket/set
  ;test-engine/racket-tests
  ;racket/generator
  "stp-init.rkt"
