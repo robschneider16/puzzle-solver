@@ -80,6 +80,8 @@
 ;; rcpair->rcbyte: (N . N) -> byte
 ;; convert a row-col pair where the row value in range [0,*bh*) and col in range [-*bw*,+*bw*] into a rcbyte
 (define (rcpair->rcbyte rcp)
+  (when (or (< (car rcp) -2) (< (cdr rcp) (- *bw*)))
+    (error (format "rcpair->rcbyte: negative value in (~a,~a)~%" (car rcp) (cdr rcp))))
   (+ (bitwise-ior (arithmetic-shift (+ (car rcp) 2) 4) ;; the two is for the negative rows, the 4 is the high-four bits
                   (+ *bw* (cdr rcp)))
      *charify-offset*))
@@ -261,15 +263,24 @@
          [expanded-ptr exp-ptr]
          [target-hc-pos 'mutable-hc-pos-in-*expansion-space*]
          )
+    ;(printf "index: ~a~%" canonical-blank-config)
     (for* ([i (in-range 4 *num-pieces*)]
            )
       (let* ([ptype (vector-ref *bs-ptype-index* i)]
              [ploc0 (- (bytes-ref bs i) *charify-offset*)]
-             [canonical-pieceloc (register-loc-to-pair ploc0 config-ref-cell)]
+             [canonical-pieceloc
+              (let ([rlocp (register-loc-to-pair ploc0 config-ref-cell)])
+                ;(printf "canonical-pieceloc: ~a~%" rlocp)
+                #|(when (or (< (car rlocp) -2) (< (cdr rlocp) (- *bw*)))
+                  (error (format "expand*: strange registered pieceloc as ~a from ploc0=~a which is cell=~a for blank-config=~a and ref=~a"
+                                 rlocp ploc0 (loc-to-cell ploc0) canonical-blank-config config-ref-cell)))|#
+                rlocp)]
              [moves-for-ptype-at-location
-              (hash-ref possible-moves-hash 
-                        (bytes ptype (rcpair->rcbyte canonical-pieceloc)) ;(cons ptype canonical-pieceloc)
-                        ret-false)])
+              (and (>= (car canonical-pieceloc) -2)
+                   (>= (cdr canonical-pieceloc) (- *bw*))
+                   (hash-ref possible-moves-hash 
+                             (bytes ptype (rcpair->rcbyte canonical-pieceloc)) ;(cons ptype canonical-pieceloc)
+                             ret-false))])
         (when moves-for-ptype-at-location
           (for ([ebms moves-for-ptype-at-location])
             ; create the new position, and write it to the buffer 
