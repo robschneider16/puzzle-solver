@@ -33,55 +33,62 @@
 (define vools (make-vector 230 empty))
 (define *target-cell* '(r . c))
 
+
 ;; a*-search:  int -> #f or position
 ;; A* search in memory in order to estimate savings of heuristics
 ;; fdepth is an actual literal index into the vools vector of open-lists -- only fscores need to be translated
 ;; via fscore->voolindex
 (define (a*-search fdepth) 
-  (when (empty? open-list) ;(> (hash-ref g-score (first open-list-new)) pseudo-depth)
-    (printf "fdepth ~a w/ going deeper after handling ~a successors~%" 
-            fdepth positions-handled)
-    (set! open-list (vector-ref vools fdepth))
-    (vector-set! vools fdepth empty)
-    (set! positions-handled 0)
-    )
-  (cond [(>= fdepth *max-depth*) (printf "exhausted the space~%") #f]
-        [(and (empty? open-list) (empty? (vector-ref vools fdepth)))
-         (a*-search (add1 fdepth))]
-        [*found-goal* (printf "found goal with ~a closed positions and ~a on open-list~%"
-                              (set-count closed-set) 
-                              (length open-list))
-                      *found-goal*]
-        [else 
-         (let* ([current (first open-list)]
-                ;; expand the first position in the open list
-                [successors (expand-a* current)])
-           (set! open-set (set-remove open-set current))
-           (set! open-list (rest open-list))
-           (set! closed-set (set-add closed-set current))
-           (set! positions-handled (+ (vector-length successors) positions-handled))
-           ;; insert successors that are not found in closed into sorted open
-           (for ([s successors])
-             (let* ([tent-gscore (add1 (hash-ref g-score current))]
-                    [tent-fscore (+ tent-gscore (heuristic s))])
-               ;(printf "for rawpos: ~a tent-gscore=~a and tent-fscore=~a~%" s tent-gscore tent-fscore)
-               (cond [(and (set-member? closed-set s)
-                           (>= tent-fscore (hash-ref f-score s)))]
-                     [(or (not (set-member? open-set s))
-                          (< tent-fscore (hash-ref f-score s)))
-                      (when (and (set-member? open-set s) (< tent-fscore (hash-ref f-score s)))
-                        (vector-set! vools (fscore->voolindex (hash-ref f-score s))
-                                     (remove s (vector-ref vools (fscore->voolindex (hash-ref f-score s)))))
-                        (vector-set! vools (fscore->voolindex tent-fscore)
-                                     (cons s (vector-ref vools (fscore->voolindex tent-fscore)))))
-                      (hash-set! g-score s tent-gscore)
-                      (hash-set! f-score s tent-fscore)
-                      (unless (set-member? open-set s)
-                        (set! open-set (set-add open-set s))
-                        (vector-set! vools (fscore->voolindex tent-fscore)
-                                     (cons s (vector-ref vools (fscore->voolindex tent-fscore)))))])))
-           (a*-search fdepth)
-           )]))
+  (let ([min-voolindex fdepth])
+    (when (empty? open-list) ;(> (hash-ref g-score (first open-list-new)) pseudo-depth)
+      (printf "fdepth ~a w/ going deeper after handling ~a successors~%" 
+              fdepth positions-handled)
+      (set! open-list (vector-ref vools fdepth))
+      (vector-set! vools fdepth empty)
+      (set! positions-handled 0)
+      )
+    (cond [(>= fdepth *max-depth*) (printf "exhausted the space~%") #f]
+          [(and (empty? open-list) (empty? (vector-ref vools fdepth)))
+           (a*-search (add1 fdepth))]
+          [*found-goal* (printf "found goal with ~a closed positions and ~a on open-list~%"
+                                (set-count closed-set) 
+                                (length open-list))
+                        *found-goal*]
+          [else 
+           (let* ([current (first open-list)]
+                  ;; expand the first position in the open list
+                  [successors (expand-a* current)])
+             (set! open-set (set-remove open-set current))
+             (set! open-list (rest open-list))
+             (set! closed-set (set-add closed-set current))
+             (set! positions-handled (+ (vector-length successors) positions-handled))
+             ;; insert successors that are not found in closed into sorted open
+             (for ([s successors])
+               (let* ([tent-gscore (add1 (hash-ref g-score current))]
+                      [tent-fscore (+ tent-gscore (heuristic s))])
+                 (when (< (fscore->voolindex tent-fscore) min-voolindex)
+                   (printf "skipped over at fdepth=~a: ~a tent-gscore=~a and tent-fscore=~a~%" 
+                           fdepth s tent-gscore tent-fscore)
+                   (set! min-voolindex (fscore->voolindex tent-fscore)))
+                 (cond [(and (set-member? closed-set s)
+                             (>= tent-fscore (hash-ref f-score s)))]
+                       [(or (not (set-member? open-set s))
+                            (< tent-fscore (hash-ref f-score s)))
+                        (when (and (set-member? open-set s) (< tent-fscore (hash-ref f-score s)))
+                          (printf "bring ~a forward from ~a to ~a while fdepth=~a~%"
+                                  s (hash-ref f-score s) tent-fscore fdepth)
+                          (vector-set! vools (fscore->voolindex (hash-ref f-score s))
+                                       (remove s (vector-ref vools (fscore->voolindex (hash-ref f-score s)))))
+                          (vector-set! vools (fscore->voolindex tent-fscore)
+                                       (cons s (vector-ref vools (fscore->voolindex tent-fscore)))))
+                        (hash-set! g-score s tent-gscore)
+                        (hash-set! f-score s tent-fscore)
+                        (unless (set-member? open-set s)
+                          (set! open-set (set-add open-set s))
+                          (vector-set! vools (fscore->voolindex tent-fscore)
+                                       (cons s (vector-ref vools (fscore->voolindex tent-fscore)))))])))
+             (a*-search min-voolindex)
+             )])))
 
 ;; fscore->voolindex: number -> number
 ;; translate fscore to index into vools (by multiplying by 2)
@@ -97,7 +104,8 @@
   (let* ([num-expanded (expand* (hc-position -1 p) 0)]
          ;[ignore (printf "finished expand* and got ~a successors~%" num-expanded)]
          [res (for/vector ([i num-expanded])
-                          (when (is-goal? (vector-ref *expansion-space* i)) (set! *found-goal* (vector-ref *expansion-space* i)))
+                          (when (is-goal? (vector-ref *expansion-space* i)) 
+                            (set! *found-goal* (vector-ref *expansion-space* i)))
                           (bytes-copy (hc-position-bs (vector-ref *expansion-space* i))))])
     ;(printf "finishing expand-a* after making the vector of raw positions from the expansion-space~%")
     res
@@ -126,15 +134,20 @@
        (/ (abs (- (cdr *target-cell*) (cdr pt1-cell))) 2) ;; col-displacemint divided by 2
        )))
 
-(define heuristic c12-heuristic)
 
-    ;;--- HEURISTICS ------------------------------------------------------
-    
-(block10-init)
-;(climb12-init)
+
+;;--- HEURISTICS ------------------------------------------------------
+
+;(block10-init)
+(climb12-init)
 ;(climb15-init)
 ;(climbpro24-init)
 (compile-spaceindex (format "~a~a-spaceindex.rkt" "stpconfigs/" *puzzle-name*))
+
+(define heuristic
+  (case *puzzle-name*
+    [("block10v12") b10-heuristic]
+    [("climb12") c12-heuristic]))
 
 ;; canonicalize the *start* blank-configuration
 (let* ([spacelist (bwrep->list (intify (hc-position-bs *start*) 0 4))]
