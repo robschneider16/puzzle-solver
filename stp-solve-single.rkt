@@ -31,6 +31,7 @@
 (define positions-handled 0) ;; number of successors generated and checked for duplicate etc.
 
 (define vools (make-vector 230 empty))
+(define *target-cell* '(r . c))
 
 ;; a*-search:  int -> #f or position
 ;; A* search in memory in order to estimate savings of heuristics
@@ -102,27 +103,35 @@
     res
     ))
 
+;;--- HEURISTICS ------------------------------------------------------
+;; these could/should be pre-computed and cached in a lookup table
+;; * if target piece is more than one move (not distance) away, then we may be able to multiply distance by two
+;;   in order to account for the need to move the blanks back around in order to move the target again
+
 ;; b10-heuristic: raw-position -> number
 ;; computes an admissible estimate of the number of moves from this position to the goal
 ;; using the modified manhattan distance of the target tile to its goal location
 (define (b10-heuristic p)
   (let* ([pt1-loc (- (bytes-ref p 4) *charify-offset*)]
-         [pt1-cell (loc-to-cell pt1-loc)])
-    (+ (/ (car pt1-cell) 2) ;; row-displacemint divided by 2
-       (/ (cdr pt1-cell) 2) ;; col-displacemint divided by 2
+         [pt1-cell (loc-to-cell pt1-loc)]
+         )
+    (+ (/ (abs (- (car *target-cell*) (car pt1-cell))) 2) ;; row-displacemint divided by 2
+       (/ (abs (- (cdr *target-cell*) (cdr pt1-cell))) 2) ;; col-displacemint divided by 2
        )))
 
 (define (c12-heuristic p)
   (let* ([pt1-loc (- (bytes-ref p 4) *charify-offset*)]
          [pt1-cell (loc-to-cell pt1-loc)])
-    (+ (car pt1-cell)       ;; row-displacemint 
-       (/ (cdr pt1-cell) 2) ;; col-displacemint divided by 2
+    (+ (abs (- (car *target-cell*) (car pt1-cell)))       ;; row-displacemint 
+       (/ (abs (- (cdr *target-cell*) (cdr pt1-cell))) 2) ;; col-displacemint divided by 2
        )))
 
 (define heuristic c12-heuristic)
 
-;(block10-init)
-(climb12-init)
+    ;;--- HEURISTICS ------------------------------------------------------
+    
+(block10-init)
+;(climb12-init)
 ;(climb15-init)
 ;(climbpro24-init)
 (compile-spaceindex (format "~a~a-spaceindex.rkt" "stpconfigs/" *puzzle-name*))
@@ -136,10 +145,12 @@
   (hc-position-bs *start*))
 
 ;; initialization
+(set! *target-cell* (loc-to-cell (- (cdr *target*) *charify-offset*)))
 (set! open-set (set-add open-set (hc-position-bs *start*)))
 (vector-set! vools (fscore->voolindex (heuristic (hc-position-bs *start*)))
              (list (hc-position-bs *start*)))
 (hash-set! g-score (hc-position-bs *start*) 0)
 (hash-set! f-score (hc-position-bs *start*) (+ 0 (heuristic (hc-position-bs *start*))))
+
 
 (time (a*-search 0))
