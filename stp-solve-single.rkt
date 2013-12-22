@@ -26,6 +26,7 @@
 (define closed-set (set)) ;; set of raw-position
 (define open-set (set)) ;; set of raw-position
 (define open-list empty) ;; sorted by f-value
+(define open-list-new empty)
 (define pseudo-depth 0)
 
 ;; a*-search:  int -> #f or position
@@ -33,9 +34,12 @@
 ;; closed: is hash-table positions that have been expanded already
 ;; open: is list of positions sorted by f=g+h values to be expanded
 (define (a*-search)
-  (when (> (hash-ref g-score (first open-list)) pseudo-depth)
-    (printf "pseudo-depth ~a w/ pseudo-fringe-size ~a~%" (hash-ref g-score (first open-list)) (set-count open-set))
-    (set! pseudo-depth (hash-ref g-score (first open-list))))
+  (when (empty? open-list) ;(> (hash-ref g-score (first open-list-new)) pseudo-depth)
+    (printf "pseudo-depth ~a w/ pseudo-fringe-size ~a~%" (hash-ref g-score (first open-list-new)) (set-count open-set))
+    (set! pseudo-depth (hash-ref g-score (first open-list-new)))
+    (set! open-list (sort open-list-new (lambda (p1 p2) (< (hash-ref f-score p1) (hash-ref f-score p2)))))
+    (set! open-list-new empty)
+    )
   (cond [(set-empty? open-set)
          (printf "exhausted the space~%") #f]
         [else
@@ -64,8 +68,7 @@
                              (hash-set! f-score s tent-fscore)
                              (unless (set-member? open-set s)
                                (set! open-set (set-add open-set s))
-                               (set! open-list (cons s open-list)))])))
-                  (set! open-list (sort open-list (lambda (p1 p2) (< (hash-ref f-score p1) (hash-ref f-score p2)))))
+                               (set! open-list-new (cons s open-list-new)))])))
                   (a*-search)
                   )])]))
 
