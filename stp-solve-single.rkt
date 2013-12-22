@@ -28,6 +28,7 @@
 (define open-list empty) ;; sorted by f-value
 (define open-list-new empty)
 (define pseudo-depth 0)
+(define positions-handled 0) ;; number of successors generated and checked for duplicate etc.
 
 ;; a*-search:  int -> #f or position
 ;; A* search in memory in order to estimate savings of heuristics
@@ -35,9 +36,12 @@
 ;; open: is list of positions sorted by f=g+h values to be expanded
 (define (a*-search)
   (when (empty? open-list) ;(> (hash-ref g-score (first open-list-new)) pseudo-depth)
-    (printf "pseudo-depth ~a w/ pseudo-fringe-size ~a~%" (hash-ref g-score (first open-list-new)) (set-count open-set))
+    (printf "pseudo-depth ~a w/ fringe-size ~a after handling ~a successors~%" 
+            (hash-ref g-score (first open-list-new)) (set-count open-set) positions-handled)
+    (set! positions-handled 0)
     (set! pseudo-depth (hash-ref g-score (first open-list-new)))
     (set! open-list (sort open-list-new (lambda (p1 p2) (< (hash-ref f-score p1) (hash-ref f-score p2)))))
+    ;(set! open-list open-list-new)
     (set! open-list-new empty)
     )
   (cond [(set-empty? open-set)
@@ -55,6 +59,7 @@
                   (set! open-set (set-remove open-set current))
                   (set! open-list (rest open-list))
                   (set! closed-set (set-add closed-set current))
+                  (set! positions-handled (+ (vector-length successors) positions-handled))
                   ;; insert successors that are not found in closed into sorted open
                   (for ([s successors])
                     (let* ([tent-gscore (add1 (hash-ref g-score current))]
