@@ -7,7 +7,7 @@
 (require racket/fixnum)
 
 
-(define *max-depth* 10)(set! *max-depth* 31)
+(define *max-depth* 10)(set! *max-depth* 200)
 (define *most-positive-fixnum* 0)
 (define *most-negative-fixnum* 0)
 (cond [(fixnum? (expt 2 61))
@@ -32,53 +32,60 @@
 
 (define vools (make-vector 230 empty))
 
-
 ;; a*-search:  int -> #f or position
 ;; A* search in memory in order to estimate savings of heuristics
-;; closed: is hash-table positions that have been expanded already
-;; open: is list of positions sorted by f=g+h values to be expanded
-(define (a*-search)
+;; fdepth is an actual literal index into the vools vector of open-lists -- only fscores need to be translated
+;; via fscore->voolindex
+(define (a*-search fdepth) 
   (when (empty? open-list) ;(> (hash-ref g-score (first open-list-new)) pseudo-depth)
-    (printf "pseudo-depth ~a w/ fringe-size ~a after handling ~a successors~%" 
-            (hash-ref g-score (first open-list-new)) (set-count open-set) positions-handled)
+    (printf "fdepth ~a w/ going deeper after handling ~a successors~%" 
+            fdepth positions-handled)
+    (set! open-list (vector-ref vools fdepth))
+    (vector-set! vools fdepth empty)
     (set! positions-handled 0)
-    (set! pseudo-depth (hash-ref g-score (first open-list-new)))
-    (set! open-list (sort open-list-new (lambda (p1 p2) (< (hash-ref f-score p1) (hash-ref f-score p2)))))
-    ;(set! open-list open-list-new)
-    (set! open-list-new empty)
     )
-  (cond [(set-empty? open-set)
-         (printf "exhausted the space~%") #f]
-        [else
-         (cond [*found-goal* (printf "found goal with ~a closed positions and ~a on open-list~%"
-                                    (set-count closed-set) 
-                                    (length open-list))
-                             *found-goal*]
-               [else 
-                
-                (let* ([current (first open-list)]
-                       ;; expand the first position in the open list
-                       [successors (expand-a* current)])
-                  (set! open-set (set-remove open-set current))
-                  (set! open-list (rest open-list))
-                  (set! closed-set (set-add closed-set current))
-                  (set! positions-handled (+ (vector-length successors) positions-handled))
-                  ;; insert successors that are not found in closed into sorted open
-                  (for ([s successors])
-                    (let* ([tent-gscore (add1 (hash-ref g-score current))]
-                           [tent-fscore (+ tent-gscore (heuristic s))])
-                      ;(printf "for rawpos: ~a tent-gscore=~a and tent-fscore=~a~%" s tent-gscore tent-fscore)
-                      (cond [(and (set-member? closed-set s)
-                                  (>= tent-fscore (hash-ref f-score s)))]
-                            [(or (not (set-member? open-set s))
-                                 (< tent-fscore (hash-ref f-score s)))
-                             (hash-set! g-score s tent-gscore)
-                             (hash-set! f-score s tent-fscore)
-                             (unless (set-member? open-set s)
-                               (set! open-set (set-add open-set s))
-                               (set! open-list-new (cons s open-list-new)))])))
-                  (a*-search)
-                  )])]))
+  (cond [(>= fdepth *max-depth*) (printf "exhausted the space~%") #f]
+        [(and (empty? open-list) (empty? (vector-ref vools fdepth)))
+         (a*-search (add1 fdepth))]
+        [*found-goal* (printf "found goal with ~a closed positions and ~a on open-list~%"
+                              (set-count closed-set) 
+                              (length open-list))
+                      *found-goal*]
+        [else 
+         (let* ([current (first open-list)]
+                ;; expand the first position in the open list
+                [successors (expand-a* current)])
+           (set! open-set (set-remove open-set current))
+           (set! open-list (rest open-list))
+           (set! closed-set (set-add closed-set current))
+           (set! positions-handled (+ (vector-length successors) positions-handled))
+           ;; insert successors that are not found in closed into sorted open
+           (for ([s successors])
+             (let* ([tent-gscore (add1 (hash-ref g-score current))]
+                    [tent-fscore (+ tent-gscore (heuristic s))])
+               ;(printf "for rawpos: ~a tent-gscore=~a and tent-fscore=~a~%" s tent-gscore tent-fscore)
+               (cond [(and (set-member? closed-set s)
+                           (>= tent-fscore (hash-ref f-score s)))]
+                     [(or (not (set-member? open-set s))
+                          (< tent-fscore (hash-ref f-score s)))
+                      (when (and (set-member? open-set s) (< tent-fscore (hash-ref f-score s)))
+                        (vector-set! vools (fscore->voolindex (hash-ref f-score s))
+                                     (remove s (vector-ref vools (fscore->voolindex (hash-ref f-score s)))))
+                        (vector-set! vools (fscore->voolindex tent-fscore)
+                                     (cons s (vector-ref vools (fscore->voolindex tent-fscore)))))
+                      (hash-set! g-score s tent-gscore)
+                      (hash-set! f-score s tent-fscore)
+                      (unless (set-member? open-set s)
+                        (set! open-set (set-add open-set s))
+                        (vector-set! vools (fscore->voolindex tent-fscore)
+                                     (cons s (vector-ref vools (fscore->voolindex tent-fscore)))))])))
+           (a*-search fdepth)
+           )]))
+
+;; fscore->voolindex: number -> number
+;; translate fscore to index into vools (by multiplying by 2)
+(define (fscore->voolindex fs)
+  (* 2 fs))
 
 ;; expand-a*: raw-position -> (vectorof raw-position)
 ;; expand a single raw-position using the expand* functionality
@@ -128,9 +135,11 @@
   (bytes-copy! (hc-position-bs *start*) 1 canonical-spaces)
   (hc-position-bs *start*))
 
+;; initialization
 (set! open-set (set-add open-set (hc-position-bs *start*)))
-(set! open-list (list (hc-position-bs *start*)))
+(vector-set! vools (fscore->voolindex (heuristic (hc-position-bs *start*)))
+             (list (hc-position-bs *start*)))
 (hash-set! g-score (hc-position-bs *start*) 0)
-(hash-set! f-score (hc-position-bs *start*) (+ 0 0))
+(hash-set! f-score (hc-position-bs *start*) (+ 0 (heuristic (hc-position-bs *start*))))
 
-(time (a*-search))
+(time (a*-search 0))
