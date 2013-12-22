@@ -292,21 +292,21 @@
 
 
 
-(block10-init)   ;  160010 possible even-better-move-schema
+;(block10-init)   ;  160010 possible even-better-move-schema
 ;(climb12-init)
 ;(climb15-init)   ; 
 ;(climbpro24-init)
 ;(time (compile-ms-array! *piece-types* *bh* *bw*))
-(time (compile-spaceindex (format "~a~a-spaceindex.rkt" "stpconfigs/" *puzzle-name*)))
+;(time (compile-spaceindex (format "~a~a-spaceindex.rkt" "stpconfigs/" *puzzle-name*)))
 
 ;; canonicalize the *start* blank-configuration
-;#|
+#|
 (let* ([spacelist (bwrep->list (intify (hc-position-bs *start*) 0 4))]
        [cbref (rcpair->rcbyte (loc-to-cell (car spacelist)))]
        [canonical-spaces (apply canonize spacelist)])
   (bytes-set! (hc-position-bs *start*) 0 cbref)
   (bytes-copy! (hc-position-bs *start*) 1 canonical-spaces)
   (hc-position-bs *start*))
-;|#
+|#
 ;(expand* *start* 0)
 ;(test)

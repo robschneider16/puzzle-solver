@@ -30,6 +30,9 @@
 (define pseudo-depth 0)
 (define positions-handled 0) ;; number of successors generated and checked for duplicate etc.
 
+(define vools (make-vector 230 empty))
+
+
 ;; a*-search:  int -> #f or position
 ;; A* search in memory in order to estimate savings of heuristics
 ;; closed: is hash-table positions that have been expanded already
@@ -63,7 +66,7 @@
                   ;; insert successors that are not found in closed into sorted open
                   (for ([s successors])
                     (let* ([tent-gscore (add1 (hash-ref g-score current))]
-                           [tent-fscore (+ tent-gscore 0)])
+                           [tent-fscore (+ tent-gscore (heuristic s))])
                       ;(printf "for rawpos: ~a tent-gscore=~a and tent-fscore=~a~%" s tent-gscore tent-fscore)
                       (cond [(and (set-member? closed-set s)
                                   (>= tent-fscore (hash-ref f-score s)))]
@@ -92,9 +95,27 @@
     res
     ))
 
+;; b10-heuristic: raw-position -> number
+;; computes an admissible estimate of the number of moves from this position to the goal
+;; using the modified manhattan distance of the target tile to its goal location
+(define (b10-heuristic p)
+  (let* ([pt1-loc (- (bytes-ref p 4) *charify-offset*)]
+         [pt1-cell (loc-to-cell pt1-loc)])
+    (+ (/ (car pt1-cell) 2) ;; row-displacemint divided by 2
+       (/ (cdr pt1-cell) 2) ;; col-displacemint divided by 2
+       )))
 
-(block10-init)
-;(climb12-init)
+(define (c12-heuristic p)
+  (let* ([pt1-loc (- (bytes-ref p 4) *charify-offset*)]
+         [pt1-cell (loc-to-cell pt1-loc)])
+    (+ (car pt1-cell)       ;; row-displacemint 
+       (/ (cdr pt1-cell) 2) ;; col-displacemint divided by 2
+       )))
+
+(define heuristic c12-heuristic)
+
+;(block10-init)
+(climb12-init)
 ;(climb15-init)
 ;(climbpro24-init)
 (compile-spaceindex (format "~a~a-spaceindex.rkt" "stpconfigs/" *puzzle-name*))
