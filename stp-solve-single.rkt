@@ -2,7 +2,8 @@
 
 (require "stp-init.rkt"
          "stp-solve-base.rkt"
-         "stp-fringefilerep.rkt")
+         "stp-fringefilerep.rkt"
+         "stp-spaceindex.rkt")
 (require racket/fixnum)
 
 
@@ -20,94 +21,87 @@
 (define *found-goal* #f)
 
 
+(define f-score (make-hash)) ;; hash from raw-position to value
+(define g-score (make-hash)) ;; hash from raw-position to value
+(define closed-set (set)) ;; set of raw-position
+(define open-set (set)) ;; set of raw-position
+(define open-list empty) ;; sorted by f-value
+(define pseudo-depth 0)
 
-;; fringe-file-search: [file(listof position)] [file(listof position)] int -> ...
-;; using file for storing fringes, perform a fringe BFS starting at the given state until depth is 0
-(define (fringe-file-search depth [found-goal? #f] [npos 1])
-  (let ([prev-fringe (list->set (read-fringe-from-file "prev-fringe"))]
-        [current-fringe (list->set (read-fringe-from-file "current-fringe"))]) ; current fringe is a FILE
-    ;;(printf "current-fringe: ~a~%" current-fringe)
-    (cond [(or (set-empty? current-fringe) (> depth *max-depth*)) 
-           (printf "exhausted the space after ~a positions~%" npos) #f]
-          [else
-           (cond [found-goal? (printf "found goal after encountering ~a positions~%" npos)
-                              found-goal?]
-                 [else (let* ([new-fringe (for/set ([p (for/fold ([expansions (set)])
-                                                         ([p current-fringe])
-                                                        (set-union expansions (expand p)))]
-                                                    #:unless (or (set-member? prev-fringe p)
-                                                                 (set-member? current-fringe p)))
-                                            (when (is-goal? p) (set! found-goal? p))
-                                            p)])
-                         (printf "At depth ~s fringe has ~a positions~%" depth (set-count current-fringe))
-                         
-                         #|(when (member depth '(5 6))
-                           (for ([s (sort (for/list ([p current-fringe])
-                                            (stringify p))
-                                          string<?)])
-                             (printf "~a~%" s)))|#
-                         (rename-file-or-directory "current-fringe" "prev-fringe" #t)
-                         (write-fringe-to-disk (sort (set->list new-fringe) hcposition<?) "current-fringe")
-                         (fringe-file-search (add1 depth) found-goal? (+ npos (set-count new-fringe))))])])))
-
-;; fringe-mem-search: (setof position) (setof positions) int -> #f or position
-;; search in memory
-(define (fringe-mem-search prev-fringe current-fringe depth [found-goal? #f] [npos 1])
-  ;;(printf "current-fringe: ~a~%" current-fringe)
-  (cond [(or (set-empty? current-fringe) (> depth *max-depth*)) 
-         (printf "exhausted the space after ~a positions~%" npos) #f]
+;; a*-search:  int -> #f or position
+;; A* search in memory in order to estimate savings of heuristics
+;; closed: is hash-table positions that have been expanded already
+;; open: is list of positions sorted by f=g+h values to be expanded
+(define (a*-search)
+  (when (> (hash-ref g-score (first open-list)) pseudo-depth)
+    (printf "pseudo-depth ~a w/ pseudo-fringe-size ~a~%" (hash-ref g-score (first open-list)) (set-count open-set))
+    (set! pseudo-depth (hash-ref g-score (first open-list))))
+  (cond [(set-empty? open-set)
+         (printf "exhausted the space~%") #f]
         [else
-         (cond [found-goal? (printf "found goal after encountering ~a positions~%" npos)
-                            found-goal?]
-               [else (let* ([new-fringe (for/set ([p (for/fold ([expansions (set)])
-                                                       ([p current-fringe])
-                                                       (set-union expansions (expand p)))]
-                                                  #:unless (or (set-member? prev-fringe p)
-                                                               (set-member? current-fringe p)))
-                                          (when (is-goal? p) (set! found-goal? p))
-                                          p)])
-                       (printf "At depth ~s fringe has ~a positions~%" depth (set-count current-fringe))
-                       (fringe-mem-search current-fringe new-fringe (add1 depth) found-goal? (+ npos (set-count new-fringe))))])]))
+         (cond [*found-goal* (printf "found goal with ~a closed positions and ~a on open-list~%"
+                                    (set-count closed-set) 
+                                    (length open-list))
+                             *found-goal*]
+               [else 
+                
+                (let* ([current (first open-list)]
+                       ;; expand the first position in the open list
+                       [successors (expand-a* current)])
+                  (set! open-set (set-remove open-set current))
+                  (set! open-list (rest open-list))
+                  (set! closed-set (set-add closed-set current))
+                  ;; insert successors that are not found in closed into sorted open
+                  (for ([s successors])
+                    (let* ([tent-gscore (add1 (hash-ref g-score current))]
+                           [tent-fscore (+ tent-gscore 0)])
+                      ;(printf "for rawpos: ~a tent-gscore=~a and tent-fscore=~a~%" s tent-gscore tent-fscore)
+                      (cond [(and (set-member? closed-set s)
+                                  (>= tent-fscore (hash-ref f-score s)))]
+                            [(or (not (set-member? open-set s))
+                                 (< tent-fscore (hash-ref f-score s)))
+                             (hash-set! g-score s tent-gscore)
+                             (hash-set! f-score s tent-fscore)
+                             (unless (set-member? open-set s)
+                               (set! open-set (set-add open-set s))
+                               (set! open-list (cons s open-list)))])))
+                  (set! open-list (sort open-list (lambda (p1 p2) (< (hash-ref f-score p1) (hash-ref f-score p2)))))
+                  (a*-search)
+                  )])]))
 
-;; expand-fringe-self: fringe fringe int -> fringe
-;; expand just the current-fringe and remove duplicates in the expansion and repeats from prev-fringe
-;; returning the new fringe
-(define (expand-fringe-self pf cf depth)
-  (let* ([prev-fringe-set (for/fold ([the-fringe (set)])
-                            ([sgmnt (fringe-segments pf)])
-                            (set-union the-fringe
-                                       (list->set (read-fringe-from-file (filespec-fullpathname sgmnt)))))] ; pf- and cf-spec's in expand-fringe-self should have empty fbase
-         [current-fringe-vec 
-          (list->vector (for/fold ([the-fringe empty])
-                          ([sgmnt (reverse (fringe-segments cf))])
-                          (append (read-fringe-from-file (filespec-fullpathname sgmnt)) the-fringe)))]
-         [new-cf-name (format "fringe-d~a" depth)]
-         ;[prntmsg (printf "finished reading the fringes~%")]
-         [exp-ptr 0]
-         [expand-them (for ([p-to-expand current-fringe-vec])
-                        (set! exp-ptr (expand p-to-expand exp-ptr)))]
-         [res (set->list (for/set ([i exp-ptr]
-                                   #:unless (or (set-member? prev-fringe-set (vector-ref *expansion-space* i))
-                                                (position-in-vec? current-fringe-vec (vector-ref *expansion-space* i))))
-                           (when (is-goal? (vector-ref *expansion-space* i)) (set! *found-goal* (vector-ref *expansion-space* i)))
-                           (vector-ref *expansion-space* i)))]
-         )
-    #|(printf "Finished the work packet generating a set of ~a positions~%" (set-count res))
-    (for ([p res])
-      (printf "pos: ~a~%~a~%" (stringify p) p))|#
-    (for ([sgmnt (fringe-segments pf)]) (delete-file (filespec-fullpathname sgmnt)))
-    (write-fringe-to-disk (sort res hcposition<?) new-cf-name)
-    (make-fringe "" (list (make-filespec *most-negative-fixnum* *most-positive-fixnum* new-cf-name (length res) (file-size new-cf-name) "")) (length res))))
+;; expand-a*: raw-position -> (vectorof raw-position)
+;; expand a single raw-position using the expand* functionality
+;; create a fake hc-position wrapper and then unwrap the resulting successors
+;; returning a vector of raw-positions
+(define (expand-a* p)
+  ;(printf "begin expand-a* of raw pos ~a~%" p)
+  (let* ([num-expanded (expand* (hc-position -1 p) 0)]
+         ;[ignore (printf "finished expand* and got ~a successors~%" num-expanded)]
+         [res (for/vector ([i num-expanded])
+                          (when (is-goal? (vector-ref *expansion-space* i)) (set! *found-goal* (vector-ref *expansion-space* i)))
+                          (bytes-copy (hc-position-bs (vector-ref *expansion-space* i))))])
+    ;(printf "finishing expand-a* after making the vector of raw positions from the expansion-space~%")
+    res
+    ))
 
 
 (block10-init)
 ;(climb12-init)
 ;(climb15-init)
 ;(climbpro24-init)
-(compile-ms-array! *piece-types* *bh* *bw*)
+(compile-spaceindex (format "~a~a-spaceindex.rkt" "stpconfigs/" *puzzle-name*))
 
-(write-fringe-to-disk empty "prev-fringe")
-(write-fringe-to-disk (list *start*) "current-fringe")
+;; canonicalize the *start* blank-configuration
+(let* ([spacelist (bwrep->list (intify (hc-position-bs *start*) 0 4))]
+       [cbref (rcpair->rcbyte (loc-to-cell (car spacelist)))]
+       [canonical-spaces (apply canonize spacelist)])
+  (bytes-set! (hc-position-bs *start*) 0 cbref)
+  (bytes-copy! (hc-position-bs *start*) 1 canonical-spaces)
+  (hc-position-bs *start*))
 
-(time (fringe-file-search 1))
-;(time (fringe-mem-search (set) (set *start*) 1))
+(set! open-set (set-add open-set (hc-position-bs *start*)))
+(set! open-list (list (hc-position-bs *start*)))
+(hash-set! g-score (hc-position-bs *start*) 0)
+(hash-set! f-score (hc-position-bs *start*) (+ 0 0))
+
+(time (a*-search))
