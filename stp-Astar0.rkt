@@ -4,34 +4,35 @@
          "stp-solve-base.rkt"
          "stp-fringefilerep.rkt"
          "stp-spaceindex.rkt")
-(require racket/fixnum)
-
 
 (define *max-depth* 10)(set! *max-depth* 200)
-(define *most-positive-fixnum* 0)
-(define *most-negative-fixnum* 0)
-(cond [(fixnum? (expt 2 61))
-       (set! *most-positive-fixnum* (fx+ (expt 2 61) (fx- (expt 2 61) 1)))  ;; ****** only on 64-bit architectures *****
-       (set! *most-negative-fixnum* (fx+ (fx* -1 (expt 2 61)) (fx* -1 (expt 2 61))))];; ***** likewise *****
-      [else 
-       ;; For the cluster platform use the following:
-       (set! *most-positive-fixnum* (fx+ (expt 2 29) (fx- (expt 2 29) 1)))  ;; ****** only on our cluster, wcp *****
-       (set! *most-negative-fixnum* (fx+ (fx* -1 (expt 2 29)) (fx* -1 (expt 2 29))))]);; ***** likewise *****
-
 (define *found-goal* #f)
 
-
-(define f-score (make-hash)) ;; hash from raw-position to value
-(define g-score (make-hash)) ;; hash from raw-position to value
+;(define f-score (make-hash)) ;; hash from raw-position to value
+;(define g-score (make-hash)) ;; hash from raw-position to value
+(define scores (make-hash))  ;; hash for (mcons g . f) pairs
 (define closed-set (set)) ;; set of raw-position
 (define open-set (set)) ;; set of raw-position
 (define open-list empty) ;; sorted by f-value
 (define open-list-new empty)
 (define pseudo-depth 0)
-(define positions-handled 0) ;; number of successors generated and checked for duplicate etc.
+(define local-positions-handled 0) ;; number of successors generated and checked for duplicate within given A* iteration
+(define total-positions-handled 0) ;; total number of successors ever generated
 
 (define vools (make-vector 230 empty))
 (define *target-cell* '(r . c))
+
+;; get-scores: raw-position -> (mcons g . f)
+(define (get-scores p) (hash-ref scores p))
+;; g-score: (mcons g . f) -> number
+;; extract the g-score for the position
+(define (g-score p [mpair (get-scores p)]) (mcar mpair))
+(define (set-g-score! p g) (set-mcar! (get-scores p) g))
+;; f-score: raw-position -> number
+(define (f-score p [mpair (get-scores p)]) (mcdr mpair))
+(define (set-f-score! p f) (set-mcdr! (get-scores p) f))
+;; add-scores!: raw-position number number -> void
+(define (add-scores! p g f) (hash-set! scores p (mcons g f)))
 
 
 ;; a*-search:  int -> #f or position
@@ -41,18 +42,18 @@
 (define (a*-search fdepth) 
   (let ([min-voolindex fdepth])
     (when (empty? open-list) ;(> (hash-ref g-score (first open-list-new)) pseudo-depth)
-      (printf "fdepth ~a w/ going deeper after handling ~a successors~%" 
-              fdepth positions-handled)
+      (printf "fdepth ~a w/ going 'deeper' after handling ~a successors~%" 
+              fdepth local-positions-handled)
       (set! open-list (vector-ref vools fdepth))
       (vector-set! vools fdepth empty)
-      (set! positions-handled 0)
+      (set! total-positions-handled (+ total-positions-handled local-positions-handled))
+      (set! local-positions-handled 0)
       )
     (cond [(>= fdepth *max-depth*) (printf "exhausted the space~%") #f]
           [(and (empty? open-list) (empty? (vector-ref vools fdepth)))
            (a*-search (add1 fdepth))]
-          [*found-goal* (printf "found goal with ~a closed positions and ~a on open-list~%"
-                                (set-count closed-set) 
-                                (length open-list))
+          [*found-goal* (printf "found goal after ~a moves with ~a closed positions and ~a on unfinished open-lists and total successors handled ~a~%"
+                                (g-score (hc-position-bs *found-goal*)) (set-count closed-set) (for/sum ([l vools]) (length l)) total-positions-handled)
                         *found-goal*]
           [else 
            (let* ([current (first open-list)]
@@ -61,28 +62,26 @@
              (set! open-set (set-remove open-set current))
              (set! open-list (rest open-list))
              (set! closed-set (set-add closed-set current))
-             (set! positions-handled (+ (vector-length successors) positions-handled))
+             (set! local-positions-handled (+ (vector-length successors) local-positions-handled))
              ;; insert successors that are not found in closed into sorted open
              (for ([s successors])
-               (let* ([tent-gscore (add1 (hash-ref g-score current))]
+               (let* ([score-pairs (get-scores current)]
+                      [tent-gscore (add1 (g-score current score-pairs))]
                       [tent-fscore (+ tent-gscore (heuristic s))])
                  (when (< (fscore->voolindex tent-fscore) min-voolindex)
-                   (printf "skipped over at fdepth=~a: ~a tent-gscore=~a and tent-fscore=~a~%" 
-                           fdepth s tent-gscore tent-fscore)
+                   ;(printf "skipped over at fdepth=~a: ~a tent-gscore=~a and tent-fscore=~a~%" fdepth s tent-gscore tent-fscore)
                    (set! min-voolindex (fscore->voolindex tent-fscore)))
                  (cond [(and (set-member? closed-set s)
-                             (>= tent-fscore (hash-ref f-score s)))]
+                             (>= tent-fscore (f-score s)))]
                        [(or (not (set-member? open-set s))
-                            (< tent-fscore (hash-ref f-score s)))
-                        (when (and (set-member? open-set s) (< tent-fscore (hash-ref f-score s)))
-                          (printf "bring ~a forward from ~a to ~a while fdepth=~a~%"
-                                  s (hash-ref f-score s) tent-fscore fdepth)
-                          (vector-set! vools (fscore->voolindex (hash-ref f-score s))
-                                       (remove s (vector-ref vools (fscore->voolindex (hash-ref f-score s)))))
+                            (< tent-fscore (f-score s)))
+                        (when (and (set-member? open-set s) (< tent-fscore (f-score s)))
+                          ;(printf "bring ~a forward from ~a to ~a while fdepth=~a~%" s (hash-ref f-score s) tent-fscore fdepth)
+                          (vector-set! vools (fscore->voolindex (f-score s))
+                                       (remove s (vector-ref vools (fscore->voolindex (f-score s)))))
                           (vector-set! vools (fscore->voolindex tent-fscore)
                                        (cons s (vector-ref vools (fscore->voolindex tent-fscore)))))
-                        (hash-set! g-score s tent-gscore)
-                        (hash-set! f-score s tent-fscore)
+                        (add-scores! s tent-gscore tent-fscore)
                         (unless (set-member? open-set s)
                           (set! open-set (set-add open-set s))
                           (vector-set! vools (fscore->voolindex tent-fscore)
@@ -122,24 +121,50 @@
 (define (b10-heuristic p)
   (let* ([pt1-loc (- (bytes-ref p 4) *charify-offset*)]
          [pt1-cell (loc-to-cell pt1-loc)]
+         [r-diff (abs (- (car *target-cell*) (car pt1-cell)))]
+         [c-diff (abs (- (cdr *target-cell*) (cdr pt1-cell)))]
          )
-    (+ (/ (abs (- (car *target-cell*) (car pt1-cell))) 2) ;; row-displacemint divided by 2
-       (/ (abs (- (cdr *target-cell*) (cdr pt1-cell))) 2) ;; col-displacemint divided by 2
+    (+ (* (sub1 r-diff) 2)
+       (/ (min 1 r-diff)  2) 
+       (/ c-diff 2) ;; col-displacemint divided by 2
        )))
 
 (define (c12-heuristic p)
   (let* ([pt1-loc (- (bytes-ref p 4) *charify-offset*)]
-         [pt1-cell (loc-to-cell pt1-loc)])
-    (+ (abs (- (car *target-cell*) (car pt1-cell)))       ;; row-displacemint 
-       (/ (abs (- (cdr *target-cell*) (cdr pt1-cell))) 2) ;; col-displacemint divided by 2
+         [pt1-cell (loc-to-cell pt1-loc)]
+         [r-diff (abs (- (car *target-cell*) (car pt1-cell)))]
+         [c-diff (abs (- (cdr *target-cell*) (cdr pt1-cell)))]
+         )
+    (+ r-diff
+       (/ c-diff 2)
        )))
+
+(define (c12-heuristic+ p)
+  (let* ([pt1-loc (- (bytes-ref p 4) *charify-offset*)]
+         [pt1-cell (loc-to-cell pt1-loc)]
+         [r-diff (abs (- (car *target-cell*) (car pt1-cell)))]
+         [c-diff (abs (- (cdr *target-cell*) (cdr pt1-cell)))]
+         [half-c-diff (/ c-diff 2)]
+         [mmd (+ half-c-diff r-diff)]
+         )
+    (+ mmd (floor (sqr (sub1 (max 1 mmd)))))))
+
+(define (c15-heuristic p)
+  (let* ([pt1-loc (- (bytes-ref p 4) *charify-offset*)]
+         [pt1-cell (loc-to-cell pt1-loc)]
+         [r-diff (abs (- (car *target-cell*) (car pt1-cell)))]
+         [c-diff (abs (- (cdr *target-cell*) (cdr pt1-cell)))]
+         [half-c-diff (/ c-diff 2)]
+         [mmd (+ half-c-diff r-diff)]
+         )
+    (+ mmd (floor (sqr (max 0 (sub1 mmd)))))))
 
 
 
 ;;--- HEURISTICS ------------------------------------------------------
 
-;(block10-init)
-(climb12-init)
+(block10-init)
+;(climb12-init)
 ;(climb15-init)
 ;(climbpro24-init)
 (compile-spaceindex (format "~a~a-spaceindex.rkt" "stpconfigs/" *puzzle-name*))
@@ -147,7 +172,7 @@
 (define heuristic
   (case *puzzle-name*
     [("block10v12") b10-heuristic]
-    [("climb12") c12-heuristic]))
+    [("climb12") c12-heuristic+]))
 
 ;; canonicalize the *start* blank-configuration
 (let* ([spacelist (bwrep->list (intify (hc-position-bs *start*) 0 4))]
@@ -162,8 +187,6 @@
 (set! open-set (set-add open-set (hc-position-bs *start*)))
 (vector-set! vools (fscore->voolindex (heuristic (hc-position-bs *start*)))
              (list (hc-position-bs *start*)))
-(hash-set! g-score (hc-position-bs *start*) 0)
-(hash-set! f-score (hc-position-bs *start*) (+ 0 (heuristic (hc-position-bs *start*))))
-
+(add-scores! (hc-position-bs *start*) 0 (+ 0 (heuristic (hc-position-bs *start*))))
 
 (time (a*-search 0))
