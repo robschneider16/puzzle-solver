@@ -185,16 +185,16 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 ;; -----------------------------------------------------------------------------------
 ;; --- MISC UTILITIES ----------------------------------------------------------------
 
-;; write-bs->file: byte-string output-port -> void or error
-;; writes the bs to the ofile and checks to make sure the right number of bytes were written
-(define (write-bs->file bspos oprt)
-  (unless (= (write-bytes bspos oprt) *num-pieces*)
+;; write-bs->file: byte-string [output-port] [number] -> void or error
+;; writes the bs to the ofile and checks to make sure the optionally-specified number of bytes were written
+(define (write-bs->file bspos [oprt (current-output-port)] [num-bytes *num-pieces*])
+  (unless (= (write-bytes bspos oprt) num-bytes)
     (error "write-bs->file: failed to write an exact position")))
 
-;; read-bs->hcpos: input-port -> hc-position
+;; read-bs->hcpos: input-port [number] -> hc-position
 ;; read a bytestring from the given input-port and create hc-position
-(define (read-bs->hcpos in)
-  (let ([bspos (read-bytes *num-pieces* in)])
+(define (read-bs->hcpos in [num-bytes *num-pieces*])
+  (let ([bspos (read-bytes num-bytes in)])
     (if (eof-object? bspos) bspos (make-hcpos bspos))))
 
 ;; fringe-exists?: fringe -> boolean

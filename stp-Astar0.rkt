@@ -46,9 +46,60 @@
 
 ;;--------------------------------------------------------------
 
-;;--- VOOS OPEN-SET --------------------------------------------
+
+;;--- FILE-BASED A* SEARCH -------------------------------------
+;; Rational reconstruction of Korf's A* w/ DDD based on his description in AAAI04
+;; define: best-f as lowest g + h in open nodes
+;; open and closed mixed in one list, with closed having f-values lower than best-f
+;; define: a*pos is f-val byte, followed by raw-position
+;; our f-values should be less than 255 and may therefore fit in one byte
+
+;; fake-buffer: vector of bytestrings for output
+(define fakebuff (make-vector 100 (make-bytes (add1 *num-pieces*))))
+(define fb-ptr 0)
+
+(define (write-to-fb a*p)
+  (vector-set! fakebuff fb-ptr a*p)
+  (set! fb-ptr (add1 fb-ptr)))
+
+;; get-f-val: a*pos -> byte
+(define (get-f-val p) (bytes-ref p 0))
+;; make-a*pos: number(0-255) byte-string -> byte-string
+(define (make-a*pos f bs) (bytes-append (bytes f) bs))
 
 
+;; a*-file-search: string number ->
+;; 
+;; while goal-not-found or more-work-to-do
+;;  for each position p in file
+;;   when f-val of p = current-f-val, 
+;;    for each successor s in expansion of p
+;;     when s is goal, report success
+;;     write s to buffer for periodic sort/write to disk
+;;     if f-val of s is <= best-f, recursively expand s
+;;  merge sorted files together with node-list, removing duplicates, retaining lowest g-score (or f-score) among duplicates
+(define (a*-file-search file-name best-f)
+  (let ([iport (open-input-file file-name)])
+    (for ([a*p (in-port (lambda (i) (read-bytes (add1 *num-pieces*) i)) iport)])
+      (when (= (get-f-val a*p) best-f)
+        (process-position a*p best-f)))
+    ;; merge duplicates, etc.
+    ))
+
+;; process-position: a*pos number  -> 
+;; expand and do whatever is appropriate for each successor
+(define (process-position a*p best-f)
+  (let* ([parent-f-val (get-f-val a*p)]
+         [parent-pos (subbytes a*p 1)]
+         [parent-g-val (- parent-f-val (heuristic parent-pos))])
+    (for ([s (expand-a* parent-pos)])
+      (let* ([s-h (heuristic s)]
+             [s-f (+ s-h parent-g-val 1)]
+             [a*s (make-a*pos s-f s)])
+        (write-to-fb a*s) 
+        (when (<= s-f best-f) (process-position a*s))))))
+          
+          
 
 ;;--------------------------------------------------------------
 
@@ -69,9 +120,10 @@
     (cond [(>= fdepth *max-depth*) (printf "exhausted the space~%") #f]
           [(and (empty? open-list) (empty? (vector-ref vools fdepth)))
            (a*-search (add1 fdepth))]
-          [*found-goal* (printf "found goal after ~a moves with ~a closed positions and ~a on unfinished open-lists and total successors handled ~a~%"
-                                (g-score (hc-position-bs *found-goal*)) (set-count closed-set) (for/sum ([l vools]) (length l)) total-positions-handled)
-                        *found-goal*]
+          [*found-goal* 
+           (printf "found goal after ~a moves with ~a closed positions and ~a on unfinished open-lists and total successors handled ~a~%"
+                   (g-score (hc-position-bs *found-goal*)) (set-count closed-set) (for/sum ([l vools]) (length l)) total-positions-handled)
+           *found-goal*]
           [else 
            (let* ([current (first open-list)]
                   ;; expand the first position in the open list
@@ -156,10 +208,10 @@
          [r-diff (abs (- (car *target-cell*) (car pt1-cell)))]
          [c-diff (abs (- (cdr *target-cell*) (cdr pt1-cell)))]
          )
-    (+ (* (sub1 r-diff) 2)
-       (/ (min 1 r-diff)  2) 
-       (/ c-diff 2) ;; col-displacemint divided by 2
-       )))
+    (ceiling (+ (* (sub1 r-diff) 2)
+                (/ (min 1 r-diff)  2) 
+                (/ c-diff 2) ;; col-displacemint divided by 2
+                ))))
 
 (define (c12-heuristic p)
   (let* ([pt1-loc (- (bytes-ref p 4) *charify-offset*)]
@@ -220,5 +272,10 @@
 (vector-set! vools (fscore->voolindex (heuristic (hc-position-bs *start*)))
              (list (hc-position-bs *start*)))
 (add-scores! (hc-position-bs *start*) 0 (+ 0 (heuristic (hc-position-bs *start*))))
+(with-output-to-file "astarnodelist"
+  (lambda () (write-bs->file (bytes-append (bytes (f-score (hc-position-bs *start*))) (hc-position-bs *start*))
+                             (current-output-port) (add1 *num-pieces*)))
+  #:exists 'replace)
 
-(time (a*-search 0))
+;(time (a*-search 0))
+(time (a*-file-search "astarnodelist" (f-score (hc-position-bs *start*))))
