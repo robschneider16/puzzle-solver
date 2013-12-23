@@ -6,10 +6,9 @@
          "stp-spaceindex.rkt")
 
 (define *max-depth* 10)(set! *max-depth* 200)
+(define *target-cell* '(r . c))
 (define *found-goal* #f)
 
-;(define f-score (make-hash)) ;; hash from raw-position to value
-;(define g-score (make-hash)) ;; hash from raw-position to value
 (define scores (make-hash))  ;; hash for (mcons g . f) pairs
 (define closed-set (set)) ;; set of raw-position
 (define open-set (set)) ;; set of raw-position
@@ -20,20 +19,38 @@
 (define total-positions-handled 0) ;; total number of successors ever generated
 
 (define vools (make-vector 230 empty))
-(define *target-cell* '(r . c))
+(define max-fval-sofar 0)
+
+;;--- G and F SCORE PAIRS ---------------------------------------
 
 ;; get-scores: raw-position -> (mcons g . f)
-(define (get-scores p) (hash-ref scores p))
+(define (get-scores p) (hash-ref scores p (lambda () #f)))
 ;; g-score: (mcons g . f) -> number
 ;; extract the g-score for the position
-(define (g-score p [mpair (get-scores p)]) (mcar mpair))
-(define (set-g-score! p g) (set-mcar! (get-scores p) g))
+(define (g-score p [mpair (get-scores p)]) (and mpair (mcar mpair)))
+;; set-g-score!: raw-position number -> void
+;; sets the g-score if present, or throws error if not (could consider adding a pair with unset f-score)
+(define (set-g-score! p g) (set-mpair-field! p g set-mcar! "set-g-score!"))
 ;; f-score: raw-position -> number
 (define (f-score p [mpair (get-scores p)]) (mcdr mpair))
-(define (set-f-score! p f) (set-mcdr! (get-scores p) f))
+;; set-f-score!: raw-position number -> void
+;; sets the f-score if present, or throws error if not (could consider adding a pair with unset g-score)
+(define (set-f-score! p f) (set-mpair-field! p f set-mcdr! "set-f-score!"))
 ;; add-scores!: raw-position number number -> void
 (define (add-scores! p g f) (hash-set! scores p (mcons g f)))
+;; set-mpair-field: raw-position number (mpair -> void) string -> void
+(define (set-mpair-field! p n setter! name)
+  (let ([scores (get-scores p)]) 
+    (unless scores (error (format "~a: attempt to set score value for position ~a not in hash" name p)))
+    (setter! scores n)))
 
+;;--------------------------------------------------------------
+
+;;--- VOOS OPEN-SET --------------------------------------------
+
+
+
+;;--------------------------------------------------------------
 
 ;; a*-search:  int -> #f or position
 ;; A* search in memory in order to estimate savings of heuristics
@@ -114,6 +131,21 @@
 ;; these could/should be pre-computed and cached in a lookup table
 ;; * if target piece is more than one move (not distance) away, then we may be able to multiply distance by two
 ;;   in order to account for the need to move the blanks back around in order to move the target again
+
+;; a-heuristic: raw-position -> number
+;; abstract heusristic for puzzles with a 4-square inverted T target tile
+(define (a-heuristic p)
+  (let* ([pt1-loc (- (bytes-ref p 4) *charify-offset*)]
+         [pt1-cell (loc-to-cell pt1-loc)]
+         [r-diff (abs (- (car *target-cell*) (car pt1-cell)))]
+         [c-diff (abs (- (cdr *target-cell*) (cdr pt1-cell)))]
+         [half-c-diff (/ c-diff 2)]
+         [mmd (+ half-c-diff r-diff)]
+         )
+    (cond [(> r-diff c-diff) r-diff]
+          [(even? c-diff) (add1 half-c-diff)]
+          [else (ceiling half-c-diff)])))
+
 
 ;; b10-heuristic: raw-position -> number
 ;; computes an admissible estimate of the number of moves from this position to the goal
