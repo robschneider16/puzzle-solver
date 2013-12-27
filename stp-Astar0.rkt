@@ -3,7 +3,8 @@
 (require "stp-init.rkt"
          "stp-solve-base.rkt"
          "stp-fringefilerep.rkt"
-         "stp-spaceindex.rkt")
+         "stp-spaceindex.rkt"
+         "myvectorsort.rkt")
 
 (define *max-depth* 10)(set! *max-depth* 200)
 (define *target-cell* '(r . c))
@@ -20,6 +21,9 @@
 
 (define vools (make-vector 230 empty))
 (define max-fval-sofar 0)
+
+;;--- UTILITIES -------------------------------------------------
+
 
 ;;--- G and F SCORE PAIRS ---------------------------------------
 
@@ -55,12 +59,24 @@
 ;; our f-values should be less than 255 and may therefore fit in one byte
 
 ;; fake-buffer: vector of bytestrings for output
-(define fakebuff (make-vector 100 (make-bytes (add1 *num-pieces*))))
+(define fb-capacity 500000)
+(define fakebuffer (make-vector (+ fb-capacity 200) (make-bytes (add1 *num-pieces*))))
 (define fb-ptr 0)
 
+;; write-to-fb: a*pos -> void
 (define (write-to-fb a*p)
-  (vector-set! fakebuff fb-ptr a*p)
+  (vector-set! fakebuffer fb-ptr a*p)
   (set! fb-ptr (add1 fb-ptr)))
+
+;; fb-full?:  -> boolean
+(define (fb-full?) (> fb-ptr fb-capacity))
+
+;; flush-fb:  -> void
+(define (flush-fb [ofile "tobemerged"])
+  (with-output-to-file ofile
+    (lambda ()
+      (for ([n fb-ptr][p fakebuffer]) (write-bs->file p (current-output-port) (add1 *num-pieces*)))))
+  (set! fb-ptr 0))
 
 ;; get-f-val: a*pos -> byte
 (define (get-f-val p) (bytes-ref p 0))
@@ -97,9 +113,13 @@
              [s-f (+ s-h parent-g-val 1)]
              [a*s (make-a*pos s-f s)])
         (write-to-fb a*s) 
+        (when (fb-full?) (flush-fb))
         (when (<= s-f best-f) (process-position a*s))))))
-          
-          
+
+;; merge-files: (listof file) -> void
+;; merge the files in lof removing duplicate positions, retaining lowest f (i.e., g) score of duplicates
+(define (merge-files lof)
+  void)
 
 ;;--------------------------------------------------------------
 

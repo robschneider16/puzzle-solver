@@ -34,7 +34,6 @@
 ;;-------------------------------------------------------------------------------
 ;; COMMON UTILITIES TO BOTH GENERIC FRINGE-SEARCH AND CLUSTER-FRINGE-SEARCH
 
-
 ;; Set-like Operations on Lists
 
 ;; list-subtract: (listof X) (listof X) (X X -> boolean) -> (listof X)
