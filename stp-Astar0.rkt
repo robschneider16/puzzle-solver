@@ -59,7 +59,7 @@
 ;; our f-values should be less than 255 and may therefore fit in one byte
 
 ;; fake-buffer: vector of bytestrings for output
-(define fb-capacity 500000)
+(define fb-capacity 2000000)
 (define fakebuffer (make-vector (+ fb-capacity 200) (make-bytes (add1 *num-pieces*))))
 (define fb-ptr 0)
 
@@ -75,7 +75,8 @@
 (define (flush-fb [ofile "tobemerged"])
   (with-output-to-file ofile
     (lambda ()
-      (for ([n fb-ptr][p fakebuffer]) (write-bs->file p (current-output-port) (add1 *num-pieces*)))))
+      (for ([n fb-ptr][p fakebuffer]) (write-bs->file p (current-output-port) (add1 *num-pieces*))))
+    #:exists 'replace)
   (set! fb-ptr 0))
 
 ;; get-f-val: a*pos -> byte
@@ -95,11 +96,21 @@
 ;;     if f-val of s is <= best-f, recursively expand s
 ;;  merge sorted files together with node-list, removing duplicates, retaining lowest g-score (or f-score) among duplicates
 (define (a*-file-search file-name best-f)
+  (printf "A*-file-search: best-f-depth=~a~%" best-f)
   (let ([iport (open-input-file file-name)])
     (for ([a*p (in-port (lambda (i) (read-bytes (add1 *num-pieces*) i)) iport)])
       (when (= (get-f-val a*p) best-f)
         (process-position a*p best-f)))
+    (flush-fb)
     ;; merge duplicates, etc.
+    (close-input-port iport)
+    (cond [*found-goal*
+           (printf "found goal after ~a moves with ~a closed positions and ~a on unfinished open-lists and total successors handled ~a~%"
+                   (g-score (hc-position-bs *found-goal*)) (set-count closed-set) (for/sum ([l vools]) (length l)) total-positions-handled)
+           *found-goal*]
+          [else 
+           (rename-file-or-directory "tobemerged" file-name #t)
+           (a*-file-search file-name (add1 best-f))])
     ))
 
 ;; process-position: a*pos number  -> 
@@ -114,7 +125,9 @@
              [a*s (make-a*pos s-f s)])
         (write-to-fb a*s) 
         (when (fb-full?) (flush-fb))
-        (when (<= s-f best-f) (process-position a*s))))))
+        (when (<= s-f best-f)
+          ;(printf "process-position: filling in expansion for f-value (~a) better than best-f (~a)~%" s-f best-f)
+          (process-position a*s best-f))))))
 
 ;; merge-files: (listof file) -> void
 ;; merge the files in lof removing duplicate positions, retaining lowest f (i.e., g) score of duplicates
@@ -297,5 +310,5 @@
                              (current-output-port) (add1 *num-pieces*)))
   #:exists 'replace)
 
-;(time (a*-search 0))
-(time (a*-file-search "astarnodelist" (f-score (hc-position-bs *start*))))
+(time (a*-search 0))
+;(time (a*-file-search "astarnodelist" (f-score (hc-position-bs *start*))))
