@@ -257,12 +257,12 @@
 ;;------------------------------------------------------------------------------------------------------
 ;; BLOCK-10 PUZZLE INIT (variant 12)
 (define *block10-piece-types*
-  '#((reserved-spaces)        ; 0 reserved for spaces in actual position representation
+  '#((reserved-spaces)               ; 0 reserved for spaces in actual position representation
      ((0 . 0)(0 . 1)(1 . 0)(1 . 1))  ; 1  2x2
-     ((0 . 0)(0 . 1)(1 . 0))       ; 2  Upper Left pointing L
-     ((0 . 0)(1 . -1)(1 . 0))      ; 3  Lower Right pointing L
-     ((0 . 0)(1 . 0))            ; 4  2x1 vertical rectangle
-     ((0 . 0))))               ; 5  1x1 unit square
+     ((0 . 0)(0 . 1)(1 . 0))         ; 2  Upper Left pointing L
+     ((0 . 0)(1 . -1)(1 . 0))        ; 3  Lower Right pointing L
+     ((0 . 0)(1 . 0))                ; 4  2x1 vertical rectangle
+     ((0 . 0))))                     ; 5  1x1 unit square
 
 (define *block10-start* ; variant 12
   '((1 4 . 1)

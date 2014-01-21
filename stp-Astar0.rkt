@@ -4,13 +4,15 @@
          "stp-solve-base.rkt"
          "stp-fringefilerep.rkt"
          "stp-spaceindex.rkt"
-         "myvectorsort.rkt")
+         ;rnrs/sorting-6 ;; provides vector-sort!
+         "myvectorsort.rkt"
+         )
 
 (define *max-depth* 10)(set! *max-depth* 200)
 (define *target-cell* '(r . c))
 (define *found-goal* #f)
 
-(define scores (make-hash))  ;; hash for (mcons g . f) pairs
+(define scores (make-hash))  ;; hash for (mcons g . f) pairs indexed by position
 (define closed-set (set)) ;; set of raw-position
 (define open-set (set)) ;; set of raw-position
 (define open-list empty) ;; sorted by f-value
@@ -22,31 +24,54 @@
 (define vools (make-vector 230 empty))
 (define max-fval-sofar 0)
 
+;;--- DATA DEFINITIONS ------------------------------------------
+
+;; a raw-position is a bytestring of length *num-pieces*, one byte for each piece
+
+;; a a*pos is a bytstring one longer than a raw-position with the first byte being the f-score (combineg h and g)
+
+
 ;;--- UTILITIES -------------------------------------------------
 
 
 ;;--- G and F SCORE PAIRS ---------------------------------------
 
 ;; get-scores: raw-position -> (mcons g . f)
+;; retrieve the stored g and f scores for the given raw position
 (define (get-scores p) (hash-ref scores p (lambda () #f)))
-;; g-score: (mcons g . f) -> number
-;; extract the g-score for the position
+
+;; g-score: raw-position -> number
+;; retrieve the g score as stored in the scores hashtable for this raw-position
 (define (g-score p [mpair (get-scores p)]) (and mpair (mcar mpair)))
+
+;; f-score: raw-position -> number
+(define (f-score p [mpair (get-scores p)]) (and mpair (mcdr mpair)))
+
 ;; set-g-score!: raw-position number -> void
 ;; sets the g-score if present, or throws error if not (could consider adding a pair with unset f-score)
 (define (set-g-score! p g) (set-mpair-field! p g set-mcar! "set-g-score!"))
-;; f-score: raw-position -> number
-(define (f-score p [mpair (get-scores p)]) (mcdr mpair))
+
 ;; set-f-score!: raw-position number -> void
 ;; sets the f-score if present, or throws error if not (could consider adding a pair with unset g-score)
 (define (set-f-score! p f) (set-mpair-field! p f set-mcdr! "set-f-score!"))
-;; add-scores!: raw-position number number -> void
-(define (add-scores! p g f) (hash-set! scores p (mcons g f)))
+
 ;; set-mpair-field: raw-position number (mpair -> void) string -> void
 (define (set-mpair-field! p n setter! name)
   (let ([scores (get-scores p)]) 
     (unless scores (error (format "~a: attempt to set score value for position ~a not in hash" name p)))
     (setter! scores n)))
+
+;; add-scores!: raw-position number number -> void
+;; dass the g and f pair to the scores hashtable with key the given raw-position
+(define (add-scores! p g f) (hash-set! scores p (mcons g f)))
+
+
+;; get-f-val: a*pos -> byte
+(define (get-f-val p) (bytes-ref p 0))
+;; get-g-val: a*pos -> byte
+(define (get-g-val p) (- (get-f-val p) (heuristic (subbytes p 1))))
+;; make-a*pos: number(0-255) byte-string -> byte-string
+(define (make-a*pos f bs) (bytes-append (bytes f) bs))
 
 ;;--------------------------------------------------------------
 
@@ -72,17 +97,66 @@
 (define (fb-full?) (> fb-ptr fb-capacity))
 
 ;; flush-fb:  -> void
+;; write fakebuffer to file but remove duplicates -- preserving the position with lowest g value
 (define (flush-fb [ofile "tobemerged"])
-  (with-output-to-file ofile
-    (lambda ()
-      (for ([n fb-ptr][p fakebuffer]) (write-bs->file p (current-output-port) (add1 *num-pieces*))))
-    #:exists 'replace)
-  (set! fb-ptr 0))
+  (let ([last-pos #"noneseenyet"]
+        [actually-written 0])
+    (printf "flushing fakebuffer with ~a positions~%" fb-ptr)
+    (with-output-to-file ofile
+      (lambda ()
+        (for ([n fb-ptr]
+              [p fakebuffer]
+              #:unless (bytes=? (subbytes p 1) last-pos))
+          (write-bs->file p (current-output-port) (add1 *num-pieces*))
+          (set! actually-written (add1 actually-written))))
+      #:exists 'replace)
+    (set! fb-ptr 0)
+    (printf "........ wrote ~a non-duplicate positions~%" actually-written)))
 
-;; get-f-val: a*pos -> byte
-(define (get-f-val p) (bytes-ref p 0))
-;; make-a*pos: number(0-255) byte-string -> byte-string
-(define (make-a*pos f bs) (bytes-append (bytes f) bs))
+;; write-fb-to-file: -> void
+;; sort and write fakebuffer to file
+(define (write-fb-to-file)
+  (vector-sort! fakebuffer 
+                (lambda (p1 p2) 
+                  (let ([p1pos (subbytes p1 1)]
+                        [p2pos (subbytes p2 1)])
+                    (or (bytes<? p1pos p2pos)
+                        (and (bytes=? p1pos p2pos)
+                             ;; in this case, both positions have the same h value so whichever f value is less has lower g value
+                             (< (bytes-ref p1 0) (bytes-ref p2 0))))))
+                0 fb-ptr)
+  (flush-fb))
+
+;; merge-two-files: (listof file) -> void
+;; merge two files assumed to be sorted by position  files in lof removing duplicate positions, 
+;; retaining lowest f (i.e., g) score of any duplicates
+(define (merge-two-files f1 f2 [ofile "newastarnodelist"])
+  (let ([i1 (open-input-file f1)]
+        [i2 (open-input-file f2)]
+        [last #"nonprevious"])
+    (with-output-to-file ofile
+      (lambda ()
+        (let mrg ([p1 (read-bytes (add1 *num-pieces*) i1)]
+                  [p2 (read-bytes (add1 *num-pieces*) i2)]
+                  [last-written last])
+          (cond [(and (eof-object? p1) (eof-object? p2)) void]
+                [(eof-object? p1) (write-bs->file p2 (current-output-port) (add1 *num-pieces*))
+                                  (mrg p1 (read-bytes (add1 *num-pieces*) i2) p2)]
+                [(eof-object? p2) (write-bs->file p1 (current-output-port) (add1 *num-pieces*))
+                                  (mrg (read-bytes (add1 *num-pieces*) i1) p2 p1)]
+                [(bytes=? (subbytes p1 1) (subbytes last-written 1)) (mrg (read-bytes (add1 *num-pieces*) i1) p2 last-written)]
+                [(bytes=? (subbytes p2 1) (subbytes last-written 1)) (mrg p1 (read-bytes (add1 *num-pieces*) i2) last-written)]
+                [(bytes<? (subbytes p1 1) (subbytes p2 1)) (write-bs->file p1 (current-output-port) (add1 *num-pieces*))
+                                                           (mrg (read-bytes (add1 *num-pieces*) i1) p2 p1)]
+                [(and (bytes=? (subbytes p1 1) (subbytes p2 1))
+                      (< (bytes-ref p1 0) (bytes-ref p2 0))) (write-bs->file p1 (current-output-port) (add1 *num-pieces*))
+                                                             (mrg (read-bytes (add1 *num-pieces*) i1) p2 p1)]
+                [else (write-bs->file p2 (current-output-port) (add1 *num-pieces*))
+                      (mrg p1 (read-bytes (add1 *num-pieces*) i2) p2)]
+                )))
+      #:exists 'replace)
+    (close-input-port i1)
+    (close-input-port i2)))
 
 
 ;; a*-file-search: string number ->
@@ -97,11 +171,13 @@
 ;;  merge sorted files together with node-list, removing duplicates, retaining lowest g-score (or f-score) among duplicates
 (define (a*-file-search file-name best-f)
   (printf "A*-file-search: best-f-depth=~a~%" best-f)
-  (let ([iport (open-input-file file-name)])
+  (let ([iport (open-input-file file-name)]
+        [num-read 0])
     (for ([a*p (in-port (lambda (i) (read-bytes (add1 *num-pieces*) i)) iport)])
+      (set! num-read (add1 num-read))
       (when (= (get-f-val a*p) best-f)
         (process-position a*p best-f)))
-    (flush-fb)
+    (write-fb-to-file)
     ;; merge duplicates, etc.
     (close-input-port iport)
     (cond [*found-goal*
@@ -109,7 +185,9 @@
                    (g-score (hc-position-bs *found-goal*)) (set-count closed-set) (for/sum ([l vools]) (length l)) total-positions-handled)
            *found-goal*]
           [else 
-           (rename-file-or-directory "tobemerged" file-name #t)
+           (merge-two-files "astarnodelist" "tobemerged")
+           (rename-file-or-directory "newastarnodelist" file-name #t)
+           (printf "... finished pass reading ~a positions from file~%" num-read)
            (a*-file-search file-name (add1 best-f))])
     ))
 
@@ -124,15 +202,11 @@
              [s-f (+ s-h parent-g-val 1)]
              [a*s (make-a*pos s-f s)])
         (write-to-fb a*s) 
-        (when (fb-full?) (flush-fb))
+        (when (fb-full?) (write-fb-to-file))
         (when (<= s-f best-f)
           ;(printf "process-position: filling in expansion for f-value (~a) better than best-f (~a)~%" s-f best-f)
           (process-position a*s best-f))))))
 
-;; merge-files: (listof file) -> void
-;; merge the files in lof removing duplicate positions, retaining lowest f (i.e., g) score of duplicates
-(define (merge-files lof)
-  void)
 
 ;;--------------------------------------------------------------
 
@@ -205,7 +279,8 @@
   (let* ([num-expanded (expand* (hc-position -1 p) 0)]
          ;[ignore (printf "finished expand* and got ~a successors~%" num-expanded)]
          [res (for/vector ([i num-expanded])
-                          (when (is-goal? (vector-ref *expansion-space* i)) 
+                          (when (is-goal? (vector-ref *expansion-space* i))
+                            (printf "found goal: ~s~%" (hc-position-bs (vector-ref *expansion-space* i)))
                             (set! *found-goal* (vector-ref *expansion-space* i)))
                           (bytes-copy (hc-position-bs (vector-ref *expansion-space* i))))])
     ;(printf "finishing expand-a* after making the vector of raw positions from the expansion-space~%")
@@ -241,10 +316,9 @@
          [r-diff (abs (- (car *target-cell*) (car pt1-cell)))]
          [c-diff (abs (- (cdr *target-cell*) (cdr pt1-cell)))]
          )
-    (ceiling (+ (* (sub1 r-diff) 2)
-                (/ (min 1 r-diff)  2) 
-                (/ c-diff 2) ;; col-displacemint divided by 2
-                ))))
+    (ceiling (+ (/ c-diff 2)
+                (/ (- r-diff c-diff) 2)
+                (* (max 0 (sub1 r-diff)) 2)))))
 
 (define (c12-heuristic p)
   (let* ([pt1-loc (- (bytes-ref p 4) *charify-offset*)]
@@ -310,5 +384,5 @@
                              (current-output-port) (add1 *num-pieces*)))
   #:exists 'replace)
 
-(time (a*-search 0))
-;(time (a*-file-search "astarnodelist" (f-score (hc-position-bs *start*))))
+;(time (a*-search 0))
+(time (a*-file-search "astarnodelist" (f-score (hc-position-bs *start*))))
