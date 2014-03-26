@@ -373,7 +373,7 @@
 ;; given a list of filespecs pointing to the slices assigend to this worker and needing to be merged, copy the slices
 ;; and merge into a single segment that will participate in the new fringe, removing duplicates among slices.
 ;; Note: we have already removed from slices any duplicates found in prev- and current-fringes
-(define (distributed-merge-proto-fringe-slices slice-fspecs depth ofile-name)
+(define (distributed-merge-proto-fringe-slices slice-fspecs depth ofile-name pf cf)
   ;(define (remote-merge-proto-fringes my-range expand-files-specs depth ofile-name)
   ;; expand-files-specs are of pattern: "proto-fringe-dXX-NN" for depth XX and proc-id NN, pointing to working (shared) directory 
   ;; WAS: ofile-name is of pattern: "fringe-segment-dX-NN", where the X is the depth and the NN is a process identifier
@@ -403,7 +403,8 @@
                            (unless (fhdone? an-fhead) ;;(eof-object? (peek-byte (fringehead-iprt an-fhead) 1))
                              (heap-add! heap-o-fheads an-fhead))
                            (unless (and (bytes=? (hc-position-bs keep-pos) (hc-position-bs last-pos)) ;; don't write duplicates
-                                        #t) ;; TODO is a dupe w/ respect to cf or pf?
+                                        (or (vector-member (hc-position-bs keep-pos) pf) ;; TODO is a dupe w/ respect to cf or pf?
+                                            (vector-member (hc-position-bs keep-pos) pf)))
                              (write-bytes (hc-position-bs keep-pos) mrg-segment-oport)
                              (set! num-written (add1 num-written))
                              (set! last-pos keep-pos)))
@@ -419,7 +420,7 @@
 ;; remote-merge: (vectorof (vectorof fspec)) int -> (listof string int)
 ;; expand-files-specs (proto-fringe-specs) is vector of vector of filespecs, the top-level has one for each slice,
 ;; each one containing as many proto-fringes as expanders, all of which need to be merged
-(define (remote-merge expand-files-specs depth)
+(define (remote-merge expand-files-specs depth pf cf)
   ;;**** RETHINK THIS -- MAYBE FORCE THE WORKER TO GRAB THE SLICE IT NEEDS??????
   #|(when (string=? *master-name* "localhost")
     (for ([efs expand-files-specs]) (bring-local-partial-expansions efs)))|#
@@ -429,7 +430,7 @@
                     [expand-fspecs-slice expand-files-specs])
                    (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end")) ;finesse Riot caching
                    (let* ([ofile-name (format "fringe-segment-d~a-~a" depth (~a i #:left-pad-string "0" #:width 3 #:align 'right))]
-                          [merged-fname-and-resp-rng-size (distributed-merge-proto-fringe-slices expand-fspecs-slice depth ofile-name)]
+                          [merged-fname-and-resp-rng-size (distributed-merge-proto-fringe-slices expand-fspecs-slice depth ofile-name pf cf)]
                           )
              ;;(printf "distributed-expand-fringe: merge-range = ~a~%~a~%" merge-range merged-responsibility-range)
              merged-fname-and-resp-rng-size))])
@@ -479,7 +480,7 @@
          ;; push this wait into the place we're trying to access the file ... [wait-for-partial-expansions (wait-for-files expand-files-specs)]
          ;; MERGE
          ;; --- Distribute the merging work ----------
-         [sorted-segment-fspecs (remote-merge proto-fringe-fspecs depth)]
+         [sorted-segment-fspecs (remote-merge proto-fringe-fspecs depth pf cf)]
          [merge-end (current-seconds)]
          ;; -------------------------------------------
          [sorted-expansion-files (map first sorted-segment-fspecs)]
