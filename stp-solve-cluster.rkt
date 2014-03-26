@@ -215,8 +215,9 @@
         (unless ;; efpos is a duplicate
             (or (and (bytes=? (hc-position-bs efpos) last-pos-bs) ; duplicate from most recently written 
                      (vector-set! sample-stats 2 (add1 (vector-ref sample-stats 2))))
-                (and (position-in-fhead? efpos pffh) (vector-set! sample-stats 1 (add1 (vector-ref sample-stats 1))))
-                (and (position-in-fhead? efpos cffh) (vector-set! sample-stats 1 (add1 (vector-ref sample-stats 1)))))
+                ;; (and (position-in-fhead? efpos pffh) (vector-set! sample-stats 1 (add1 (vector-ref sample-stats 1))))
+                ;; (and (position-in-fhead? efpos cffh) (vector-set! sample-stats 1 (add1 (vector-ref sample-stats 1))))
+                )
           (set! last-pos-bs (hc-position-bs efpos))
           (do ([efpos-hc (hc-position-hc efpos)])
             ;; if efpos-hc is >= to the slice-upper-bound, advance the proto-slice-num/ofile/upper-bound until it is not
@@ -401,7 +402,8 @@
                            (advance-fhead! an-fhead)
                            (unless (fhdone? an-fhead) ;;(eof-object? (peek-byte (fringehead-iprt an-fhead) 1))
                              (heap-add! heap-o-fheads an-fhead))
-                           (unless (bytes=? (hc-position-bs keep-pos) (hc-position-bs last-pos)) ;; don't write duplicates
+                           (unless (and (bytes=? (hc-position-bs keep-pos) (hc-position-bs last-pos)) ;; don't write duplicates
+                                        #t) ;; TODO is a dupe w/ respect to cf or pf?
                              (write-bytes (hc-position-bs keep-pos) mrg-segment-oport)
                              (set! num-written (add1 num-written))
                              (set! last-pos keep-pos)))
