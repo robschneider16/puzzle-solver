@@ -335,7 +335,7 @@
                   dupes-caught-here sort-time write-time (- (current-milliseconds) expand-part-time))))
 
 
-;; remote-expand-fringe: (listof (list fixnum fixnum)) fring fringe int -> (listof sampling-stat)
+;; remote-expand-fringe: (listof (list fixnum fixnum)) fringe fringe int -> (listof sampling-stat)
 ;; trigger the distributed expansion according to the given ranges
 ;; In theory, it shouldn't matter where the files pointed to by the fringe are located,
 ;; but we expect they will point to a *local-store* copy of the current-fringe,
