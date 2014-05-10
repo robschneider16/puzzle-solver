@@ -11,8 +11,6 @@
 (require data/heap)
 (require racket/fixnum)
 (require racket/set)
-(require mzlib/string) ;; supposedly depricated but seems to need the require for 5.3.5
-
 
 (require "stp-init.rkt"
          "stp-solve-base.rkt"
