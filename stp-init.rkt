@@ -1,6 +1,8 @@
-#lang racket
+#lang racket/base
 
 (require srfi/25 ;; multi-dimensional arrays
+         racket/list
+         racket/set
          )
 
 (provide EXPAND-SPACE-SIZE

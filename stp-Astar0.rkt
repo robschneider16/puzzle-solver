@@ -1,6 +1,9 @@
-#lang racket
+#lang racket/base
 
-(require "stp-init.rkt"
+(require racket/list
+         racket/set
+         racket/math
+         "stp-init.rkt"
          "stp-solve-base.rkt"
          "stp-fringefilerep.rkt"
          "stp-spaceindex.rkt"

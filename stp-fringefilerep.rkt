@@ -1,6 +1,10 @@
-#lang racket
+#lang racket/base
 
-(require mzlib/string)
+(require mzlib/string
+         racket/vector
+         racket/port
+         racket/file
+         racket/format)
 
 (require 
  ;racket/generator
@@ -71,29 +75,29 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 ;; #t if readcount >= total for the given fringehead -- that is, this fringehead is exhausted.
 ;; Note: readcount starts at 1, 
 (define (fhdone? fh)
-  (when (and (eof-object? (fringehead-next fh)) (empty? (rest (fringehead-filespecs fh))) (<= (fringehead-readcount fh) (fringehead-total fh)))
+  (when (and (eof-object? (fringehead-next fh)) (null? (cdr (fringehead-filespecs fh))) (<= (fringehead-readcount fh) (fringehead-total fh)))
     ;; try to reset 
     (error 'fhdone? (format "hit end of fringe reading only ~a of ~a positions~%" (fringehead-readcount fh) (fringehead-total fh))))
   (or (> (fringehead-readcount fh) (fringehead-total fh))
       (and (eof-object? (fringehead-next fh))
-           (empty? (rest (fringehead-filespecs fh))))))
+           (null? (cdr (fringehead-filespecs fh))))))
 
 ;; advance-fhead!: fringehead -> position OR void
 ;; move to the next position, but check to make sure something is available if expected
 (define (advance-fhead! fh)
-  (when (< (fringehead-readcount fh) (filespec-pcount (first (fringehead-filespecs fh))))
+  (when (< (fringehead-readcount fh) (filespec-pcount (car (fringehead-filespecs fh))))
     (do ([sleep-time 0.01 (* sleep-time 2)])
       ((not (eof-object? (peek-bytes 1 1 (fringehead-iprt fh)))) 'proceed)
       (printf "advance-fhead!: sleeping while waiting on ~a after reading ~a of ~a positions~%" 
-              (filespec-fullpathname (first (fringehead-filespecs fh))) (fringehead-readcount fh) (fringehead-total fh))
+              (filespec-fullpathname (car (fringehead-filespecs fh))) (fringehead-readcount fh) (fringehead-total fh))
       (sleep sleep-time)))
   (unless (fhdone? fh)
     (set-fringehead-next! fh (read-bs->hcpos (fringehead-iprt fh)))
     (set-fringehead-readcount! fh (add1 (fringehead-readcount fh)))
     (when (and (eof-object? (fringehead-next fh)) (not (fhdone? fh))) ; advance to next segment
-      (set-fringehead-filespecs! fh (rest (fringehead-filespecs fh)))
+      (set-fringehead-filespecs! fh (cdr (fringehead-filespecs fh)))
       (close-input-port (fringehead-iprt fh))
-      (set-fringehead-iprt! fh (open-input-file (filespec-fullpathname (first (fringehead-filespecs fh)))))
+      (set-fringehead-iprt! fh (open-input-file (filespec-fullpathname (car (fringehead-filespecs fh)))))
       (set-fringehead-next! fh (read-bs->hcpos (fringehead-iprt fh))))
     (fringehead-next fh)))
 
@@ -116,7 +120,7 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 (define (fh-from-fringe f [skip 0])
   ;(printf "fh-from-fringe: starting~%")
   (let*-values ([(active-fspecs dropped) (drop-some-maybe (fringe-segments f) skip)]
-                [(firstfullpathname) (filespec-fullpathname (first active-fspecs))]
+                [(firstfullpathname) (filespec-fullpathname (car active-fspecs))]
                 [(inprt) (open-input-file firstfullpathname)]
                 [(new-fh) (fringehead (read-bs->hcpos inprt) inprt active-fspecs (add1 dropped) (fringe-pcount f))])
     (for ([i (- skip dropped)]) (advance-fhead! new-fh))
@@ -254,8 +258,8 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
   (do ([fspecs (filter (lambda (fspec) (fringe-file-not-ready? fspec check-alt-flag)) lo-fspecs)
                (filter (lambda (fspec) (fringe-file-not-ready? fspec check-alt-flag)) fspecs)]
        [sleep-time 0.01 (* sleep-time 2)])
-    ((empty? fspecs) 'ready)
-    (printf "wait-for-files: waiting for ~a files such as ~a ... and sleeping ~a~%" (length fspecs) (first (fringe-fullpathnames (first fspecs))) sleep-time)
+    ((null? fspecs) 'ready)
+    (printf "wait-for-files: waiting for ~a files such as ~a ... and sleeping ~a~%" (length fspecs) (car (fringe-fullpathnames (car fspecs))) sleep-time)
     (sleep sleep-time)))
 
 ;; position-count-in-file: string -> number
