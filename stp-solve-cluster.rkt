@@ -342,7 +342,7 @@
 ;; where the copy is arranged-for by the master also
 (define (remote-expand-fringe ranges pf cf depth)
   ;;(printf "remote-expand-fringe: current-fringe of ~a split as: ~a~%" cur-fringe-size (map (lambda (pr) (- (second pr) (first pr))) ranges))
-  (let* ([distrib-results (for/work #|work|# ([range-pair ranges]
+  (let* ([distrib-results (for/work ([range-pair ranges]
                                      [i (in-range (length ranges))])
                                     (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end")) ;;prevent riot cache-failure
                                     ;; need alternate version of wait-for-files that just checks on the assigned range
@@ -378,7 +378,7 @@
   ;; expand-files-specs are of pattern: "proto-fringe-dXX-NN" for depth XX and proc-id NN, pointing to working (shared) directory 
   ;; WAS: ofile-name is of pattern: "fringe-segment-dX-NN", where the X is the depth and the NN is a process identifier
   ;; NEW: ofile-name is of pattern: "fringe-segment-dX-NNN", where the X is the depth and the NN is a slice identifier
-  (let* ([mrg-segment-oport (open-output-file (format "~a~a" *share-store* ofile-name))] ; try writing directly to NFS
+  (let* ([mrg-segment-oport (open-output-file (format "~a~a" *share-store* ofile-name) #:exists 'replace)] ; try writing directly to NFS
          ;[local-protofringe-fspecs (for/list ([fs slice-fspecs] #:unless (zero? (filespec-pcount fs))) (rebase-filespec fs *local-store*))]
          [local-protofringe-fspecs (for/list ([fs slice-fspecs] #:unless (zero? (filespec-pcount fs))) fs)]
          ;[pmsg1 (printf "distmerge-debug1: ~a fspecs in ~a~%distmerge-debug1: or localfspecs=~a~%" (vector-length slice-fspecs) slice-fspecs local-protofringe-fspecs)]
@@ -426,7 +426,7 @@
     (for ([efs expand-files-specs]) (bring-local-partial-expansions efs)))|#
   ;(printf "remote-merge: n-protof-slices=~a, and length expand-files-specs=~a~%" *num-proto-fringe-slices* (vector-length expand-files-specs))
   (let ([merge-results
-         (for/work #|work|# ([i *num-proto-fringe-slices*]
+         (for/work ([i *num-proto-fringe-slices*]
                     [expand-fspecs-slice expand-files-specs])
                    (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end")) ;finesse Riot caching
                    (let* ([ofile-name (format "fringe-segment-d~a-~a" depth (~a i #:left-pad-string "0" #:width 3 #:align 'right))]
@@ -581,27 +581,6 @@
               (make-fringe *share-store* (list (make-filespec "fringe-d0" 1 (file-size d0) *share-store*)) 1)
               1)))
 
-;; make-fringe-from-files: string int -> fringe
-;; given a base-string and number of processors (actually, segments), create the fringe
-(define (make-fringe-from-files base-string n-seg)
-  (let ([pcount 0])
-    (make-fringe 
-     *share-store*
-     (for/list ([i n-seg])
-       (let* ([f (format "~a~a" base-string (~a i #:left-pad-string "0" #:width 3 #:align 'right))]
-              [lpcount (read-from-string (with-output-to-string 
-                                          (lambda () (position-count-in-file (string-append *share-store* f)))))])
-         (set! pcount (+ pcount lpcount))
-         (make-filespec f lpcount (file-size (string-append *share-store* f)) *share-store*)))
-     pcount)))
-
-;;???? Not really sure how this is intended to be useful: where is the source file and where should the fringe file go?
-(define (make-fringe-from-file file)
-  (let ([filepcount (read-from-string (with-output-to-string (lambda () (position-count-in-file file))))])
-    (make-fringe *share-store*
-                 (list (make-filespec file filepcount (file-size file) *share-store*))
-                 filepcount)))
-
 ;(block10-init)
 (climb12-init)
 ;(climb15-init)
@@ -620,16 +599,16 @@
 ;#|
 (module+ main
   ;; Switch between these according to if using the cluster or testing on multi-core single machine
-         (connect-to-riot-server! *master-name*)
+  (connect-to-riot-server! *master-name*)
   (define search-result (time (start-cluster-fringe-search *start*)))
   #|
-  (define search-result (time (cfs-file (make-fringe-from-files "fringe-segment-d115-" 32)
-                                        (make-fringe-from-files "fringe-segment-d116-" 32)
+  (define search-result (time (cfs-file (make-fringe-from-files "fringe-segment-d115-" 32 "fill-in-path-to-fringe-segments")
+                                        (make-fringe-from-files "fringe-segment-d116-" 32 "fill-in-path-to-fringe-segments")
                                         117)))
   |#
   #|
-  (define search-result (time (cfs-file (make-fringe-from-file "c12d59fringe")
-                                        (make-fringe-from-file "c12d58fringe")
+  (define search-result (time (cfs-file (make-fringe-from-file "c12d59fringe" "fill-in-path-to-fringe-file")
+                                        (make-fringe-from-file "c12d58fringe" "fill-in-path-to-fringe-file")
                                         1)))
   |#
   (print search-result)

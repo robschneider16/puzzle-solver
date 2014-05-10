@@ -1,5 +1,7 @@
 #lang racket
 
+(require mzlib/string)
+
 (require 
  ;racket/generator
  "stp-init.rkt"
@@ -276,3 +278,30 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 ;; touch: string -> void
 ;; create the file with given name
 (define (touch fname) (display-to-file "" fname))
+
+
+;; make-fringe-from-files: string int -> fringe
+;; given a base-string representing the fringe-segment file name -- except for the segment number --
+;; and given the number of processors (actually, segments), and optionally the path to these fringe segments (expected to be *share-store*),
+;; create the fringe structure for these segments
+(define (make-fringe-from-files base-string n-seg [path-to-fringe-segments ""])
+  (let ([pcount 0])
+    (make-fringe 
+     path-to-fringe-segments ;;*share-store*
+     (for/list ([i n-seg])
+       (let* ([f (format "~a~a" base-string (~a i #:left-pad-string "0" #:width 3 #:align 'right))]
+              [lpcount (read-from-string (with-output-to-string 
+                                          (lambda () (position-count-in-file (string-append path-to-fringe-segments f)))))])
+         (set! pcount (+ pcount lpcount))
+         (make-filespec f lpcount (file-size (string-append path-to-fringe-segments f)) path-to-fringe-segments)))
+     pcount)))
+
+;; make-fringe-from-file: string [string] -> fringe
+;; when a fringe is stored in a single file (instead of being spread over a number of segments),
+;; create and return the fringe structure consisting of the given file, found in the optional path (expected to be *share-store*)
+(define (make-fringe-from-file file [path-to-fringefile ""])
+  (let ([filepcount (read-from-string (with-output-to-string (lambda () (position-count-in-file file))))])
+    (make-fringe path-to-fringefile
+                 (list (make-filespec file filepcount (file-size file) path-to-fringefile))
+                 filepcount)))
+
