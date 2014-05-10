@@ -2,7 +2,7 @@
 
 (require racket/list
          racket/set
-         racket/math
+         ;racket/math
          "stp-init.rkt"
          "stp-solve-base.rkt"
          "stp-fringefilerep.rkt"
@@ -341,7 +341,7 @@
          [half-c-diff (/ c-diff 2)]
          [mmd (+ half-c-diff r-diff)]
          )
-    (+ mmd (floor (sqr (sub1 (max 1 mmd)))))))
+    (+ mmd (floor ((lambda (x) (* x x)) (sub1 (max 1 mmd)))))))
 
 (define (c15-heuristic p)
   (let* ([pt1-loc (- (bytes-ref p 4) *charify-offset*)]
@@ -351,7 +351,7 @@
          [half-c-diff (/ c-diff 2)]
          [mmd (+ half-c-diff r-diff)]
          )
-    (+ mmd (floor (sqr (max 0 (sub1 mmd)))))))
+    (+ mmd (floor ((lambda (x) (* x x)) (max 0 (sub1 mmd)))))))
 
 
 
