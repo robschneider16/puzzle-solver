@@ -1,4 +1,4 @@
-#lang racket
+#lang racket/base
 
 (provide vector-sort!)
 
@@ -17,7 +17,7 @@
 (define (qsort-aux V compare left right)
   (cond
     [(>= left right) V]
-    [else (local ((define new-pivot-position (alt-partition V compare left right (+ left (random (add1 (- right left)))))))
+    [else (let ([new-pivot-position (alt-partition V compare left right (+ left (random (add1 (- right left)))))])
             (begin (qsort-aux V compare left (sub1 new-pivot-position))
                    (qsort-aux V compare (add1 new-pivot-position) right)))]))
 

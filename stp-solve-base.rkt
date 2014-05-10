@@ -1,7 +1,9 @@
-#lang racket
+#lang racket/base
 
 (require
  srfi/25 ;; multi-dimensional arrays
+ racket/list
+ racket/vector
  ;test-engine/racket-tests
  ;racket/generator
  "stp-init.rkt"
@@ -200,8 +202,8 @@
 ;; *piecelocvec*: holds the bytestring successors of a single piece
 ;; expand-count: counts expansions/successors for a single piece
 (define expand
-  (local ([define expand-count (box 0)]
-          )
+  (let ([expand-count (box 0)]
+        )
     (lambda (hc-s exp-ptr)
       (let ([bs (hc-position-bs hc-s)]
             [target-hc-pos 'mutable-hc-pos-in-*expansion-space*])

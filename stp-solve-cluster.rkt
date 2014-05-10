@@ -1,12 +1,14 @@
-#lang racket
+#lang racket/base
 
 (require (planet gcr/riot))
 ;(require (planet soegaard/gzip:2:2))
 ;(require file/gzip)
 ;(require file/gunzip)
 ;(require rnrs/sorting-6)
+(require racket/list
+         racket/format
+         )
 (require data/heap)
-(require srfi/1)
 (require racket/fixnum)
 (require racket/set)
 (require mzlib/string) ;; supposedly depricated but seems to need the require for 5.3.5
