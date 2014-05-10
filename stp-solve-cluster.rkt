@@ -599,13 +599,13 @@
   (connect-to-riot-server! *master-name*)
   (define search-result (time (start-cluster-fringe-search *start*)))
   #|
-  (define search-result (time (cfs-file (make-fringe-from-files "fringe-segment-d115-" 32)
-                                        (make-fringe-from-files "fringe-segment-d116-" 32)
+  (define search-result (time (cfs-file (make-fringe-from-files "fringe-segment-d115-" 32 "fill-in-path-to-fringe-segments")
+                                        (make-fringe-from-files "fringe-segment-d116-" 32 "fill-in-path-to-fringe-segments")
                                         117)))
   |#
   #|
-  (define search-result (time (cfs-file (make-fringe-from-file "c12d59fringe")
-                                        (make-fringe-from-file "c12d58fringe")
+  (define search-result (time (cfs-file (make-fringe-from-file "c12d59fringe" "fill-in-path-to-fringe-file")
+                                        (make-fringe-from-file "c12d58fringe" "fill-in-path-to-fringe-file")
                                         1)))
   |#
   (print search-result)
