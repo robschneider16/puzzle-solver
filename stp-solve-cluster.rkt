@@ -572,6 +572,7 @@
   ;; initialization of fringe files
   (let ([d-1 (format "~afringe-d-1" *share-store*)]
         [d0 (format "~afringe-d0" *share-store*)])
+    (for ([f (in-directory *share-store*)]) (delete-file f))
     (write-fringe-to-disk empty d-1)
     (write-fringe-to-disk (list start-position) d0)
     (cfs-file (make-fringe *share-store* (list (make-filespec "fringe-d-1" 0 (file-size d-1) *share-store*)) 0)
