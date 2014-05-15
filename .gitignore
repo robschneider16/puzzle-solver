@@ -1,6 +1,6 @@
 # Sliding-Tile Puzzle Files
-current-fringe*
-prev-fringe*
+fringefiles
+stpconfigs
 
 # Emacs or Racket backup files
 *~
