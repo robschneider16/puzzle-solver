@@ -1,6 +1,6 @@
 # Sliding-Tile Puzzle Files
-fringefiles
-stpconfigs
+fringefiles/fringe-segment*
+stpconfigs/*.rkt
 
 # Emacs or Racket backup files
 *~
