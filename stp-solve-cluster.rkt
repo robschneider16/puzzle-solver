@@ -364,15 +364,14 @@
         (copy-file base-fname tmp-partexp-name)))))
                                 
 
-;; distributed-merge-proto-fringe-slices: (vectorof fspec) int string -> (list string number)
+;; distributed-merge-proto-fringe-slices: (vectorof fspec) int string fringe fringe -> (list string number)
 ;; given a list of filespecs pointing to the slices assigend to this worker and needing to be merged, copy the slices
 ;; and merge into a single segment that will participate in the new fringe, removing duplicates among slices.
 ;; Note: we have already removed from slices any duplicates found in prev- and current-fringes
 (define (distributed-merge-proto-fringe-slices slice-fspecs depth ofile-name pf cf)
   ;(define (remote-merge-proto-fringes my-range expand-files-specs depth ofile-name)
   ;; expand-files-specs are of pattern: "proto-fringe-dXX-NN" for depth XX and proc-id NN, pointing to working (shared) directory 
-  ;; WAS: ofile-name is of pattern: "fringe-segment-dX-NN", where the X is the depth and the NN is a process identifier
-  ;; NEW: ofile-name is of pattern: "fringe-segment-dX-NNN", where the X is the depth and the NN is a slice identifier
+  ;; ofile-name is of pattern: "fringe-segment-dX-NNN", where the X is the depth and the NN is a slice identifier
   (let* ([mrg-segment-oport (open-output-file (format "~a~a" *share-store* ofile-name) #:exists 'replace)] ; try writing directly to NFS
          ;[local-protofringe-fspecs (for/list ([fs slice-fspecs] #:unless (zero? (filespec-pcount fs))) (rebase-filespec fs *local-store*))]
          [local-protofringe-fspecs (for/list ([fs slice-fspecs] #:unless (zero? (filespec-pcount fs))) fs)]
@@ -397,9 +396,9 @@
                          (for ([an-fhead (in-heap/consume! heap-o-fheads)])
                            (set! keep-pos (fringehead-next an-fhead))
                            (unless (or (and (bytes=? (hc-position-bs keep-pos) (hc-position-bs last-pos))) ;; don't write duplicates
-                                       (and (position-in-fhead? keep-pos pffh) ;(vector-set! sample-stats 1 (add1 (vector-ref sample-stats 1)))
+                                       (and (position-in-fhead? keep-pos pffh) ;(vector-set! ss 1 (add1 (vector-ref ss 1)))
                                             )
-                                       (and (position-in-fhead? keep-pos cffh) ;(vector-set! sample-stats 1 (add1 (vector-ref sample-stats 1)))
+                                       (and (position-in-fhead? keep-pos cffh) ;(vector-set! ss 1 (add1 (vector-ref ss 1)))
                                             )
                                        )
                              (write-bytes (hc-position-bs keep-pos) mrg-segment-oport)
@@ -459,7 +458,6 @@
          ;[ranges (make-vector-ranges (fringe-pcount cf))]
          [ranges (make-simple-ranges (fringe-segments cf))]
          ;; --- Distribute the actual expansion work ------------------------
-         ;[sampling-stats (remote-expand-fringe ranges pf rcf depth)]
          [sampling-stats (remote-expand-fringe ranges pf cf depth)]
          [end-expand (current-seconds)]
          ;; -----------------------------------------------------------------
@@ -474,8 +472,6 @@
                                                  (vector-ref (vector-ref ss 3) i) ;pcount
                                                  (vector-ref (vector-ref ss 6) i) ;file-size
                                                  *share-store*)))]
-         ;; need to wait for write to complete -- i.e., all data to appear on master
-         ;; push this wait into the place we're trying to access the file ... [wait-for-partial-expansions (wait-for-files expand-files-specs)]
          ;; MERGE
          ;; --- Distribute the merging work ----------
          [sorted-segment-fspecs (remote-merge proto-fringe-fspecs depth pf cf)]
@@ -577,7 +573,8 @@
   ;; initialization of fringe files
   (let ([d-1 (format "~afringe-d-1" *share-store*)]
         [d0 (format "~afringe-d0" *share-store*)])
-    (for ([f (in-directory *share-store*)]) (delete-file f))
+    (for ([f (directory-list *share-store*)] #:unless (char=? #\. (string-ref (path->string f) 0))) 
+      (delete-file (build-path *share-store* f))) ; actually should use pattern match to delete only fringe* or proto*
     (write-fringe-to-disk empty d-1)
     (write-fringe-to-disk (list start-position) d0)
     (cfs-file (make-fringe *share-store* (list (make-filespec "fringe-d-1" 0 (file-size d-1) *share-store*)) 0)
