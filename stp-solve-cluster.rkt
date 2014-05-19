@@ -364,11 +364,11 @@
         (copy-file base-fname tmp-partexp-name)))))
                                 
 
-;; distributed-merge-proto-fringe-slices: (vectorof fspec) int string fringe fringe -> (list string number)
+;; distributed-merge-proto-fringe-slices: (vectorof fspec) int string fringe fringe int -> (list string number)
 ;; given a list of filespecs pointing to the slices assigend to this worker and needing to be merged, copy the slices
 ;; and merge into a single segment that will participate in the new fringe, removing duplicates among slices.
 ;; Note: we have already removed from slices any duplicates found in prev- and current-fringes
-(define (distributed-merge-proto-fringe-slices slice-fspecs depth ofile-name pf cf)
+(define (distributed-merge-proto-fringe-slices slice-fspecs depth ofile-name pf cf which-slice)
   ;(define (remote-merge-proto-fringes my-range expand-files-specs depth ofile-name)
   ;; expand-files-specs are of pattern: "proto-fringe-dXX-NN" for depth XX and proc-id NN, pointing to working (shared) directory 
   ;; ofile-name is of pattern: "fringe-segment-dX-NNN", where the X is the depth and the NN is a slice identifier
@@ -386,8 +386,16 @@
                           (heap-add-all! lheap 
                                          (filter-not (lambda (fh) (eof-object? (fringehead-next fh))) to-merge-fheads))
                           lheap)]
-         [pffh (fh-from-fringe pf)]
-         [cffh (fh-from-fringe cf)]
+         [pffh (fh-from-fringe pf (if (= (length (fringe-segments pf)) 1)
+                                      0
+                                      (for/sum ([slice-num which-slice]
+                                                [fspec (fringe-segments pf)])
+                                        (filespec-pcount fspec))))]
+         [cffh (fh-from-fringe cf (if (= (length (fringe-segments pf)) 1)
+                                      0
+                                      (for/sum ([slice-num which-slice]
+                                                [fspec (fringe-segments cf)])
+                                        (filespec-pcount fspec))))]
          ;[pmsg3 (printf "distmerge-debug3: made the heap with ~a frigeheads in it~%" (heap-count heap-o-fheads))]
          ;****** log duplicate eliminations here
          [segment-size (let ([last-pos (make-hcpos (bytes 49 49 49 49))]
@@ -431,7 +439,7 @@
                     [expand-fspecs-slice expand-files-specs])
                    (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end")) ;finesse Riot caching
                    (let* ([ofile-name (format "fringe-segment-d~a-~a" depth (~a i #:left-pad-string "0" #:width 3 #:align 'right))]
-                          [merged-fname-and-resp-rng-size (distributed-merge-proto-fringe-slices expand-fspecs-slice depth ofile-name pf cf)]
+                          [merged-fname-and-resp-rng-size (distributed-merge-proto-fringe-slices expand-fspecs-slice depth ofile-name pf cf i)]
                           )
              ;;(printf "distributed-expand-fringe: merge-range = ~a~%~a~%" merge-range merged-responsibility-range)
              merged-fname-and-resp-rng-size))])
