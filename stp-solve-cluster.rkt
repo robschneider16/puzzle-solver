@@ -13,6 +13,7 @@
 (require racket/fixnum)
 (require racket/set)
 
+(require "stpconfigs/configenv.rkt")
 (require "stp-init.rkt"
          "stp-solve-base.rkt"
          "stp-fringefilerep.rkt"
@@ -28,17 +29,19 @@
 (define *argv* (current-command-line-arguments))
 
 (define *depth-start-time* "the time from current-seconds at the start of a given depth")
+#|
 (define *master-name* "the name of the host where the master process is running")
 (define *local-store* "the root portion of path to where workers can store temporary fringe files")
 (define *share-store* "the main folder where fringe files are stored (and possibly shared via NFS)")
 (define *n-processors* "number of chunks to divide fringes into")
+|#
 
 (when (vector-member "--help" *argv*)
       (displayln "options:")
       (displayln "    --remote: configure to work on the cluster instead of locally")
       (displayln "    --help: show this message")
       (exit))
-
+#|
 (if (vector-member "--remote" *argv*)
     (begin
       (set! *master-name* "wcp")
@@ -52,6 +55,21 @@
       (set! *share-store* "./fringefiles/")
       ;(set! *local-store* "/state/partition1/fringefiles/")
       (set! *n-processors* 4)))
+|#
+#|
+(set! *master-name* "localhost")
+(set! *local-store* "/space/fringefiles/")
+(set! *share-store* "./fringefiles/")
+;(set! *local-store* "/state/partition1/fringefiles/")
+(define *n-processors* 4)
+|#
+#|
+(set! *master-name* "wcp")
+(set! *local-store* "/state/partition1/fringefiles/")
+(set! *share-store* "/share/data2/fringefiles/")
+;(set! *share-store* "fringefiles/")
+(define *n-processors* 32)
+|#
 
 (define *expand-multiplier* 1)
 (define *merge-multiplier* 1)
