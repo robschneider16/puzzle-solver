@@ -1,0 +1,54 @@
+#!/usr/bin/perl
+
+ # This will run stp-solve-cluster.rkt along with a riot server and a number
+ #  of workers.
+
+ # USAGE: test-local <number> (default 4)
+
+use strict;
+use warnings;
+
+my $server;
+my @workers;
+
+my $n_workers = $ARGV[0] // 4;
+
+mkdir 'output';
+
+sub forksub (&) {
+    my ($sub) = @_;
+    if (my $child = fork // die "Failed to fork: $!\n") {
+        return $child;
+    }
+    else {
+        $sub->();
+        exit;
+    }
+}
+
+sub output_to_file {
+    my ($filename) = @_;
+    close STDOUT;
+    open STDOUT, '>', "$filename" or die "Could not reopen STDOUT to $filename: $!\n";
+    close STDERR;
+    open STDERR, '>&', STDOUT or die "Could not reopen STDERR: $!\n";
+}
+
+$server = forksub {
+    output_to_file 'output/server-out';
+    system qw<racket -p gcr/riot/server>;
+};
+sleep 1;
+
+for my $n (1..$n_workers) {
+    push @workers, forksub {
+        output_to_file "output/worker-$n-out";
+        system qw<racket -p gcr/riot/worker -- localhost>;
+    };
+}
+
+system qw<racket stp-solve-cluster.rkt>;
+
+kill 2, $_ for @workers;
+kill 2, $server;
+
