@@ -26,50 +26,7 @@
 
 (provide (all-defined-out))
 
-(define *argv* (current-command-line-arguments))
-
 (define *depth-start-time* "the time from current-seconds at the start of a given depth")
-#|
-(define *master-name* "the name of the host where the master process is running")
-(define *local-store* "the root portion of path to where workers can store temporary fringe files")
-(define *share-store* "the main folder where fringe files are stored (and possibly shared via NFS)")
-(define *n-processors* "number of chunks to divide fringes into")
-|#
-
-(when (vector-member "--help" *argv*)
-      (displayln "options:")
-      (displayln "    --remote: configure to work on the cluster instead of locally")
-      (displayln "    --help: show this message")
-      (exit))
-#|
-(if (vector-member "--remote" *argv*)
-    (begin
-      (set! *master-name* "wcp")
-      (set! *local-store* "/state/partition1/fringefiles/")
-      (set! *share-store* "/share/data2/fringefiles/")
-      ;(set! *share-store* "fringefiles/")
-      (set! *n-processors* 32))
-    (begin
-      (set! *master-name* "localhost")
-      (set! *local-store* "./fringefiles/")
-      (set! *share-store* "./fringefiles/")
-      ;(set! *local-store* "/state/partition1/fringefiles/")
-      (set! *n-processors* 4)))
-|#
-#|
-(set! *master-name* "localhost")
-(set! *local-store* "/space/fringefiles/")
-(set! *share-store* "./fringefiles/")
-;(set! *local-store* "/state/partition1/fringefiles/")
-(define *n-processors* 4)
-|#
-#|
-(set! *master-name* "wcp")
-(set! *local-store* "/state/partition1/fringefiles/")
-(set! *share-store* "/share/data2/fringefiles/")
-;(set! *share-store* "fringefiles/")
-(define *n-processors* 32)
-|#
 
 (define *expand-multiplier* 1)
 (define *merge-multiplier* 1)
@@ -195,7 +152,7 @@
       (set! start-range (+ start-range (filespec-pcount fs)))
       (list (- start-range (filespec-pcount fs)) start-range))))
 
-;; remove-dupes: (listof filespec) string int int float float float -> sampling-stat
+;; remove-dupes: fringe fringe (listof filespec) string int int float float float -> sampling-stat
 ;; Running in distributed worker processes:
 ;; Remove duplicate positions from the list of expand-fspec files (i.e., partial-expansion...),
 ;; for any positions that appear in multiple partial expansion files.
@@ -204,12 +161,14 @@
 ;; and later delivered a copy to the working directory to share with all the other compute-nodes;
 ;; Try writing directly to the shared NFS drive as a way to spread out network traffic.  This will clean up file name in the return sampling-stat...
 ;; Accordingly, the sampling-stat return value has a filename pointing to the working directory.
-(define (remove-dupes lo-expand-fspec ofile-name depth partial-exp-dupes part-sort-time part-write-time other-expand-time)
+(define (remove-dupes pf cf lo-expand-fspec ofile-name depth partial-exp-dupes part-sort-time part-write-time other-expand-time)
   ;; the ofile-name is just the file-name -- no *local-store* path where needed
   #|(printf "EXPAND PHASE 2 (REMOVE DUPLICATES) pf: ~a~%cf: ~a~%all of lo-expand-fspec: ~a~%ofile-name: ~a~%depth: ~a~%"
           pf cf lo-expand-fspec ofile-name depth);|#
   ;; EXPAND PHASE 2 (REMOVE DUPLICATES)
-  (let* ([n-pos-to-process (for/sum ([an-fspec lo-expand-fspec]) (filespec-pcount an-fspec))]
+  (let* ([pffh (fh-from-fringe pf)]
+         [cffh (fh-from-fringe cf)]
+         [n-pos-to-process (for/sum ([an-fspec lo-expand-fspec]) (filespec-pcount an-fspec))]
          [lo-effh (for/list ([an-fspec lo-expand-fspec]) (fh-from-filespec an-fspec))]
          [heap-o-fheads (let ([lheap (make-heap (lambda (fh1 fh2) (hcposition<? (fringehead-next fh1) (fringehead-next fh2))))])
                           (heap-add-all! lheap lo-effh)
@@ -242,7 +201,10 @@
         (unless ;; efpos is a duplicate
             (or (and (bytes=? (hc-position-bs efpos) last-pos-bs) ; duplicate from most recently written 
                      (vector-set! sample-stats 2 (add1 (vector-ref sample-stats 2))))
-                )
+                (and
+                  (not *late-duplicate-removal*)
+                  (or (and (position-in-fhead? efpos pffh) (vector-set! sample-stats 1 (add1 (vector-ref sample-stats 1))))
+                      (and (position-in-fhead? efpos cffh) (vector-set! sample-stats 1 (add1 (vector-ref sample-stats 1)))))))
           (set! last-pos-bs (hc-position-bs efpos))
           (do ([efpos-hc (hc-position-hc efpos)])
             ;; if efpos-hc is >= to the slice-upper-bound, advance the proto-slice-num/ofile/upper-bound until it is not
@@ -259,6 +221,7 @@
           (heap-add! heap-o-fheads an-fhead))))
     ;(printf "remote-expand-part-fringe: HAVE EXPANSIONS:~%")
     ;; close input and output ports
+    (for ([fh (cons pffh (cons cffh lo-effh))]) (close-input-port (fringehead-iprt fh)))
     (close-output-port proto-slice-ofile)
     (for ([i (in-range (add1 proto-slice-num) *num-proto-fringe-slices*)])
       (touch (string-append *share-store* ofile-name "-" (~a i #:left-pad-string "0" #:width 3 #:align 'right))))
@@ -308,11 +271,11 @@
             (+ sort-time sort-time0)
             (+ write-time write-time0))))
 
-;; remote-expand-part-fringe: (list int int) int fringe int -> {whatever returned by remove-dupes}
+;; remote-expand-part-fringe: (list int int) int fringe fringe int -> {whatever returned by remove-dupes}
 ;; given a pair of indices into the current-fringe that should be expanded by this process, a process-id,
-;; and the current-fringe, and the depth ...
+;; and the prev- and current-fringes, and the depth ...
 ;; expand the positions in the indices range, ignoring duplicates other than within the new fringe being constructed.
-(define (remote-expand-part-fringe ipair process-id cf depth)
+(define (remote-expand-part-fringe ipair process-id pf cf depth)
   ;; prev-fringe spec points to default shared directory; current-fringe spec points to *local-store* folder
   ;(printf "remote-expand-part-fringe: starting with pf: ~a, and cf: ~a~%" pf cf)
   ;; EXPAND PHASE 1
@@ -353,7 +316,7 @@
              (format "only expanded ~a of the assigned ~a (~a-~a) positions" expanded-phase1 assignment-count start end)))
     (close-input-port (fringehead-iprt cffh))
     ;; PHASE 2: now pass through the proto-fringe expansion file(s) as well as prev-fringe and current-fringe to remove duplicates
-    (remove-dupes pre-ofiles 
+    (remove-dupes pf cf pre-ofiles 
                   (format "proto-fringe-d~a-~a" depth (~a process-id #:left-pad-string "0" #:width 2 #:align 'right)) ;; ofile-name
                   depth
                   dupes-caught-here sort-time write-time (- (current-milliseconds) expand-part-time))))
@@ -374,7 +337,7 @@
                                     #| push the wait into where we're trying to access positions 
                                     (wait-for-files (append (map (lambda (seg) (segment-fspec seg)) pf-findex)
                                                             (map (lambda (seg) (segment-fspec seg)) cf-findex)) #t)|#
-                                    (remote-expand-part-fringe range-pair i cf depth)
+                                    (remote-expand-part-fringe range-pair i pf cf depth)
                                     )])
     ;(printf "remote-expand-fringe: respective expansion counts: ~a~%" (map (lambda (ssv) (vector-ref ssv 0)) distrib-results))
     distrib-results))
@@ -433,11 +396,10 @@
                          (for ([an-fhead (in-heap/consume! heap-o-fheads)])
                            (set! keep-pos (fringehead-next an-fhead))
                            (unless (or (and (bytes=? (hc-position-bs keep-pos) (hc-position-bs last-pos))) ;; don't write duplicates
-                                       (and (position-in-fhead? keep-pos pffh) ;(vector-set! ss 1 (add1 (vector-ref ss 1)))
-                                            )
-                                       (and (position-in-fhead? keep-pos cffh) ;(vector-set! ss 1 (add1 (vector-ref ss 1)))
-                                            )
-                                       )
+                                       (and
+                                         *late-duplicate-removal*
+                                         (or (position-in-fhead? keep-pos pffh)
+                                             (position-in-fhead? keep-pos cffh))))
                              (write-bytes (hc-position-bs keep-pos) mrg-segment-oport)
                              (set! num-written (add1 num-written))
                              (set! last-pos keep-pos))
