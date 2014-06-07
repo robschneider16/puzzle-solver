@@ -7,6 +7,7 @@
 
 use strict;
 use warnings;
+use v5.10;
 
 my $server;
 my @workers;
@@ -49,6 +50,10 @@ for my $n (1..$n_workers) {
 
 system qw<racket stp-solve-cluster.rkt>;
 
-kill 2, $_ for @workers;
-kill 2, $server;
-
+sleep 1;
+if (kill(2, $server, @workers) != 1 + @workers) {
+    say "Processes didn't respond to SIGINT";
+    sleep 1;
+    kill 9, $_ for @workers;
+    kill 9, $server;
+}
