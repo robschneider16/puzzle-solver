@@ -20,4 +20,4 @@ Create a link named "configenv.rkt" to this file if on local machine
 (define *local-store* "fringefiles/")
 (define *share-store* "fringefiles/")
 (define *n-processors* 4)
-(define *late-duplicate-removal* #t)
+(define *late-duplicate-removal* #f)
