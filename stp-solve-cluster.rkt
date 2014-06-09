@@ -34,14 +34,12 @@
 
 (define *depth-start-time* "the time from current-seconds at the start of a given depth")
 
-(define *expand-multiplier* 1)
-(define *merge-multiplier* 1)
-(define *n-expanders* (* *n-processors* *expand-multiplier*))
-(define *n-mergers* (* *n-processors* *merge-multiplier*))
+(define *n-expanders* *n-slices*)
+(define *n-mergers* *n-slices*)
 
 (define *diy-threshold* 5000) ;;**** this must be significantly less than EXPAND-SPACE-SIZE 
 
-;; Determine word size
+;; Determine word size limits
 (define *most-positive-fixnum* 0)
 (define *most-negative-fixnum* 0)
 (cond [(fixnum? (expt 2 61))
@@ -516,6 +514,7 @@
 
 
 ;;----------------------------------------------------------------------------------------
+;; Overall execution
 
 ;; expand-fringe: fringe fringe int -> fringe
 ;; Given the prev- and current-fringes, and the current depth of search,
@@ -557,6 +556,7 @@
       (delete-file (build-path *share-store* f))) ; actually should use pattern match to delete only fringe* or proto*
     (write-fringe-to-disk empty d-1)
     (write-fringe-to-disk (list start-position) d0)
+    ;; Actually do the search
     (cfs-file (make-fringe *share-store* (list (make-filespec "fringe-d-1" 0 (file-size d-1) *share-store*)) 0)
               (make-fringe *share-store* (list (make-filespec "fringe-d0" 1 (file-size d0) *share-store*)) 1)
               1)))

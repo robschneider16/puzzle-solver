@@ -227,7 +227,7 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
                      (copy-file (filespec-fullpathname fspec) remote-name))
                    (rebase-filespec fspec target)))
                (fringe-pcount f)))
-                 
+
 
 ;; delete-fringe: fringe -> void
 ;; remove all the files that make up the given fringe
@@ -248,7 +248,7 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
       (copy-file fname fullname)) ;; YUCK!
     (or (not (file-exists? fullname))
         (< (file-size fullname) fsize))))
-      
+
 
 ;; wait-for-files: (listof fspec) [check-alt-flag #f] -> 'ready
 ;; given a list of fringe-specs, wait until the file is present in the specified location
@@ -266,7 +266,7 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 ;; reports the number of positions in the given fringe file assuming the file was written with write-fringe-to-disk
 (define (position-count-in-file f)
   (/ (file-size f) *num-pieces*))
-                    
+
 ;; check-sorted-fringe?: string -> boolean
 ;; assuming the string, f, points to a sorted file of positions, check to make sure they are sorted
 (define (check-sorted-fringe? f)
