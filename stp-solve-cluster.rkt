@@ -1,10 +1,6 @@
 #lang racket/base
 
 (require (planet gcr/riot))
-;(require (planet soegaard/gzip:2:2))
-;(require file/gzip)
-;(require file/gunzip)
-;(require rnrs/sorting-6)
 (require racket/list
          racket/format
          racket/vector
@@ -13,6 +9,7 @@
 (require racket/fixnum)
 (require racket/set)
 
+
 (require "stpconfigs/configenv.rkt")
 (require "stp-init.rkt"
          "stp-solve-base.rkt"
@@ -20,11 +17,20 @@
          "stp-spaceindex.rkt"
          "myvectorsort.rkt"
          )
-;(require profile)
-;(instrumenting-enabled #t)
-;(profiling-enabled #t)
 
 (provide (all-defined-out))
+
+;;--------------------------------------------------------------------
+;; Configuration
+
+;; Select puzzle to work on
+;(block10-init)
+(climb12-init)
+;(climb15-init)
+;(climbpro24-init)
+;(compile-ms-array! *piece-types* *bh* *bw*)
+(compile-spaceindex (format "~a~a-spaceindex.rkt" "stpconfigs/" *puzzle-name*))
+
 
 (define *depth-start-time* "the time from current-seconds at the start of a given depth")
 
@@ -35,7 +41,7 @@
 
 (define *diy-threshold* 5000) ;;**** this must be significantly less than EXPAND-SPACE-SIZE 
 
-
+;; Determine word size
 (define *most-positive-fixnum* 0)
 (define *most-negative-fixnum* 0)
 (cond [(fixnum? (expt 2 61))
@@ -46,6 +52,7 @@
        (set! *most-positive-fixnum* (fx+ (expt 2 29) (fx- (expt 2 29) 1)))  ;; ****** only on our cluster, wcp *****
        (set! *most-negative-fixnum* (fx+ (fx* -1 (expt 2 29)) (fx* -1 (expt 2 29))))]);; ***** likewise *****
 
+;; TODO(lw): This isn't configuration.  Where should this be defined?
 (define *found-goal* #f)
 
 ;;------------------------------------------
@@ -85,7 +92,7 @@
                             ([sgmnt (fringe-segments pf)])
                             (set-union the-fringe
                                        (list->set (read-fringe-from-file (filespec-fullpathname sgmnt)))))] ; pf- and cf-spec's in expand-fringe-self should have empty fbase
-         [current-fringe-vec 
+         [current-fringe-vec
           (list->vector (for/fold ([the-fringe empty])
                           ([sgmnt (reverse (fringe-segments cf))])
                           (append (read-fringe-from-file (filespec-fullpathname sgmnt)) the-fringe)))]
@@ -217,7 +224,7 @@
           (when (is-goal? efpos) (vector-set! sample-stats 4 (hc-position-bs efpos)))
           (vector-set! slice-counts proto-slice-num (add1 (vector-ref slice-counts proto-slice-num))))
         (advance-fhead! an-fhead)
-        (unless (fhdone? an-fhead) ;;(eof-object? (peek-byte (fringehead-iprt an-fhead) 1))
+        (unless (fhdone? an-fhead)
           (heap-add! heap-o-fheads an-fhead))))
     ;(printf "remote-expand-part-fringe: HAVE EXPANSIONS:~%")
     ;; close input and output ports
@@ -231,10 +238,6 @@
                                   (file-size (format "~a~a-~a" *share-store* ofile-name (~a i #:left-pad-string "0" #:width 3 #:align 'right)))))
     ;; delete files that are no longer needed
     (for ([efspec lo-expand-fspec]) (delete-file (filespec-fullpathname efspec)))
-    ;(unless (string=? *master-name* "localhost") (delete-fringe pf))
-    ;(delete-file use-ofilename)
-    ;;**** THIS STRIKES ME AS DANGEROUS: IF ONE PROCESS ON MULTI-CORE MACHINE FINISHES FIRST ....
-    ;(when (file-exists? (string-append *local-store* (fspec-fname pfspec))) (delete-file (string-append *local-store* (fspec-fname pfspec))))
     sample-stats))
 
 ;; dump-partial-expansion: int string int (listof fspec) float float -> (values (listof fspec) int float float)
@@ -248,16 +251,8 @@
          [this-batch 0]
          [sort-time 0]
          [write-time 0])
-    ;; scrub the last part of the vector with bogus positions
-    #|
-    (for ([i (in-range pcount (vector-length *expansion-space*))])
-      (set! hc-to-scrub (vector-ref *expansion-space* i))
-      (set-hc-position-hc! hc-to-scrub *most-positive-fixnum*)    ;; make vector-sort! put these at the very end, but if a positions has *most-positive-fixnum* ...
-      (bytes-copy! (hc-position-bs hc-to-scrub) 0 #"~~IgnoreMe")) ;; #\~ (ASCII character 126) is greater than any of our positions
-    |#
     ;; sort the vector
     (set! sort-time (current-milliseconds))
-    ;(vector-sort! hcposition<? *expansion-space*)
     (vector-sort! *expansion-space* hcposition<? 0 pcount)
     (set! sort-time (- (current-milliseconds) sort-time))
     ;; write the first pcount positions to the file
@@ -354,18 +349,16 @@
            [tmp-partexp-name (string-append *local-store* base-fname)])
       (unless (file-exists? tmp-partexp-name) ; unless this process id is here from expansion
         (copy-file base-fname tmp-partexp-name)))))
-                                
+
 
 ;; distributed-merge-proto-fringe-slices: (vectorof fspec) int string fringe fringe int -> (list string number)
 ;; given a list of filespecs pointing to the slices assigend to this worker and needing to be merged, copy the slices
 ;; and merge into a single segment that will participate in the new fringe, removing duplicates among slices.
 ;; Note: we have already removed from slices any duplicates found in prev- and current-fringes
 (define (distributed-merge-proto-fringe-slices slice-fspecs depth ofile-name pf cf which-slice)
-  ;(define (remote-merge-proto-fringes my-range expand-files-specs depth ofile-name)
   ;; expand-files-specs are of pattern: "proto-fringe-dXX-NN" for depth XX and proc-id NN, pointing to working (shared) directory 
   ;; ofile-name is of pattern: "fringe-segment-dX-NNN", where the X is the depth and the NN is a slice identifier
   (let* ([mrg-segment-oport (open-output-file (format "~a~a" *share-store* ofile-name) #:exists 'replace)] ; try writing directly to NFS
-         ;[local-protofringe-fspecs (for/list ([fs slice-fspecs] #:unless (zero? (filespec-pcount fs))) (rebase-filespec fs *local-store*))]
          [local-protofringe-fspecs (for/list ([fs slice-fspecs] #:unless (zero? (filespec-pcount fs))) fs)]
          ;[pmsg1 (printf "distmerge-debug1: ~a fspecs in ~a~%distmerge-debug1: or localfspecs=~a~%" (vector-length slice-fspecs) slice-fspecs local-protofringe-fspecs)]
          ;******
@@ -404,7 +397,7 @@
                              (set! num-written (add1 num-written))
                              (set! last-pos keep-pos))
                            (advance-fhead! an-fhead)
-                           (unless (fhdone? an-fhead) ;;(eof-object? (peek-byte (fringehead-iprt an-fhead) 1))
+                           (unless (fhdone? an-fhead)
                              (heap-add! heap-o-fheads an-fhead))
                            )
                          num-written)])
@@ -421,9 +414,6 @@
 ;; expand-files-specs (proto-fringe-specs) is vector of vector of filespecs, the top-level has one for each slice,
 ;; each one containing as many proto-fringes as expanders, all of which need to be merged
 (define (remote-merge expand-files-specs depth pf cf)
-  ;;**** RETHINK THIS -- MAYBE FORCE THE WORKER TO GRAB THE SLICE IT NEEDS??????
-  #|(when (string=? *master-name* "localhost")
-    (for ([efs expand-files-specs]) (bring-local-partial-expansions efs)))|#
   ;(printf "remote-merge: n-protof-slices=~a, and length expand-files-specs=~a~%" *num-proto-fringe-slices* (vector-length expand-files-specs))
   (let ([merge-results
          (for/work ([i *num-proto-fringe-slices*]
@@ -454,7 +444,6 @@
           depth pf-spec cf-spec)|#
   (let* (;; EXPAND
          [start-expand (current-seconds)]
-         ;[ranges (make-vector-ranges (fringe-pcount cf))]
          [ranges (make-simple-ranges (fringe-segments cf))]
          ;; --- Distribute the actual expansion work ------------------------
          [sampling-stats (remote-expand-fringe ranges pf cf depth)]
@@ -484,16 +473,9 @@
          [sef-lengths (map second sorted-segment-fspecs)]
          [new-cf-name (format "fringe-d~a" depth)]
          )
-    ;; create the _new_ current-fringe
-    #|
-    (for ([f sorted-expansion-files])
-      ;(printf "distributed-expand-fringe: concatenating ~a~%" f)
-      (system (format "cat ~a >> fringe-d~a" f depth)))|#
     ;;--- delete files we don't need anymore ---------
     (for ([fspecs proto-fringe-fspecs])
       (for ([fspec fspecs]) (delete-file (filespec-fullpathname fspec))))
-    ;(system "rm partial-expansion* partial-merge*")
-    ;(unless (string=? *master-name* "localhost") (delete-file (fspec-fname cf-spec)))
     ;; file-copy, expansion, merge, total
     (printf "expand-merge-times: ~a\t~a\t~a\t~a~%"
             depth
@@ -562,7 +544,6 @@
                         depth (fringe-pcount current-fringe) (fringe-pcount new-fringe)
                         (- (current-seconds) *depth-start-time*) (seconds->time (- (current-seconds) *depth-start-time*)))
                 (flush-output)
-                ;;(for ([p current-fringe]) (displayln p))
                 (cfs-file current-fringe ;; use current-fringe as prev-fringe at next level
                           new-fringe
                           (add1 depth)))]))
@@ -580,13 +561,6 @@
               (make-fringe *share-store* (list (make-filespec "fringe-d0" 1 (file-size d0) *share-store*)) 1)
               1)))
 
-;(block10-init)
-(climb12-init)
-;(climb15-init)
-;(climbpro24-init)
-;(compile-ms-array! *piece-types* *bh* *bw*)
-(compile-spaceindex (format "~a~a-spaceindex.rkt" "stpconfigs/" *puzzle-name*))
-
 ;; canonicalize the *start* blank-configuration
 (let* ([spacelist (bwrep->list (intify (hc-position-bs *start*) 0 4))]
        [cbref (rcpair->rcbyte (loc-to-cell (car spacelist)))]
@@ -595,7 +569,6 @@
   (bytes-copy! (hc-position-bs *start*) 1 canonical-spaces)
   (hc-position-bs *start*))
 
-;#|
 (module+ main
   ;; Switch between these according to if using the cluster or testing on multi-core single machine
   (connect-to-riot-server! *master-name*)
@@ -612,6 +585,4 @@
   |#
   (print search-result)
   )
-;|#
 
-;(time (start-cluster-fringe-search *start*))
