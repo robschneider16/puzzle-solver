@@ -35,6 +35,19 @@ sub output_to_file {
     open STDERR, '>&', STDOUT or die "Could not reopen STDERR: $!\n";
 }
 
+sub finish {
+    kill 2, @workers, $server;
+    sleep 1;
+    for (@workers, $server) {
+        if (kill 0, $_) {
+            say "Process $_ didn't respond to SIGINT";
+            kill 9, $_;
+        }
+    }
+}
+
+$SIG{__DIE__} = \&finish;
+
 $server = forksub {
     output_to_file 'output/server-out';
     system qw<racket -p gcr/riot/server>;
@@ -50,11 +63,4 @@ for my $n (1..$n_workers) {
 
 system qw<racket stp-solve-cluster.rkt>;
 
-kill 2, @workers, $server;
-sleep 1;
-for (@workers, $server) {
-    if (kill 0, $_) {
-        say "Process $_ didn't respond to SIGINT";
-        kill 9, $_;
-    }
-}
+finish;
