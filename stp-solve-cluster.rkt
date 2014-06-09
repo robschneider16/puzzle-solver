@@ -21,6 +21,25 @@
 (provide (all-defined-out))
 
 ;;--------------------------------------------------------------------
+;; Overview
+
+;; This does a breadth-first search over the entire state space of the puzzle.
+;;
+;; start-cluster-fringe-search:
+;;      This is the top-level function.  It calls cfs-file.
+;; cfs-file:
+;;      This does one iteration of the puzzle then recurses.  At each iteration
+;;      i, it reads fringe-d<i-2> and fringe-d<i-1>, and creates fringe-d<i>.
+;;      This calls either expand-fringe-self or distributed-expand-fringe,
+;;      depending on the size of the current fringe.
+;; expand-fringe-self:
+;;      This does an iteration entirely locally within this process.
+;; distrubuted-expand-fringe:
+;;      This does an iteration utilizing the riot workers.
+
+
+
+;;--------------------------------------------------------------------
 ;; Configuration
 
 ;; Select puzzle to work on
@@ -535,9 +554,7 @@
 (define (cfs-file prev-fringe current-fringe depth)
   (set! *depth-start-time* (current-seconds))
   (cond [(or (zero? (fringe-pcount current-fringe)) (> depth *max-depth*)) #f]
-        [*found-goal*
-         (print "found goal")
-         *found-goal*]
+        [*found-goal* (print "found goal") *found-goal*]
         [else (let ([new-fringe (expand-fringe prev-fringe current-fringe depth)])
                 (printf "At depth ~a: current-fringe has ~a positions (and new-fringe ~a) in ~a (~a)~%" 
                         depth (fringe-pcount current-fringe) (fringe-pcount new-fringe)
