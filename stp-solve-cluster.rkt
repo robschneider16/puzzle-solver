@@ -26,17 +26,17 @@
 ;; This does a breadth-first search over the entire state space of the puzzle.
 ;;
 ;; start-cluster-fringe-search:
-;;      This is the top-level function.  It calls cfs-file.
+;;     This is the top-level function.  It calls cfs-file.
 ;; cfs-file:
-;;      This does one iteration of the puzzle then recurses.  At each iteration
-;;      i, it reads fringe-d<i-2> and fringe-d<i-1>, and creates fringe-d<i>.
-;;      This calls either expand-fringe-self or distributed-expand-fringe,
-;;      depending on the size of the current fringe.
+;;     This does one iteration of the puzzle then recurses.  At each iteration
+;;     i, it reads fringe-d<i-2> and fringe-d<i-1>, and creates fringe-d<i>.
+;;     This calls either expand-fringe-self or distributed-expand-fringe,
+;;     depending on the size of the current fringe.
 ;; expand-fringe-self:
-;;      This does an iteration entirely locally within this process.
+;;     This does an iteration entirely locally within this process.  It does
+;;     not seem to depend on any other function in this file.
 ;; distrubuted-expand-fringe:
-;;      This does an iteration utilizing the riot workers.
-
+;;     This does an iteration utilizing the riot workers.
 
 
 ;;--------------------------------------------------------------------
@@ -71,6 +71,7 @@
 
 ;; TODO(lw): This isn't configuration.  Where should this be defined?
 (define *found-goal* #f)
+
 
 ;;------------------------------------------
 ;; proto-fringe slicing
@@ -287,52 +288,9 @@
 ;; given a pair of indices into the current-fringe that should be expanded by this process, a process-id,
 ;; and the prev- and current-fringes, and the depth ...
 ;; expand the positions in the indices range, ignoring duplicates other than within the new fringe being constructed.
-(define (remote-expand-part-fringe ipair process-id pf cf depth)
+#|(define (remote-expand-part-fringe ipair process-id pf cf depth)
   ;; prev-fringe spec points to default shared directory; current-fringe spec points to *local-store* folder
-  ;(printf "remote-expand-part-fringe: starting with pf: ~a, and cf: ~a~%" pf cf)
-  ;; EXPAND PHASE 1
-  (let* ([expand-part-time (current-milliseconds)]
-         [pre-ofile-template-fname (format "partial-expansion~a" (~a process-id #:left-pad-string "0" #:width 2 #:align 'right))]
-         [pre-ofile-counter 0]
-         [pre-ofiles empty]
-         ;; *** Dynamically choose the size of the pre-proto-fringes to keep the number of files below 500 ***
-         [start (first ipair)]
-         [end (second ipair)]
-         [assignment-count (- end start)]
-         [expanded-phase1 1];; technically, not yet, but during initialization in pre-resv do loop
-         ;; make the fringehead advanced to the right place
-         [cffh (fh-from-fringe cf start)]
-         [dupes-caught-here 0]
-         [sort-time 0.0]
-         [write-time 0.0]
-         )
-    ;; do the actual expansions
-    (do ([i 1 (add1 i)]
-         [expansion-ptr (expand* (fringehead-next cffh) 0)
-                        (expand* (fringehead-next cffh) expansion-ptr)])
-      ((>= i assignment-count)
-       (set!-values (pre-ofiles dupes-caught-here sort-time write-time)
-                    (dump-partial-expansion expansion-ptr pre-ofile-template-fname pre-ofile-counter pre-ofiles dupes-caught-here sort-time write-time)))
-      ;; When we have collected the max number of expansions, create another pre-proto-fringe file
-      (when (>= expansion-ptr EXPAND-SPACE-SIZE)
-        (set!-values (pre-ofiles dupes-caught-here sort-time write-time)
-                     (dump-partial-expansion expansion-ptr pre-ofile-template-fname pre-ofile-counter pre-ofiles dupes-caught-here sort-time write-time))
-        (set! pre-ofile-counter (add1 pre-ofile-counter))
-        (set! expansion-ptr 0))
-      (advance-fhead! cffh)
-      (set! expanded-phase1 (add1 expanded-phase1)))
-    #|(printf "remote-exp-part-fringe: PHASE 1: expanding ~a positions of assigned ~a~%" 
-            expanded-phase1 assignment-count);|#
-    (when (< expanded-phase1 assignment-count)
-      (error 'remote-expand-part-fringe
-             (format "only expanded ~a of the assigned ~a (~a-~a) positions" expanded-phase1 assignment-count start end)))
-    (close-input-port (fringehead-iprt cffh))
-    ;; PHASE 2: now pass through the proto-fringe expansion file(s) as well as prev-fringe and current-fringe to remove duplicates
-    (remove-dupes pf cf pre-ofiles 
-                  (format "proto-fringe-d~a-~a" depth (~a process-id #:left-pad-string "0" #:width 2 #:align 'right)) ;; ofile-name
-                  depth
-                  dupes-caught-here sort-time write-time (- (current-milliseconds) expand-part-time))))
-
+  )|#
 
 ;; remote-expand-fringe: (listof (list fixnum fixnum)) fringe fringe int -> (listof sampling-stat)
 ;; trigger the distributed expansion according to the given ranges
@@ -358,101 +316,19 @@
 ;; ------------------------------------------------------------------------------------------
 ;; MERGING .....
 
-;; bring-local-partial-expansions: (listof fspec) -> void
-;; copy the partial expansions from the shared disk to our local /tmp, 
-(define (bring-local-partial-expansions lo-expand-specs)
-  (for ([fs lo-expand-specs] #:unless (zero? (filespec-pcount fs)))
-    (let* ([base-fname (filespec-fname fs)] 
-           [tmp-partexp-name (string-append *local-store* base-fname)])
-      (unless (file-exists? tmp-partexp-name) ; unless this process id is here from expansion
-        (copy-file base-fname tmp-partexp-name)))))
-
-
 ;; distributed-merge-proto-fringe-slices: (vectorof fspec) int string fringe fringe int -> (list string number)
 ;; given a list of filespecs pointing to the slices assigend to this worker and needing to be merged, copy the slices
 ;; and merge into a single segment that will participate in the new fringe, removing duplicates among slices.
 ;; Note: we have already removed from slices any duplicates found in prev- and current-fringes
-(define (distributed-merge-proto-fringe-slices slice-fspecs depth ofile-name pf cf which-slice)
+#|(define (distributed-merge-proto-fringe-slices slice-fspecs depth ofile-name pf cf which-slice)
   ;; expand-files-specs are of pattern: "proto-fringe-dXX-NN" for depth XX and proc-id NN, pointing to working (shared) directory 
   ;; ofile-name is of pattern: "fringe-segment-dX-NNN", where the X is the depth and the NN is a slice identifier
-  (let* ([mrg-segment-oport (open-output-file (format "~a~a" *share-store* ofile-name) #:exists 'replace)] ; try writing directly to NFS
-         [local-protofringe-fspecs (for/list ([fs slice-fspecs] #:unless (zero? (filespec-pcount fs))) fs)]
-         ;[pmsg1 (printf "distmerge-debug1: ~a fspecs in ~a~%distmerge-debug1: or localfspecs=~a~%" (vector-length slice-fspecs) slice-fspecs local-protofringe-fspecs)]
-         ;******
-         ;****** move the fringehead creation inside the heap-o-fhead construction in order to avoid the short-lived list allocation *******
-         [to-merge-fheads 
-          (for/list ([exp-fspec local-protofringe-fspecs])
-            (fh-from-filespec exp-fspec))]
-         ;[pmsg2 (printf "distmerge-debug2: made 'to-merge-fheads'~%")]
-         [heap-o-fheads (let ([lheap (make-heap (lambda (fh1 fh2) (hcposition<? (fringehead-next fh1) (fringehead-next fh2))))])
-                          (heap-add-all! lheap 
-                                         (filter-not (lambda (fh) (eof-object? (fringehead-next fh))) to-merge-fheads))
-                          lheap)]
-         [pffh (fh-from-fringe pf (if (= (length (fringe-segments pf)) 1)
-                                      0
-                                      (for/sum ([slice-num which-slice]
-                                                [fspec (fringe-segments pf)])
-                                        (filespec-pcount fspec))))]
-         [cffh (fh-from-fringe cf (if (= (length (fringe-segments pf)) 1)
-                                      0
-                                      (for/sum ([slice-num which-slice]
-                                                [fspec (fringe-segments cf)])
-                                        (filespec-pcount fspec))))]
-         ;[pmsg3 (printf "distmerge-debug3: made the heap with ~a frigeheads in it~%" (heap-count heap-o-fheads))]
-         ;****** log duplicate eliminations here
-         [segment-size (let ([last-pos (make-hcpos (bytes 49 49 49 49))]
-                             [keep-pos (void)]
-                             [num-written 0])
-                         (for ([an-fhead (in-heap/consume! heap-o-fheads)])
-                           (set! keep-pos (fringehead-next an-fhead))
-                           (unless (or (and (bytes=? (hc-position-bs keep-pos) (hc-position-bs last-pos))) ;; don't write duplicates
-                                       (and
-                                         *late-duplicate-removal*
-                                         (or (position-in-fhead? keep-pos pffh)
-                                             (position-in-fhead? keep-pos cffh))))
-                             (write-bytes (hc-position-bs keep-pos) mrg-segment-oport)
-                             (set! num-written (add1 num-written))
-                             (set! last-pos keep-pos))
-                           (advance-fhead! an-fhead)
-                           (unless (fhdone? an-fhead)
-                             (heap-add! heap-o-fheads an-fhead))
-                           )
-                         num-written)])
-    (close-output-port mrg-segment-oport)
-    (for ([fhead to-merge-fheads]) (close-input-port (fringehead-iprt fhead)))
-    (unless (or #t 
-                (string=? *master-name* "localhost"))
-      (for ([fspc local-protofringe-fspecs]) 
-        (delete-file (filespec-fullpathname fspc)))) ;remove the local expansions *** but revisit when we reduce work packet size for load balancing
-    (list ofile-name segment-size)))
-
-;; remote-merge: (vectorof (vectorof fspec)) int fringe fringe -> (listof string int)
-;; merge the proto-fringes from the workes and remove duplicate positions appearing in either prev- or current-fringes at the same time.
-;; expand-files-specs (proto-fringe-specs) is vector of vector of filespecs, the top-level has one for each slice,
-;; each one containing as many proto-fringes as expanders, all of which need to be merged
-(define (remote-merge expand-files-specs depth pf cf)
-  ;(printf "remote-merge: n-protof-slices=~a, and length expand-files-specs=~a~%" *num-proto-fringe-slices* (vector-length expand-files-specs))
-  (let ([merge-results
-         (for/work ([i *num-proto-fringe-slices*]
-                    [expand-fspecs-slice expand-files-specs])
-                   (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end")) ;finesse Riot caching
-                   (let* ([ofile-name (format "fringe-segment-d~a-~a" depth (~a i #:left-pad-string "0" #:width 3 #:align 'right))]
-                          [merged-fname-and-resp-rng-size (distributed-merge-proto-fringe-slices expand-fspecs-slice depth ofile-name pf cf i)]
-                          )
-             ;;(printf "distributed-expand-fringe: merge-range = ~a~%~a~%" merge-range merged-responsibility-range)
-             merged-fname-and-resp-rng-size))])
-    ;(printf "remote-merge: merged segment names and lengths ~a~%" merge-results)
-    #|(when (string=? *master-name* "localhost")
-      (for ([fs expand-files-specs])
-        (for ([f fs] #:unless (zero? (filespec-pcount f)))
-          (delete-file (string-append *local-store* (filespec-fname f))))))|#
-    merge-results))
-
+  )|#
 
 ;; ------------------------------------------------------------------------------------------
 ;; DISTRIBUTED EXPAND AND MERGE
 
-;; distributed-expand-fringe: fringe fringe int -> (list string int int)
+;; distributed-expand-fringe: fringe fringe int -> fringe
 ;; Distributed version of expand-fringe
 ;; given prev and current-fringes and the present depth, expand and merge the current fringe,
 ;; returning the fringe-spec of the newly expanded and merged fringe.
@@ -463,7 +339,56 @@
          [start-expand (current-seconds)]
          [ranges (make-simple-ranges (fringe-segments cf))]
          ;; --- Distribute the actual expansion work ------------------------
-         [sampling-stats (remote-expand-fringe ranges pf cf depth)]
+         [sampling-stats
+          (for/work ([range-pair ranges]
+                     [slice (in-range (length ranges))])
+                    (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end")) ;;prevent riot cache-failure
+                    ;; need alternate version of wait-for-files that just checks on the assigned range
+                    ;; but for now, just append the fspecs
+                    #| push the wait into where we're trying to access positions 
+                    (wait-for-files (append (map (lambda (seg) (segment-fspec seg)) pf-findex)
+                                            (map (lambda (seg) (segment-fspec seg)) cf-findex)) #t)|#
+                    (let* ([expand-part-time (current-milliseconds)]
+                           [pre-ofile-template-fname (format "partial-expansion~a" (~a slice #:left-pad-string "0" #:width 2 #:align 'right))]
+                           [pre-ofile-counter 0]
+                           [pre-ofiles empty]
+                           ;; *** Dynamically choose the size of the pre-proto-fringes to keep the number of files below 500 ***
+                           [start (first range-pair)]
+                           [end (second range-pair)]
+                           [assignment-count (- end start)]
+                           [expanded-phase1 1];; technically, not yet, but during initialization in pre-resv do loop
+                           ;; make the fringehead advanced to the right place
+                           [cffh (fh-from-fringe cf start)]
+                           [dupes-caught-here 0]
+                           [sort-time 0.0]
+                           [write-time 0.0]
+                           )
+                      ;; do the actual expansions
+                      (do ([i 1 (add1 i)]
+                           [expansion-ptr (expand* (fringehead-next cffh) 0)
+                                          (expand* (fringehead-next cffh) expansion-ptr)])
+                        ((>= i assignment-count)
+                         (set!-values (pre-ofiles dupes-caught-here sort-time write-time)
+                                      (dump-partial-expansion expansion-ptr pre-ofile-template-fname pre-ofile-counter pre-ofiles dupes-caught-here sort-time write-time)))
+                        ;; When we have collected the max number of expansions, create another pre-proto-fringe file
+                        (when (>= expansion-ptr EXPAND-SPACE-SIZE)
+                          (set!-values (pre-ofiles dupes-caught-here sort-time write-time)
+                                       (dump-partial-expansion expansion-ptr pre-ofile-template-fname pre-ofile-counter pre-ofiles dupes-caught-here sort-time write-time))
+                          (set! pre-ofile-counter (add1 pre-ofile-counter))
+                          (set! expansion-ptr 0))
+                        (advance-fhead! cffh)
+                        (set! expanded-phase1 (add1 expanded-phase1)))
+                      #|(printf "remote-exp-part-fringe: PHASE 1: expanding ~a positions of assigned ~a~%" 
+                              expanded-phase1 assignment-count);|#
+                      (when (< expanded-phase1 assignment-count)
+                        (error 'remote-expand-part-fringe
+                               (format "only expanded ~a of the assigned ~a (~a-~a) positions" expanded-phase1 assignment-count start end)))
+                      (close-input-port (fringehead-iprt cffh))
+                      ;; PHASE 2: now pass through the proto-fringe expansion file(s) as well as prev-fringe and current-fringe to remove duplicates
+                      (remove-dupes pf cf pre-ofiles 
+                                    (format "proto-fringe-d~a-~a" depth (~a slice #:left-pad-string "0" #:width 2 #:align 'right)) ;; ofile-name
+                                    depth
+                                    dupes-caught-here sort-time write-time (- (current-milliseconds) expand-part-time))))]
          [end-expand (current-seconds)]
          ;; -----------------------------------------------------------------
          [check-for-goal (for/first ([ss sampling-stats]
@@ -477,9 +402,62 @@
                                                  (vector-ref (vector-ref ss 3) i) ;pcount
                                                  (vector-ref (vector-ref ss 6) i) ;file-size
                                                  *share-store*)))]
-         ;; MERGE
          ;; --- Distribute the merging work ----------
-         [sorted-segment-fspecs (remote-merge proto-fringe-fspecs depth pf cf)]
+         [sorted-segment-fspecs
+          (for/work ([i *num-proto-fringe-slices*]
+                     [slice-fspecs proto-fringe-fspecs])
+                    (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end")) ;finesse Riot caching
+                    (let* ([ofile-name (format "fringe-segment-d~a-~a" depth (~a i #:left-pad-string "0" #:width 3 #:align 'right))]
+                           [mrg-segment-oport (open-output-file (format "~a~a" *share-store* ofile-name) #:exists 'replace)] ; try writing directly to NFS
+                           [local-protofringe-fspecs (for/list ([fs slice-fspecs] #:unless (zero? (filespec-pcount fs))) fs)]
+                           ;[pmsg1 (printf "distmerge-debug1: ~a fspecs in ~a~%distmerge-debug1: or localfspecs=~a~%" (vector-length slice-fspecs) slice-fspecs local-protofringe-fspecs)]
+                           ;******
+                           ;****** move the fringehead creation inside the heap-o-fhead construction in order to avoid the short-lived list allocation *******
+                           [to-merge-fheads 
+                            (for/list ([exp-fspec local-protofringe-fspecs])
+                              (fh-from-filespec exp-fspec))]
+                           ;[pmsg2 (printf "distmerge-debug2: made 'to-merge-fheads'~%")]
+                           [heap-o-fheads (let ([lheap (make-heap (lambda (fh1 fh2) (hcposition<? (fringehead-next fh1) (fringehead-next fh2))))])
+                                            (heap-add-all! lheap 
+                                                           (filter-not (lambda (fh) (eof-object? (fringehead-next fh))) to-merge-fheads))
+                                            lheap)]
+                           [pffh (fh-from-fringe pf (if (= (length (fringe-segments pf)) 1)
+                                                        0
+                                                        (for/sum ([slice-num i]
+                                                                  [fspec (fringe-segments pf)])
+                                                          (filespec-pcount fspec))))]
+                           [cffh (fh-from-fringe cf (if (= (length (fringe-segments pf)) 1)
+                                                        0
+                                                        (for/sum ([slice-num i]
+                                                                  [fspec (fringe-segments cf)])
+                                                          (filespec-pcount fspec))))]
+                           ;[pmsg3 (printf "distmerge-debug3: made the heap with ~a frigeheads in it~%" (heap-count heap-o-fheads))]
+                           ;****** log duplicate eliminations here
+                           [segment-size (let ([last-pos (make-hcpos (bytes 49 49 49 49))]
+                                               [keep-pos (void)]
+                                               [num-written 0])
+                                           (for ([an-fhead (in-heap/consume! heap-o-fheads)])
+                                             (set! keep-pos (fringehead-next an-fhead))
+                                             (unless (or (and (bytes=? (hc-position-bs keep-pos) (hc-position-bs last-pos))) ;; don't write duplicates
+                                                         (and
+                                                           *late-duplicate-removal*
+                                                           (or (position-in-fhead? keep-pos pffh)
+                                                               (position-in-fhead? keep-pos cffh))))
+                                               (write-bytes (hc-position-bs keep-pos) mrg-segment-oport)
+                                               (set! num-written (add1 num-written))
+                                               (set! last-pos keep-pos))
+                                             (advance-fhead! an-fhead)
+                                             (unless (fhdone? an-fhead)
+                                               (heap-add! heap-o-fheads an-fhead))
+                                             )
+                                           num-written)])
+                      (close-output-port mrg-segment-oport)
+                      (for ([fhead to-merge-fheads]) (close-input-port (fringehead-iprt fhead)))
+                      (unless (or #t 
+                                  (string=? *master-name* "localhost"))
+                        (for ([fspc local-protofringe-fspecs]) 
+                          (delete-file (filespec-fullpathname fspc)))) ;remove the local expansions *** but revisit when we reduce work packet size for load balancing
+                      (list ofile-name segment-size)))]
          [merge-end (current-seconds)]
          ;; -------------------------------------------
          ;; delete previous fringe now that duplicates have been removed
