@@ -190,73 +190,6 @@
   ;; the ofile-name is just the file-name -- no *local-store* path where needed
   #|(printf "EXPAND PHASE 2 (REMOVE DUPLICATES) pf: ~a~%cf: ~a~%all of lo-expand-fspec: ~a~%ofile-name: ~a~%depth: ~a~%"
           pf cf lo-expand-fspec ofile-name depth);|#
-  ;; EXPAND PHASE 2 (REMOVE DUPLICATES)
-  (let* ([pffh (fh-from-fringe pf)]
-         [cffh (fh-from-fringe cf)]
-         [n-pos-to-process (for/sum ([an-fspec lo-expand-fspec]) (filespec-pcount an-fspec))]
-         [lo-effh (for/list ([an-fspec lo-expand-fspec]) (fh-from-filespec an-fspec))]
-         [heap-o-fheads (let ([lheap (make-heap (lambda (fh1 fh2) (hcposition<? (fringehead-next fh1) (fringehead-next fh2))))])
-                          (heap-add-all! lheap lo-effh)
-                          lheap)]
-         ; writing directly to NFS doesn't seem any slower than *local-store* and then copy -- that claim still needs verification
-         ; write to one slice-ofile at a time, since everything is sorted
-         [proto-slice-num 0]
-         [slice-upper-bound (vector-ref *proto-fringe-slice-bounds* (add1 proto-slice-num))]
-         [proto-slice-ofile (open-output-file (string-append *share-store* ofile-name "-" (~a proto-slice-num #:left-pad-string "0" #:width 3 #:align 'right)))]
-         [unique-expansions 0]
-         [slice-counts (make-vector *num-proto-fringe-slices* 0)]
-         [sample-stats 
-          (vector 0 ; number of positions preserved for further merging
-                  0 ; number of positions discarded because duplicate with prev- or current-fringes
-                  0 ; number of positions discarded because duplicate with another partial-expansion
-                  slice-counts
-                  #f 
-                  ofile-name ;; here, use the stem of the shared ofile-name 
-                  0
-                  n-pos-to-process
-                  partial-exp-dupes 
-                  part-sort-time 
-                  part-write-time
-                  other-expand-time)]
-         [last-pos-bs #"NoLastPos"]
-         )
-    ;; locally merge the pre-proto-fringes, removing duplicates from prev- and current-fringes
-    (for ([an-fhead (in-heap/consume! heap-o-fheads)])
-      (let ([efpos (fringehead-next an-fhead)])
-        (unless ;; efpos is a duplicate
-            (or (and (bytes=? (hc-position-bs efpos) last-pos-bs) ; duplicate from most recently written 
-                     (vector-set! sample-stats 2 (add1 (vector-ref sample-stats 2))))
-                (and
-                  (not *late-duplicate-removal*)
-                  (or (and (position-in-fhead? efpos pffh) (vector-set! sample-stats 1 (add1 (vector-ref sample-stats 1))))
-                      (and (position-in-fhead? efpos cffh) (vector-set! sample-stats 1 (add1 (vector-ref sample-stats 1)))))))
-          (set! last-pos-bs (hc-position-bs efpos))
-          (do ([efpos-hc (hc-position-hc efpos)])
-            ;; if efpos-hc is >= to the slice-upper-bound, advance the proto-slice-num/ofile/upper-bound until it is not
-            ((< efpos-hc slice-upper-bound))
-            (close-output-port proto-slice-ofile)
-            (set! proto-slice-num (add1 proto-slice-num))
-            (set! proto-slice-ofile (open-output-file (string-append *share-store* ofile-name "-" (~a proto-slice-num #:left-pad-string "0" #:width 3 #:align 'right))))
-            (set! slice-upper-bound (vector-ref *proto-fringe-slice-bounds* (add1 proto-slice-num))))
-          (write-bytes  (hc-position-bs efpos) proto-slice-ofile)
-          (when (is-goal? efpos) (vector-set! sample-stats 4 (hc-position-bs efpos)))
-          (vector-set! slice-counts proto-slice-num (add1 (vector-ref slice-counts proto-slice-num))))
-        (advance-fhead! an-fhead)
-        (unless (fhdone? an-fhead)
-          (heap-add! heap-o-fheads an-fhead))))
-    ;(printf "remote-expand-part-fringe: HAVE EXPANSIONS:~%")
-    ;; close input and output ports
-    (for ([fh (cons pffh (cons cffh lo-effh))]) (close-input-port (fringehead-iprt fh)))
-    (close-output-port proto-slice-ofile)
-    (for ([i (in-range (add1 proto-slice-num) *num-proto-fringe-slices*)])
-      (touch (string-append *share-store* ofile-name "-" (~a i #:left-pad-string "0" #:width 3 #:align 'right))))
-    ;; complete the sampling-stat
-    (vector-set! sample-stats 0 (for/sum ([i (vector-ref sample-stats 3)]) i))
-    (vector-set! sample-stats 6 (for/vector ([i *num-proto-fringe-slices*]) 
-                                  (file-size (format "~a~a-~a" *share-store* ofile-name (~a i #:left-pad-string "0" #:width 3 #:align 'right)))))
-    ;; delete files that are no longer needed
-    (for ([efspec lo-expand-fspec]) (delete-file (filespec-fullpathname efspec)))
-    sample-stats))
 
 ;; dump-partial-expansion: int string int (listof fspec) float float -> (values (listof fspec) int float float)
 ;; given the count of pending expanded positions to write, the out-file template, the out-file counter, and the previously written filespecs,
@@ -389,6 +322,75 @@
                                     (format "proto-fringe-d~a-~a" depth (~a slice #:left-pad-string "0" #:width 2 #:align 'right)) ;; ofile-name
                                     depth
                                     dupes-caught-here sort-time write-time (- (current-milliseconds) expand-part-time))))]
+(define (remove-dupes pf cf lo-expand-fspec ofile-name depth partial-exp-dupes part-sort-time part-write-time other-expand-time)
+                      ;; EXPAND PHASE 2 (REMOVE DUPLICATES)
+                      (let* ([pffh (fh-from-fringe pf)]
+                             [cffh (fh-from-fringe cf)]
+                             [ofile-name (format "proto-fringe-d~a-~a" depth (~a slice #:left-pad-string "0" #:width 2 #:align 'right))]
+                             [n-pos-to-process (for/sum ([an-fspec pre-ofiles]) (filespec-pcount an-fspec))]
+                             [lo-effh (for/list ([an-fspec pre-ofiles]) (fh-from-filespec an-fspec))]
+                             [heap-o-fheads (let ([lheap (make-heap (lambda (fh1 fh2) (hcposition<? (fringehead-next fh1) (fringehead-next fh2))))])
+                                              (heap-add-all! lheap lo-effh)
+                                              lheap)]
+                             ; writing directly to NFS doesn't seem any slower than *local-store* and then copy -- that claim still needs verification
+                             ; write to one slice-ofile at a time, since everything is sorted
+                             [proto-slice-num 0]
+                             [slice-upper-bound (vector-ref *proto-fringe-slice-bounds* (add1 proto-slice-num))]
+                             [proto-slice-ofile (open-output-file (string-append *share-store* ofile-name "-" (~a proto-slice-num #:left-pad-string "0" #:width 3 #:align 'right)))]
+                             [unique-expansions 0]
+                             [slice-counts (make-vector *num-proto-fringe-slices* 0)]
+                             [sample-stats
+                              (vector 0 ; number of positions preserved for further merging
+                                      0 ; number of positions discarded because duplicate with prev- or current-fringes
+                                      0 ; number of positions discarded because duplicate with another partial-expansion
+                                      slice-counts
+                                      #f
+                                      ofile-name ;; here, use the stem of the shared ofile-name 
+                                      0
+                                      n-pos-to-process
+                                      dupes-caught-here
+                                      sort-time
+                                      write-time
+                                      other-expand-time)]
+                             [last-pos-bs #"NoLastPos"]
+                             )
+                        ;; locally merge the pre-proto-fringes, removing duplicates from prev- and current-fringes
+                        (for ([an-fhead (in-heap/consume! heap-o-fheads)])
+                          (let ([efpos (fringehead-next an-fhead)])
+                            (unless ;; efpos is a duplicate
+                                (or (and (bytes=? (hc-position-bs efpos) last-pos-bs) ; duplicate from most recently written 
+                                         (vector-set! sample-stats 2 (add1 (vector-ref sample-stats 2))))
+                                    (and
+                                      (not *late-duplicate-removal*)
+                                      (or (and (position-in-fhead? efpos pffh) (vector-set! sample-stats 1 (add1 (vector-ref sample-stats 1))))
+                                          (and (position-in-fhead? efpos cffh) (vector-set! sample-stats 1 (add1 (vector-ref sample-stats 1)))))))
+                              (set! last-pos-bs (hc-position-bs efpos))
+                              (do ([efpos-hc (hc-position-hc efpos)])
+                                ;; if efpos-hc is >= to the slice-upper-bound, advance the proto-slice-num/ofile/upper-bound until it is not
+                                ((< efpos-hc slice-upper-bound))
+                                (close-output-port proto-slice-ofile)
+                                (set! proto-slice-num (add1 proto-slice-num))
+                                (set! proto-slice-ofile (open-output-file (string-append *share-store* ofile-name "-" (~a proto-slice-num #:left-pad-string "0" #:width 3 #:align 'right))))
+                                (set! slice-upper-bound (vector-ref *proto-fringe-slice-bounds* (add1 proto-slice-num))))
+                              (write-bytes  (hc-position-bs efpos) proto-slice-ofile)
+                              (when (is-goal? efpos) (vector-set! sample-stats 4 (hc-position-bs efpos)))
+                              (vector-set! slice-counts proto-slice-num (add1 (vector-ref slice-counts proto-slice-num))))
+                            (advance-fhead! an-fhead)
+                            (unless (fhdone? an-fhead)
+                              (heap-add! heap-o-fheads an-fhead))))
+                        ;(printf "remote-expand-part-fringe: HAVE EXPANSIONS:~%")
+                        ;; close input and output ports
+                        (for ([fh (cons pffh (cons cffh lo-effh))]) (close-input-port (fringehead-iprt fh)))
+                        (close-output-port proto-slice-ofile)
+                        (for ([i (in-range (add1 proto-slice-num) *num-proto-fringe-slices*)])
+                          (touch (string-append *share-store* ofile-name "-" (~a i #:left-pad-string "0" #:width 3 #:align 'right))))
+                        ;; complete the sampling-stat
+                        (vector-set! sample-stats 0 (for/sum ([i (vector-ref sample-stats 3)]) i))
+                        (vector-set! sample-stats 6 (for/vector ([i *num-proto-fringe-slices*]) 
+                                                      (file-size (format "~a~a-~a" *share-store* ofile-name (~a i #:left-pad-string "0" #:width 3 #:align 'right)))))
+                        ;; delete files that are no longer needed
+                        (for ([efspec lo-expand-fspec]) (delete-file (filespec-fullpathname efspec)))
+                        sample-stats))
          [end-expand (current-seconds)]
          ;; -----------------------------------------------------------------
          [check-for-goal (for/first ([ss sampling-stats]
