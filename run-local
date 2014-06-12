@@ -46,20 +46,20 @@ sub finish {
     }
 }
 
-$SIG{__DIE__} = \&finish;
-
 $server = forksub {
     output_to_file 'output/server-out';
-    system qw<racket -p gcr/riot/server>;
+    exec qw<racket -p gcr/riot/server>;
 };
 sleep 1;
 
 for my $n (1..$n_workers) {
     push @workers, forksub {
         output_to_file "output/worker-$n-out";
-        system qw<racket -p gcr/riot/worker -- localhost>;
+        exec qw<racket -p gcr/riot/worker -- localhost>;
     };
 }
+
+$SIG{__DIE__} = sub { finish; die $_; };
 
 system qw<racket stp-solve-cluster.rkt>;
 
