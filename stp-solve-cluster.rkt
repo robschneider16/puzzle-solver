@@ -38,6 +38,20 @@
 ;; distrubuted-expand-fringe:
 ;;     This does an iteration utilizing the riot workers.
 
+;;--------------------------------------------------------------------
+;; Terminology
+
+;; fringe:
+;;     The full record of one iteration.  Contains a number of segments
+;;     each in its own file.
+;; filespec:
+;;     The data required to work with one *fringe* file.
+;; fringehead / fhead / fh:
+;;     A stateful pointer (aka cursor) into a fringe.
+;; pre-proto-fringe:
+;;     This contains every possible next state, divided by two dimensions,
+;;     the first by work unit, the second unclear (to keep files from getting
+;;     too big?).  (Is this sorted in-place?)
 
 ;;--------------------------------------------------------------------
 ;; Configuration
@@ -269,10 +283,10 @@
   #|(printf "distributed-expand-fringe: at depth ~a, pf-spec: ~a; cf-spec: ~a~%" 
           depth pf-spec cf-spec)|#
   (let* (;; EXPAND
-         [start-expand (current-seconds)]
-         [ranges (make-simple-ranges (fringe-segments cf))]
+         [start-expand (current-seconds)]  ;profiling/time
+         [ranges (make-simple-ranges (fringe-segments cf))]  ;fringe/current  These are counts, not hashes
          ;; --- Distribute the actual expansion work ------------------------
-         [sampling-stats
+         [sampling-stats  ;profiling
           (for/work ([range-pair ranges]
                      [slice (in-range (length ranges))])
                     (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end")) ;;prevent riot cache-failure
@@ -281,33 +295,41 @@
                     #| push the wait into where we're trying to access positions 
                     (wait-for-files (append (map (lambda (seg) (segment-fspec seg)) pf-findex)
                                             (map (lambda (seg) (segment-fspec seg)) cf-findex)) #t)|#
-                    (let* ([expand-part-time (current-milliseconds)]
-                           [pre-ofile-template-fname (format "partial-expansion~a" (~a slice #:left-pad-string "0" #:width 2 #:align 'right))]
-                           [pre-ofile-counter 0]
-                           [pre-ofiles empty]
+                    (let* ([expand-part-time (current-milliseconds)]  ;profiling/time
+                            ;; There's one pre-proto-fringe per fringe segment?
+                           [pre-ofile-template-fname (format "partial-expansion~a" (~a slice #:left-pad-string "0" #:width 2 #:align 'right))]  ;piece of pre-proto-fringe
+                           [pre-ofile-counter 0]  ;local, counts number of l2 segments in this ppf L1 seg
+                           [pre-ofiles empty]  ;list of ppf files?
                            ;; *** Dynamically choose the size of the pre-proto-fringes to keep the number of files below 500 ***
-                           [start (first range-pair)]
-                           [end (second range-pair)]
-                           [assignment-count (- end start)]
+                           [start (first range-pair)]  ;local, simply the start
+                           [end (second range-pair)]  ;local, simply the end (last plus one)
+                           [assignment-count (- end start)]  ;local, counts number of segments in ppf
                            [expanded-phase1 1];; technically, not yet, but during initialization in pre-resv do loop
                            ;; make the fringehead advanced to the right place
-                           [cffh (fh-from-fringe cf start)]
-                           [dupes-caught-here 0]
-                           [sort-time 0.0]
-                           [write-time 0.0]
+                           [cffh (fh-from-fringe cf start)]  ;local, file
+                           [dupes-caught-here 0]  ;profiling/count
+                           [sort-time 0.0]  ;profiling/time
+                           [write-time 0.0]  ;profiling/time
                            )
-                      ;; do the actual expansions
+                      ;; do the actual expansions  (the actual puzzle moves?)
                       (do ([i 1 (add1 i)]
+                            ; expand* has to do with the actual puzzle
+                            ; expansion-ptr iterates over positions in the cf
+                            ;  it's just an integer, and it keeps track of
+                            ;  the position in the current output file.
+                            ; The fringehead is advancing simultaneously.
                            [expansion-ptr (expand* (fringehead-next cffh) 0)
                                           (expand* (fringehead-next cffh) expansion-ptr)])
                         ((>= i assignment-count)
+                          ;; Final dump
                          (set!-values (pre-ofiles dupes-caught-here sort-time write-time)
                                       (dump-partial-expansion expansion-ptr pre-ofile-template-fname pre-ofile-counter pre-ofiles dupes-caught-here sort-time write-time)))
                         ;; When we have collected the max number of expansions, create another pre-proto-fringe file
                         (when (>= expansion-ptr EXPAND-SPACE-SIZE)
+                           ;; Intermediate dump
                           (set!-values (pre-ofiles dupes-caught-here sort-time write-time)
                                        (dump-partial-expansion expansion-ptr pre-ofile-template-fname pre-ofile-counter pre-ofiles dupes-caught-here sort-time write-time))
-                          (set! pre-ofile-counter (add1 pre-ofile-counter))
+                          (set! pre-ofile-counter (add1 pre-ofile-counter))  ;
                           (set! expansion-ptr 0))
                         (advance-fhead! cffh)
                         (set! expanded-phase1 (add1 expanded-phase1)))
