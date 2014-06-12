@@ -186,11 +186,10 @@
 ;; and later delivered a copy to the working directory to share with all the other compute-nodes;
 ;; Try writing directly to the shared NFS drive as a way to spread out network traffic.  This will clean up file name in the return sampling-stat...
 ;; Accordingly, the sampling-stat return value has a filename pointing to the working directory.
-(define (remove-dupes pf cf lo-expand-fspec ofile-name depth partial-exp-dupes part-sort-time part-write-time other-expand-time)
+;(define (remove-dupes pf cf lo-expand-fspec ofile-name depth partial-exp-dupes part-sort-time part-write-time other-expand-time)
   ;; the ofile-name is just the file-name -- no *local-store* path where needed
   #|(printf "EXPAND PHASE 2 (REMOVE DUPLICATES) pf: ~a~%cf: ~a~%all of lo-expand-fspec: ~a~%ofile-name: ~a~%depth: ~a~%"
           pf cf lo-expand-fspec ofile-name depth);|#
-
 ;; dump-partial-expansion: int string int (listof fspec) float float -> (values (listof fspec) int float float)
 ;; given the count of pending expanded positions to write, the out-file template, the out-file counter, and the previously written filespecs,
 ;; sort and write the specified number of positions to the appropriately opened new file,
@@ -225,25 +224,26 @@
   ;; prev-fringe spec points to default shared directory; current-fringe spec points to *local-store* folder
   )|#
 
+
 ;; remote-expand-fringe: (listof (list fixnum fixnum)) fringe fringe int -> (listof sampling-stat)
 ;; trigger the distributed expansion according to the given ranges
 ;; In theory, it shouldn't matter where the files pointed to by the fringe are located,
 ;; but we expect they will point to a *local-store* copy of the current-fringe,
 ;; where the copy is arranged-for by the master also
-(define (remote-expand-fringe ranges pf cf depth)
+;(define (remote-expand-fringe ranges pf cf depth)
   ;;(printf "remote-expand-fringe: current-fringe of ~a split as: ~a~%" cur-fringe-size (map (lambda (pr) (- (second pr) (first pr))) ranges))
-  (let* ([distrib-results (for/work ([range-pair ranges]
-                                     [i (in-range (length ranges))])
-                                    (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end")) ;;prevent riot cache-failure
+;  (let* ([distrib-results (for/work ([range-pair ranges]
+;                                     [i (in-range (length ranges))])
+;                                    (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end")) ;;prevent riot cache-failure
                                     ;; need alternate version of wait-for-files that just checks on the assigned range
                                     ;; but for now, just append the fspecs
                                     #| push the wait into where we're trying to access positions 
                                     (wait-for-files (append (map (lambda (seg) (segment-fspec seg)) pf-findex)
                                                             (map (lambda (seg) (segment-fspec seg)) cf-findex)) #t)|#
-                                    (remote-expand-part-fringe range-pair i pf cf depth)
-                                    )])
+;                                    (remote-expand-part-fringe range-pair i pf cf depth)
+;                                    )])
     ;(printf "remote-expand-fringe: respective expansion counts: ~a~%" (map (lambda (ssv) (vector-ref ssv 0)) distrib-results))
-    distrib-results))
+;    distrib-results))
 
 
 ;; ------------------------------------------------------------------------------------------
@@ -318,11 +318,6 @@
                                (format "only expanded ~a of the assigned ~a (~a-~a) positions" expanded-phase1 assignment-count start end)))
                       (close-input-port (fringehead-iprt cffh))
                       ;; PHASE 2: now pass through the proto-fringe expansion file(s) as well as prev-fringe and current-fringe to remove duplicates
-                      (remove-dupes pf cf pre-ofiles 
-                                    (format "proto-fringe-d~a-~a" depth (~a slice #:left-pad-string "0" #:width 2 #:align 'right)) ;; ofile-name
-                                    depth
-                                    dupes-caught-here sort-time write-time (- (current-milliseconds) expand-part-time))))]
-(define (remove-dupes pf cf lo-expand-fspec ofile-name depth partial-exp-dupes part-sort-time part-write-time other-expand-time)
                       ;; EXPAND PHASE 2 (REMOVE DUPLICATES)
                       (let* ([pffh (fh-from-fringe pf)]
                              [cffh (fh-from-fringe cf)]
@@ -351,7 +346,7 @@
                                       dupes-caught-here
                                       sort-time
                                       write-time
-                                      other-expand-time)]
+                                      expand-part-time)]
                              [last-pos-bs #"NoLastPos"]
                              )
                         ;; locally merge the pre-proto-fringes, removing duplicates from prev- and current-fringes
@@ -389,8 +384,8 @@
                         (vector-set! sample-stats 6 (for/vector ([i *num-proto-fringe-slices*]) 
                                                       (file-size (format "~a~a-~a" *share-store* ofile-name (~a i #:left-pad-string "0" #:width 3 #:align 'right)))))
                         ;; delete files that are no longer needed
-                        (for ([efspec lo-expand-fspec]) (delete-file (filespec-fullpathname efspec)))
-                        sample-stats))
+                        (for ([efspec pre-ofiles]) (delete-file (filespec-fullpathname efspec)))
+                        sample-stats)))]
          [end-expand (current-seconds)]
          ;; -----------------------------------------------------------------
          [check-for-goal (for/first ([ss sampling-stats]
