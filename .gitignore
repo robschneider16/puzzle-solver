@@ -1,5 +1,11 @@
-# Emacs backup files
+# Sliding-Tile Puzzle Files
+fringefiles/fringe-segment*
+stpconfigs/*.rkt
+
+# Emacs or Racket backup files
 *~
+*.bak
+\#*\#
 
 # Compiled source #
 ###################
@@ -10,6 +16,7 @@
 *.o
 *.so
 *.py[cod]
+compiled
 
 # Packages #
 ############
