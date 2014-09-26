@@ -37,7 +37,13 @@ which is our distribution engine, used for farming out tasks to available proces
 
 ## Running
 
-1. In one shell, run `racket -p gcr/riot/server1`
+The various processes in the shells below must be run in the source folder; 
+for example, `/home/username/puzzle-solver`.
+Before starting, you must also create `./stpconfigs/configenv.rkt`.
+Usually, you can simply create a symbolic link to `./stpconfigs/configenvlocal.rkt`
+but you can create a copy and edit it to your particular situation.
+
+1. In one shell, run `racket -p gcr/riot/server`
 2. For each worker process (e.g., the number of available cores), open a shell and run `racket -p gcr/riot/worker -- localhost` or substitute the hostname of the server process in step 1 if you're using different hosts for workers
 3. You can confirm that the workers have registered with the server by inspecting the output from the shell in step 1.
 4. Finally, run `racket stp-solve-cluster.rkt` and watch it churn through the search.
