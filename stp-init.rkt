@@ -73,7 +73,7 @@
 
 ;; INITIALIZE STUFF FOR SLIDING-TILE-SOLVER
 
-(define EXPAND-SPACE-SIZE 50000)
+(define EXPAND-SPACE-SIZE 500000)
 ;(define EXPAND-SPACE-SIZE 2000000)
 
 ;; move trans for up, right, down and left respectively
