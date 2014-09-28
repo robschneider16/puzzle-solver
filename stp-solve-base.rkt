@@ -54,7 +54,7 @@
 ;; where each location contains a move-schema produced by basic-move-schema
 
 ;; move-schema-array for compiling move requirements
-(define *ms-array* #f)(set! *ms-array* *ms-array*)
+(define *ms-array* #f)
 
 
 ;; compile-ms-array!: (vectorof (setof cell)) int int -> void
@@ -62,11 +62,11 @@
 (define (compile-ms-array! piece-type-specs bh bw)
   (when (or (zero? bh) (zero? bw)) (error 'compile-ms-array "must be called after an appropriate initialization call"))
   (let ((a (make-array (shape 1 (vector-length piece-type-specs) 0 *bsz* 0 4))))
-    (for ([piece-type-spec (vector-drop piece-type-specs 1)]
+    (for ([piece-type-spec (in-vector (vector-drop piece-type-specs 1))]
           [pti (in-range 1 (vector-length piece-type-specs))])
       (for ([loc *bsz*])
         (for ([dir (in-range (length *prim-move-translations*))]
-              [dir-trans *prim-move-translations*])
+              [dir-trans (in-list *prim-move-translations*)])
           (let* ([loc-cell (loc-to-cell loc)]
                  [start-spots (translate-piece piece-type-spec loc-cell)]
                  [moved-spots (translate-piece piece-type-spec (translate-cell loc-cell dir-trans))])
@@ -88,7 +88,7 @@
 
 ;; translate-piece: (listof cells) trans-spec -> (listof cells)
 (define (translate-piece cell-list trans)
-  (for/list ([cell cell-list])
+  (for/list ([cell (in-list cell-list)])
     (translate-cell cell trans)))
 
 
@@ -143,7 +143,7 @@
 (define (update-expandbuf! bufindex src-bspos nu-ploc space-int mv-schema piece-type)
   (let* ([the-pair (vector-ref  *expandbuf* bufindex)]
          [targetbs (mcdr the-pair)]
-         [piece-start (for/sum ([i piece-type]) (vector-ref *piece-type-template* i))]
+         [piece-start (for/sum ([i (in-range piece-type)]) (vector-ref *piece-type-template* i))]
          [piece-end (+ piece-start (vector-ref *piece-type-template* piece-type))]
          )
     (set-mcar! the-pair nu-ploc)
@@ -167,7 +167,7 @@
 (define (hc-1pc-1step piece-type loc-pos-pair expcount plocvec)
   (let* ([mv-schema empty]
          [space-int (intify (mcdr loc-pos-pair) 0 *num-spaces*)])
-    (for ([dir-trans *prim-move-translations*]
+    (for ([dir-trans (in-list *prim-move-translations*)]
           [dir-i (in-range (length *prim-move-translations*))]
           #:when (begin (set! mv-schema (array-ref *ms-array* piece-type (mcar loc-pos-pair) dir-i))
                         (and mv-schema
@@ -195,31 +195,6 @@
                                                expcount-b piecelocvec))])
     ;; until no further moves of this piece
     ((= new-positions-to-check start-check))))
-
-;; expand: hc-position int -> int
-;; generate next states from this one
-;; *expandbuf*: holds all the pairs of piece-loc and bytstring expansions/successors of the given hc-position
-;; *piecelocvec*: holds the bytestring successors of a single piece
-;; expand-count: counts expansions/successors for a single piece
-(define expand
-  (let ([expand-count (box 0)]
-        )
-    (lambda (hc-s exp-ptr)
-      (let ([bs (hc-position-bs hc-s)]
-            [target-hc-pos 'mutable-hc-pos-in-*expansion-space*])
-        (set-box! expand-count 0)
-        (for ([i (in-range *num-spaces* *num-pieces*)]) ;; start after spaces
-          (let ([ptype (vector-ref *bs-ptype-index* i)]
-                [ploc (- (bytes-ref bs i) *charify-offset*)])
-            (vector-fill! *piecelocvec* #f) ; reset for next piece
-            (expand-piece ptype ploc bs expand-count *piecelocvec*)
-            ))
-        (for ([i (unbox expand-count)])
-          (set! target-hc-pos (vector-ref *expansion-space* (+ exp-ptr i)))
-          (set-hc-position-hc! target-hc-pos (equal-hash-code (mcdr (vector-ref *expandbuf* i))))
-          ;; copy bytes to the *expansion-space*
-          (bytes-copy! (hc-position-bs target-hc-pos) 0 (mcdr (vector-ref *expandbuf* i))))
-        (+ exp-ptr (unbox expand-count))))))
 
 ;; bw-valid-move?: number number -> boolean
 ;; determine if the current location of the spaces supports a move's prerequisites given as space-prereq
