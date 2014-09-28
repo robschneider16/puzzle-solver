@@ -4,7 +4,7 @@
  srfi/25 ;; multi-dimensional arrays
  racket/list
  ;racket/fixnum
- ;racket/set
+ racket/set
  ;test-engine/racket-tests
  ;racket/generator
  "stp-init.rkt"
@@ -15,12 +15,6 @@
 
 (define *spaceindex* "the hashtable to hold the possible moves indexed by space configurations")
 (define ret-false (lambda () #f))
-
-(define (choose n k)
-  (if (>= k (/ n 2))
-      (/ (for/product ([i (in-range (add1 k) (add1 n))]) i)
-         (for/product ([i (in-range 1 (add1 (- n k)))]) i))
-      (choose n (- n k))))
 
 ;;------------------------------------------------------------------------------------------------------
 ;; Support for creating an index from blank configurations to valid move schemas
@@ -44,7 +38,7 @@
 ;; rcbyte 2: second to third
 ;; rcbyte 3: third to fourth
 
-;; a space(blank)-index is a hash-table: {blankconfig : (vectorof (listof EBMS))}
+;; a space(blank)-index is a hash-table: {blankconfig : hash{... : (vectorof (listof EBMS))}}
 ;; where the fixnum is the bitwise representation of the (typically 4) blanks.
 
 
@@ -129,7 +123,7 @@
 ;; all-space-config: (hash-table: spaceint (vectorof EBMS)) -> void
 ;; populates the hash of possible moves for indexed by all possible configurations of blanks
 (define (all-space-config ht)
-  (for* ([b1 (- *bsz* 3)] ;; board-size minus the remaining blanks that still need to be placed
+  (for* ([b1 (in-range (- *bsz* 3))] ;; board-size minus the remaining blanks that still need to be placed
          [b2 (in-range (add1 b1) (- *bsz* 2))]
          [b3 (in-range (add1 b2) (- *bsz* 1))]
          [b4 (in-range (add1 b3) *bsz*)]
@@ -147,7 +141,7 @@
 ;; within a hash-table indexed by the combination of piece-type and location
 (define (one-space-config ht spaceint config-ref-pair blank-config)
   (for* ([ptype (in-range 1 (vector-length *piece-types*))]
-         [loc *bsz*])
+         [loc (in-range *bsz*)])
       (vector-set! *piecelocvec* loc #t)
       (let ([inner-search-result (inner-search ht spaceint spaceint ptype loc loc *piecelocvec*
                                                0 0 0 
@@ -162,7 +156,7 @@
 ;; the accumulators (blank-prerequisits, blank-change-bits, piece-change-bits) get built up for the creation of the stored moveschema
 ;; the config-ref-pair specifies delta-row/col between actual blank-config and canonical-config, blank-config is the canonical rep
 (define (inner-search ht spaceint0 spaceint ptype loc0 moved-loc plocvec b-prereq-acc b-chgbit-acc p-chgbit-acc config-ref-pair0 blank-config)
-  (for ([dir 4])
+  (for ([dir (in-range 4)])
     (let ([ms (array-ref *ms-array* ptype moved-loc dir)])
       (when (can-move? spaceint ptype moved-loc plocvec ms) ; prevents moves that have already been processed in the search
         ; bundle the piece-type, location, direction and corresponding move-schema
@@ -208,7 +202,7 @@
        ; and
        (let ([loc-cell (loc-to-cell loc)]
              [translated-base-cell "piece cells translated to loc-cell"])
-         (for/and ([base-cell (vector-ref *piece-types* ptype)])
+         (for/and ([base-cell (in-set (vector-ref *piece-types* ptype))])
            (set! translated-base-cell (translate-cell base-cell loc-cell))
            (and 
             ;; cell-on-board
@@ -226,7 +220,7 @@
 (define (generate-and-write-new-pos bufindex src-bspos an-ebms piece-type ploc0 crc)
   (let* ([the-hcpos (vector-ref *expansion-space* bufindex)]
          [targetbs (hc-position-bs the-hcpos)]
-         [piece-start (for/sum ([i piece-type]) (vector-ref *piece-type-template* i))]
+         [piece-start (for/sum ([i (in-range piece-type)]) (vector-ref *piece-type-template* i))]
          [piece-end (+ piece-start (vector-ref *piece-type-template* piece-type))]
          )
     ;; initialize the target bytestring to the source position
@@ -283,7 +277,7 @@
                              (bytes ptype (rcpair->rcbyte canonical-pieceloc)) ;(cons ptype canonical-pieceloc)
                              ret-false))])
         (when moves-for-ptype-at-location
-          (for ([ebms moves-for-ptype-at-location])
+          (for ([ebms (in-list moves-for-ptype-at-location)])
             ; create the new position, and write it to the buffer 
             (generate-and-write-new-pos expanded-ptr bs ebms ptype ploc0 config-ref-cell)
             ; and go to the next one

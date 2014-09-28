@@ -85,7 +85,7 @@
 (define *puzzle-name* "a string identifying the puzzle for selecting possible configuration files")
 (define *invalid-cells* empty)
 (define *num-piece-types* 0)
-(define *piece-types* empty)
+(define *piece-types* (vector))
 (define *num-pieces* 0)
 (define *start* empty)
 (define *piece-type-template* (vector)) ; for each piece-type index, stores how many blocks of that type there are
@@ -168,7 +168,7 @@
 ;; convert a bitwise represented position into a series of bytes
 (define (charify bw-p)
   (for/fold ([res #""])
-    ([pt bw-p])
+    ([pt (in-vector bw-p)])
     (bytes-append res (charify-int pt))))
 
 ;; charify-int: int -> bytearray
@@ -186,7 +186,7 @@
   (if (eof-object? ba)
       ba
       (let ([running-start 0])
-        (for/vector ([num-of-pt *piece-type-template*])
+        (for/vector ([num-of-pt (in-vector *piece-type-template*)])
           (let ([res (intify ba running-start (+ running-start num-of-pt))])
             (set! running-start (+ running-start num-of-pt))
             res)))))
@@ -201,18 +201,18 @@
   (for/sum ([pref (in-range start end)])
     (arithmetic-shift 1 (- (bytes-ref bs pref) *charify-offset*))))
 
-;; bw-positionify: old-position -> bw-position
+;; bw-positionify: (listof (cons tile-id (listof cell))) -> bw-position
 ;; create a bitwise-'position' representation of a board state based on the given start-list pre-position format
 ;;*** called only during initialization
 (define (bw-positionify old-position)
-  (for/vector ([pspec old-position]
+  (for/vector ([pspec (in-list old-position)]
                [i (in-range *num-piece-types*)])
     (unless (= i (first pspec)) (error 'positionify "mis-matched piece-type in vector representation of position"))
     (list->bwrep (map cell-to-loc (cdr pspec)))))
 
 ;; old-positionify: bw-position -> old-position
 (define (old-positionify bw-position)
-  (for/vector ([bwrep bw-position])
+  (for/vector ([bwrep (in-vector bw-position)])
     (bwrep->list bwrep)))
 
 ;; list->bwrep: (listof loc) -> int
@@ -222,7 +222,7 @@
            (+ (arithmetic-shift 1 a-loc) bwint))
          0
          lo-loc)|#
-  (for/sum ([a-loc lo-loc]) (arithmetic-shift 1 a-loc)))
+  (for/sum ([a-loc (in-list lo-loc)]) (arithmetic-shift 1 a-loc)))
 
 ;; bwrep-direct: N N N N -> fixnum
 ;; get the blank-int directly from the locations of the four blanks

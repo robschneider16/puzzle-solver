@@ -38,7 +38,7 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 (define (fringe-fbase an-fs) (vector-ref an-fs 0))
 (define (fringe-segments an-fs) (vector-ref an-fs 1))
 (define (fringe-fullpathnames an-fs)
-  (for/list ([seg (fringe-segments an-fs)]) (string-append (fringe-fbase an-fs) (filespec-fname seg))))
+  (for/list ([seg (in-list (fringe-segments an-fs))]) (string-append (fringe-fbase an-fs) (filespec-fname seg))))
 (define (fringe-pcount an-fs) (vector-ref an-fs 2))
 
 
@@ -123,7 +123,7 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
                 [(firstfullpathname) (filespec-fullpathname (car active-fspecs))]
                 [(inprt) (open-input-file firstfullpathname)]
                 [(new-fh) (fringehead (read-bs->hcpos inprt) inprt active-fspecs (add1 dropped) (fringe-pcount f))])
-    (for ([i (- skip dropped)]) (advance-fhead! new-fh))
+    (for ([i (in-range (- skip dropped))]) (advance-fhead! new-fh))
     #|(printf "fh-from-fringe: leaving, looking at ~a w/ fh-next = ~a, fh-readcount = ~a, asked to advance to ~a~%" 
             (filespec-fullpathname (first (fringehead-filespecs new-fh))) (fringehead-next new-fh) (fringehead-readcount new-fh) skip)|#
     new-fh))
@@ -164,8 +164,8 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
                      how-many)]
         [last-pos #"NoLastPos"]
         [num-written 0])
-    (for ([i stop-at]
-          [hcposition fringe])
+    (for ([i (in-range stop-at)]
+          [hcposition (in-vector fringe)])
       (let ([hc-bs (hc-position-bs hcposition)])
         (cond [remove-dupes
                (unless (bytes=? hc-bs last-pos)
@@ -221,7 +221,7 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 ;; copy the files in the given fringe to the target, returning a new fringe
 (define (copy-fringe f target)
   (make-fringe target
-               (for/list ([fspec (fringe-segments f)])
+               (for/list ([fspec (in-list (fringe-segments f))])
                  (let ([remote-name  (string-append target (filespec-fullpathname fspec))])
                    (unless (file-exists? remote-name)
                      (copy-file (filespec-fullpathname fspec) remote-name))
@@ -232,7 +232,7 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 ;; delete-fringe: fringe -> void
 ;; remove all the files that make up the given fringe
 (define (delete-fringe f [fbase (fringe-fbase f)])
-  (for ([seg (fringe-segments f)]
+  (for ([seg (in-list (fringe-segments f))]
         #:when (file-exists? (string-append fbase (filespec-fname seg))))
     (delete-file (string-append fbase (filespec-fname seg)))))
 
@@ -292,7 +292,7 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
   (let ([pcount 0])
     (make-fringe 
      path-to-fringe-segments ;;*share-store*
-     (for/list ([i n-seg])
+     (for/list ([i (in-range n-seg)])
        (let* ([f (format "~a~a" base-string (~a i #:left-pad-string "0" #:width 3 #:align 'right))]
               [lpcount (read-from-string (with-output-to-string 
                                           (lambda () (position-count-in-file (string-append path-to-fringe-segments f)))))])
