@@ -1,4 +1,4 @@
-#lang racket/base
+#lang typed/racket
 
 (require srfi/25 ;; multi-dimensional arrays
          racket/list
@@ -39,14 +39,19 @@
 ;; DATA DEFINITIONS
 
 ;; a cell is a pair, (list r c), for row and column r and c
+(define-type Cell (Pairof Byte Byte))
 
 ;; a location (loc for short) is an int, representing the row-major rank of a cell
+(define-type Loc Byte)
 
 ;; a tile-spec is a triple, (cons a c), where a is the tile-type and c is the cell of the piece-type's origin
+(define-type TileSpec (Pairof Byte Cell))
 
 ;; a tile-loc-spec (tlspec), is a (list t l), where t is the tile-type and l is the loc of that tile
 
 ;; a pre-position is a (append (listof tile-spec) (listof cell))
+(struct prepos ([tspecs : (Listof TileSpec)] [spaces : (Listof Cell)]))
+;(define-type PrePosition (List* TileSpec ... (Listof Cell)))
 
 ;; a old-position is a (vectorof (listof int))
 ;; where the index of the top-level vectors reflect the piece-type as given in the init,
@@ -63,12 +68,12 @@
 
 ;; ******************************************************************************
 
-(struct hc-position (hc bs) #:transparent #:mutable)
+(struct hc-position ([hc : Fixnum] [bs : Bytes]) #:transparent #:mutable)
 ;; the hc is the hashcode of the bytestring
 
 ;; make-hcpos: bs-position -> hc-position
 ;; wrapper for the position rep augmented with the hashcode
-(define (make-hcpos bsrep) (hc-position (equal-hash-code bsrep) bsrep))
+(define: (make-hcpos [bsrep : Bytes]) : hc-position (hc-position (equal-hash-code bsrep) bsrep))
 
 
 ;; INITIALIZE STUFF FOR SLIDING-TILE-SOLVER
@@ -84,13 +89,13 @@
 ;; puzzle specific parameters
 (define *puzzle-name* "a string identifying the puzzle for selecting possible configuration files")
 (define *invalid-cells* empty)
-(define *num-piece-types* 0)
+(define: *num-piece-types* : Byte 0)
 (define *piece-types* (vector))
 (define *num-pieces* 0)
 (define *start* empty)
-(define *piece-type-template* (vector)) ; for each piece-type index, stores how many blocks of that type there are
+(define: *piece-type-template* : (Vectorof Byte) (vector)) ; for each piece-type index, stores how many blocks of that type there are
 (define *num-spaces* 0)
-(define *bs-ptype-index* (vector));; for a byte's index in a position, store the byte's piece-type
+(define: *bs-ptype-index* : (Vectorof Byte) (vector)) ;; for a byte's index in a position, store the byte's piece-type
 (define *target* empty)
 (define *bw* 0)
 (define *bh* 0)
@@ -118,20 +123,29 @@
   (set! *invalid-cells* invalid)
   (set! *num-pieces* (+ (length s) -1 (length (last s)))) ;; includes spaces -- may be used as length of position bytestring instead of bytes-length
   (set! *start* (make-hcpos (charify (bw-positionify (pre-compress s)))))
-  (set! *piece-type-template* (for/vector ([pt (old-positionify (bw-positionify (pre-compress s)))]) (length pt)))
+  (set! *piece-type-template* (for/vector ([pt (old-positionify (bw-positionify (pre-compress s)))]) (ann (length pt) Byte)))
   (set! *num-spaces* (vector-ref *piece-type-template* 0))
   ;(set! *expandpos* (make-vector (vector-ref *piece-type-template* 0) #f)) ;; any single piece can never generate more than the number of spaces
   (set! *expandbuf* (build-vector (* (vector-ref *piece-type-template* 0) *num-pieces*) (lambda (_) (mcons 0 (make-bytes *num-pieces*)))))
   (set! *expansion-space* (build-vector (+ EXPAND-SPACE-SIZE *bsz*) (lambda (_) (hc-position 0 (make-bytes *num-pieces*)))))
   (set! *piecelocvec* (make-vector *bsz* #f))
   ;(set! *bsbuffer* (make-bytes (* 4 *num-pieces*) 0))
-  (set! *bs-ptype-index* (for/vector #:length *num-pieces* 
-                           ([i *num-pieces*])
-                           (for/last ([ptindex-for-i *num-piece-types*]
-                                      #:break (< i (for/sum ([ptype-count *piece-type-template*]
-                                                             [x ptindex-for-i])
-                                                     ptype-count)))
-                             ptindex-for-i)))
+  #|(set! *bs-ptype-index* (for/vector: : (Vectorof Byte) #:length *num-pieces* 
+                           ([i : Byte *num-pieces*])
+                           (for/last: : Byte ([ptindex-for-i : Byte (in-range *num-piece-types*)] ;; at most, once for each piece type
+                                              #:break (< i (for/sum: : Byte ;; sum the number of pieces that have alread been covered
+                                                             ([ptype-count : Byte (in-vector *piece-type-template*)]
+                                                              [x : Byte (in-range ptindex-for-i)])
+                                                             ptype-count)))
+                             ptindex-for-i)))|#
+  
+  (set! *bs-ptype-index*
+        (list->vector
+         (for/fold: : (Listof Byte) ([res : (Listof Byte) '()])
+           ([ptype-count : Byte (in-vector *piece-type-template*)]
+            [index : Byte *num-piece-types*])
+           (append res (for/list: : (Listof Byte) ([i : Byte ptype-count]) index)))))
+  
   ;; should set *target* to a bytestring index and an expected location for that indexed value
   ;;******** this only works for a single goal-spec for a tile-type with only one instance, but ....
   (set! *target* (cons (for/sum ([ntypes *piece-type-template*]
@@ -146,7 +160,7 @@
 
 ;; init-cell-loc-maps!: N N (listof (N . N)) -> void
 ;; called only at initialization: init the cell-to-loc and loc-to-cell arrays
-(define (init-cell-loc-maps! nrow ncol invalid) 
+(define: (init-cell-loc-maps! [nrow : Byte] [ncol : Byte] [invalid : (Listof Cell)]) : Void
   (set! *cell-to-loc* (make-array (shape 0 nrow 0 ncol) #f))
   (set! *loc-to-cell* (for*/vector ([r nrow][c ncol] #:unless (member (cons r c) invalid))
                         (cons r c)))
@@ -166,7 +180,7 @@
 
 ;; charify: bw-position -> bytearray
 ;; convert a bitwise represented position into a series of bytes
-(define (charify bw-p)
+(define: (charify [bw-p : (Listof Integer)]) : Bytes
   (for/fold ([res #""])
     ([pt (in-vector bw-p)])
     (bytes-append res (charify-int pt))))
@@ -174,7 +188,7 @@
 ;; charify-int: int -> bytearray
 ;; convert a single int to a bytearray rep of each 1 appearing in the int's binary representation
 ;; that is, the resulting bytearray will be as long as the number of 1's in the given int
-(define (charify-int i)
+(define: (charify-int [i : Integer]) : Bytes
   (for/fold ([res #""])
     ([b (integer-length i)]
      #:when (bitwise-bit-set? i b))
@@ -197,6 +211,7 @@
   (for/fold ([newnum 0])
     ([ploc bs])
     (+ newnum (arithmetic-shift 1 (- ploc *charify-offset*)))))|#
+(: intify (->* (Bytes) (Byte Byte) Integer))
 (define (intify bs (start 0) (end *num-pieces*))
   (for/sum ([pref (in-range start end)])
     (arithmetic-shift 1 (- (bytes-ref bs pref) *charify-offset*))))
@@ -217,7 +232,7 @@
 
 ;; list->bwrep: (listof loc) -> int
 ;; convert the list of locations into a bitwise representation
-(define (list->bwrep lo-loc)
+(define: (list->bwrep [lo-loc : (Listof Byte)]) : Integer
   #|(foldl (lambda (a-loc bwint)
            (+ (arithmetic-shift 1 a-loc) bwint))
          0
@@ -235,7 +250,7 @@
 
 ;; bwrep->list: int -> (listof loc)
 ;; extract the locs encoded in the given int
-(define (bwrep->list n)
+(define: (bwrep->list [n : Positive-Integer]) : (Listof Byte)
   (for/list ([i (in-range (integer-length n))]
              #:when (bitwise-bit-set? n i))
     i))    
@@ -243,17 +258,18 @@
 
 ;; pre-spaces: pre-position -> (listof cell)
 ;; extract the spaces *** expected to be at the end of the initialization lists ***
-(define (pre-spaces p)
-  (last p))
+(define: (pre-spaces [p : prepos]) : (Listof Cell)
+  (prepos-spaces p))
 
 ;; pre-compress: pre-position -> (listof (cons tile-id (listof cell)))
 ;; collapse pieces of the same type and give spaces their unique id of -1
-(define (pre-compress p)
+(define: (pre-compress [p : prepos]) : (Listof (Pairof Byte (Listof Cell)))
   (cons (cons 0 (pre-spaces p))
-        (for/list ([i (in-range 1 *num-piece-types*)])
+        (for/list: : (Listof (Pairof Byte (Listof Cell))) ([i : Byte (in-range 1 *num-piece-types*)])
           (cons i
-                (map cdr
-                     (filter (lambda (a-piece) (= i (car a-piece))) (drop-right p 1)))))))
+                (for/list: : (Listof Cell) ([a-piece : TileSpec (prepos-tspecs p)]
+                                            #:when (= i (car a-piece)))
+                  (cdr a-piece))))))
 
 
 ;;------------------------------------------------------------------------------------------------------
