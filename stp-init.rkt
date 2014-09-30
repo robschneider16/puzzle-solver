@@ -59,6 +59,7 @@
 
 ;; a bw-position is a (vector int)
 ;; where each int is a bitwise representation of the locations of the pieces of that type
+(define-type BW-Position (Vectorof Integer))
 
 ;; a bs-position is a bytestring, where each byte represents the location of the corresponding tile
 
@@ -87,19 +88,19 @@
 (define *max-board-size* 64)
 
 ;; puzzle specific parameters
-(define *puzzle-name* "a string identifying the puzzle for selecting possible configuration files")
-(define *invalid-cells* empty)
+(define: *puzzle-name* : String "a string identifying the puzzle for selecting possible configuration files")
+(define: *invalid-cells* : (Listof Cell) empty)
 (define: *num-piece-types* : Byte 0)
-(define *piece-types* (vector))
-(define *num-pieces* 0)
+(define: *piece-types* : (Vectorof (Setof Any)) (vector))
+(define: *num-pieces* : Byte 0)
 (define *start* empty)
 (define: *piece-type-template* : (Vectorof Byte) (vector)) ; for each piece-type index, stores how many blocks of that type there are
-(define *num-spaces* 0)
+(define: *num-spaces* : Byte 0)
 (define: *bs-ptype-index* : (Vectorof Byte) (vector)) ;; for a byte's index in a position, store the byte's piece-type
-(define *target* empty)
-(define *bw* 0)
-(define *bh* 0)
-(define *bsz* 0)
+(define: *target* : (Pairof Byte Byte) (cons 0 0))
+(define: *bw* : Byte 0)
+(define: *bh* : Byte 0)
+(define: *bsz* : Byte 0)
 ;(define *expandpos* (vector))  ;; a (vectorof position) contains locations to index into *piecelocvec*
 (define *expandbuf* (vector)) ;; a vector of mutable pairs holding piece-type and location
 (define *expansion-space* (vector))
@@ -111,15 +112,15 @@
 
 ;; init-all!: piece-type-vector pre-position-list target N N (listof (N . N)) string -> void
 ;; generic setter for use by puzzle-specific initialization functions
-(define (init-all! ptv s t nrow ncol invalid pzlname)
+(define: (init-all! [ptv : (Vectorof (Listof Any))] [s : prepos] [t : TileSpec] [nrow : Byte] [ncol : Byte] [invalid : (Listof Cell)] [pzlname : String]) : Void
   (init-cell-loc-maps! nrow ncol invalid)
   (set! *puzzle-name* pzlname)
   (set! *bh* nrow)
   (set! *bw* ncol)
   (set! *bsz* (- (* nrow ncol) (length invalid)))
   (set! *num-piece-types* (vector-length ptv)) ;; must come before bw-positionify/(pre-compress)
-  (set! *piece-types* (for/vector ([cell-specs ptv])
-                                  (list->set cell-specs)));****
+  (set! *piece-types* (for/vector: : (Vectorof (Setof Any)) ([cell-specs : (Listof Any) ptv])
+                        (list->set cell-specs)));****
   (set! *invalid-cells* invalid)
   (set! *num-pieces* (+ (length s) -1 (length (last s)))) ;; includes spaces -- may be used as length of position bytestring instead of bytes-length
   (set! *start* (make-hcpos (charify (bw-positionify (pre-compress s)))))
@@ -148,9 +149,8 @@
   
   ;; should set *target* to a bytestring index and an expected location for that indexed value
   ;;******** this only works for a single goal-spec for a tile-type with only one instance, but ....
-  (set! *target* (cons (for/sum ([ntypes *piece-type-template*]
-                                 [i *num-piece-types*]
-                                 #:break (= i (car (car t))))
+  (set! *target* (cons (for/sum: : Integer ([ntypes : Byte (in-vector *piece-type-template*)]
+                                            [i : Byte (in-range (car t))])
                          ntypes)
                        (+ (cell-to-loc (cdr (car t))) *charify-offset*)))
   )
@@ -169,11 +169,11 @@
 
 ;; cell-to-loc: cell -> int
 ;; convert ordered pair to row-major-order rank location
-(define (cell-to-loc pair)
+(define: (cell-to-loc [pair : Cell]) : Byte
   (array-ref *cell-to-loc* (car pair) (cdr pair)))
 
 ;; loc-to-cell: int -> cell
-(define (loc-to-cell i)
+(define: (loc-to-cell [i : Byte]) : Cell
   (vector-ref *loc-to-cell* i))
 
 ;;--------------------------------------------------------------------------------
@@ -196,7 +196,7 @@
 
 ;; decharify: bytestring -> bw-position
 ;; for the inverse of charify
-(define (decharify ba)
+(define: (decharify [ba : Bytes]) : BW-Position
   (if (eof-object? ba)
       ba
       (let ([running-start 0])
@@ -219,7 +219,8 @@
 ;; bw-positionify: (listof (cons tile-id (listof cell))) -> bw-position
 ;; create a bitwise-'position' representation of a board state based on the given start-list pre-position format
 ;;*** called only during initialization
-(define (bw-positionify old-position)
+;****** WORKING HERE
+(define: (bw-positionify [old-position : (Listof (List* Byte Cell))]) : BW-Position
   (for/vector ([pspec (in-list old-position)]
                [i (in-range *num-piece-types*)])
     (unless (= i (first pspec)) (error 'positionify "mis-matched piece-type in vector representation of position"))
