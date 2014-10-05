@@ -231,7 +231,7 @@
 (define (onboard? c)
   (and (< -1 (car c) *bh*)
        (< -1 (cdr c) *bw*)
-       (array-ref *cell-to-loc* (car c) (cdr c))))
+       (cell-to-loc c)))
 ;; loc-onboard?: loc -> boolean
 (define (loc-onboard? loc)
   (< -1 loc *bsz*))
