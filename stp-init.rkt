@@ -1,8 +1,10 @@
-#lang typed/racket
+#lang typed/racket/base
 
-(require srfi/25 ;; multi-dimensional arrays
+               
+(require math/array
          racket/list
          racket/set
+         racket/vector
          )
 
 (provide EXPAND-SPACE-SIZE
@@ -42,7 +44,7 @@
 (define-type Cell (Pairof Byte Byte))
 
 ;; a location (loc for short) is an int, representing the row-major rank of a cell
-(define-type Loc Byte)
+(define-type-alias Loc Byte)
 
 ;; a tile-spec is a triple, (cons a c), where a is the tile-type and c is the cell of the piece-type's origin
 (define-type TileSpec (Pairof Byte Cell))
@@ -50,7 +52,7 @@
 ;; a tile-loc-spec (tlspec), is a (list t l), where t is the tile-type and l is the loc of that tile
 
 ;; a pre-position is a (append (listof tile-spec) (listof cell))
-(struct prepos ([tspecs : (Listof TileSpec)] [spaces : (Listof Cell)]))
+(struct: prepos ([tspecs : (Listof TileSpec)] [spaces : (Listof Cell)]))
 ;(define-type PrePosition (List* TileSpec ... (Listof Cell)))
 
 ;; a old-position is a (vectorof (listof int))
@@ -69,12 +71,12 @@
 
 ;; ******************************************************************************
 
-(struct hc-position ([hc : Fixnum] [bs : Bytes]) #:transparent #:mutable)
+(struct: hc-position ([hc : Fixnum] [bs : Bytes]) #:transparent #:mutable)
 ;; the hc is the hashcode of the bytestring
 
 ;; make-hcpos: bs-position -> hc-position
 ;; wrapper for the position rep augmented with the hashcode
-(define: (make-hcpos [bsrep : Bytes]) : hc-position (hc-position (equal-hash-code bsrep) bsrep))
+(define: (make-hcpos [bsrep : Bytes]) : hc-position (hc-position (cast (equal-hash-code bsrep) Fixnum) bsrep))
 
 
 ;; INITIALIZE STUFF FOR SLIDING-TILE-SOLVER
@@ -106,25 +108,28 @@
 (define *expansion-space* (vector))
 (define *piecelocvec* (vector));; vector boolean representing used move locations where the index is the location to which a single piece was moved
 ;(define *bsbuffer* #"") ;; a reusable buffer for holding expansions of a given position
-(define *cell-to-loc* "2d array of row-col indexing to locations skipping invalid squares")
-(define *loc-to-cell* "1d vector of loc indexing to row-col cell-pairs")
+(define: *cell-to-loc* : (Array Byte) (array 0))
+(define: *loc-to-cell* : (Vectorof (U Cell False)) (vector))
 
 
-;; init-all!: piece-type-vector pre-position-list target N N (listof (N . N)) string -> void
+;; init-all!: piece-type-vector prepos target N N (listof (N . N)) string -> void
 ;; generic setter for use by puzzle-specific initialization functions
 (define: (init-all! [ptv : (Vectorof (Listof Any))] [s : prepos] [t : TileSpec] [nrow : Byte] [ncol : Byte] [invalid : (Listof Cell)] [pzlname : String]) : Void
   (init-cell-loc-maps! nrow ncol invalid)
   (set! *puzzle-name* pzlname)
   (set! *bh* nrow)
   (set! *bw* ncol)
-  (set! *bsz* (- (* nrow ncol) (length invalid)))
-  (set! *num-piece-types* (vector-length ptv)) ;; must come before bw-positionify/(pre-compress)
-  (set! *piece-types* (for/vector: : (Vectorof (Setof Any)) ([cell-specs : (Listof Any) ptv])
-                        (list->set cell-specs)));****
+  (set! *bsz* (cast (- (* nrow ncol) (length invalid)) Byte))
+  (set! *num-piece-types* (cast (vector-length ptv) Byte)) ;; must come before bw-positionify/(pre-compress)
+  (set! *piece-types* (ann (vector-map list->set ptv) (Vectorof (Setof Any))));****
+  #|(set! *piece-types* (for/vector: : (Vectorof (Setof Any)) ([cell-specs : (Listof Any) ptv])
+                        (list->set cell-specs)))|#
   (set! *invalid-cells* invalid)
-  (set! *num-pieces* (+ (length s) -1 (length (last s)))) ;; includes spaces -- may be used as length of position bytestring instead of bytes-length
+  (set! *num-pieces* (cast (+ (length (prepos-tspecs s)) -1 (length (prepos-spaces s))) Byte)) ;; includes spaces -- may be used as length of position bytestring instead of bytes-length
   (set! *start* (make-hcpos (charify (bw-positionify (pre-compress s)))))
-  (set! *piece-type-template* (for/vector ([pt (old-positionify (bw-positionify (pre-compress s)))]) (ann (length pt) Byte)))
+  (set! *piece-type-template* (for/vector: : (Vectorof Byte)
+                                ([pt : (Listof Loc) (old-positionify (bw-positionify (pre-compress s)))])
+                                (assert (length pt) byte?)))
   (set! *num-spaces* (vector-ref *piece-type-template* 0))
   ;(set! *expandpos* (make-vector (vector-ref *piece-type-template* 0) #f)) ;; any single piece can never generate more than the number of spaces
   (set! *expandbuf* (build-vector (* (vector-ref *piece-type-template* 0) *num-pieces*) (lambda (_) (mcons 0 (make-bytes *num-pieces*)))))
@@ -149,10 +154,10 @@
   
   ;; should set *target* to a bytestring index and an expected location for that indexed value
   ;;******** this only works for a single goal-spec for a tile-type with only one instance, but ....
-  (set! *target* (cons (for/sum: : Integer ([ntypes : Byte (in-vector *piece-type-template*)]
-                                            [i : Byte (in-range (car t))])
-                         ntypes)
-                       (+ (cell-to-loc (cdr (car t))) *charify-offset*)))
+  (set! *target* (cons (cast (for/sum: : Integer ([ntypes : Byte (in-vector *piece-type-template*)]
+                                                  [i : Byte (in-range (car t))])
+                               ntypes) Byte)
+                       (cast (+ (cell-to-loc (cdr (car t))) *charify-offset*) Byte)))
   )
 
 ;;---------------------------------------------------------------------------------
@@ -161,19 +166,20 @@
 ;; init-cell-loc-maps!: N N (listof (N . N)) -> void
 ;; called only at initialization: init the cell-to-loc and loc-to-cell arrays
 (define: (init-cell-loc-maps! [nrow : Byte] [ncol : Byte] [invalid : (Listof Cell)]) : Void
-  (set! *cell-to-loc* (make-array (shape 0 nrow 0 ncol) #f))
   (set! *loc-to-cell* (for*/vector ([r nrow][c ncol] #:unless (member (cons r c) invalid))
                         (cons r c)))
-  (for ([i (vector-length *loc-to-cell*)]) 
-    (array-set! *cell-to-loc* (car (vector-ref *loc-to-cell* i)) (cdr (vector-ref *loc-to-cell* i)) i)))
+  (set! *cell-to-loc* (for*/array: #:shape #(nrow ncol) ([i (vector-length *loc-to-cell*)])
+                                  (if (member (vector-ref *loc-to-cell* i) invalid)
+                                      #f
+                                      i))))
 
 ;; cell-to-loc: cell -> int
 ;; convert ordered pair to row-major-order rank location
-(define: (cell-to-loc [pair : Cell]) : Byte
+(define: (cell-to-loc [pair : Cell]) : Loc
   (array-ref *cell-to-loc* (car pair) (cdr pair)))
 
 ;; loc-to-cell: int -> cell
-(define: (loc-to-cell [i : Byte]) : Cell
+(define: (loc-to-cell [i : Loc]) : Cell
   (vector-ref *loc-to-cell* i))
 
 ;;--------------------------------------------------------------------------------
@@ -221,19 +227,19 @@
 ;;*** called only during initialization
 ;****** WORKING HERE
 (define: (bw-positionify [old-position : (Listof (List* Byte Cell))]) : BW-Position
-  (for/vector ([pspec (in-list old-position)]
-               [i (in-range *num-piece-types*)])
+  (for/vector: : (Vectorof Integer) ([pspec : (List* Byte Cell) (in-list old-position)]
+                                     [i : Byte (in-range *num-piece-types*)])
     (unless (= i (first pspec)) (error 'positionify "mis-matched piece-type in vector representation of position"))
     (list->bwrep (map cell-to-loc (cdr pspec)))))
 
 ;; old-positionify: bw-position -> old-position
-(define (old-positionify bw-position)
-  (for/vector ([bwrep (in-vector bw-position)])
+(define: (old-positionify [bw-position : BW-Position]) : (Vectorof (Listof Loc))
+  (for/vector: : (Vectorof (Listof Loc)) ([bwrep : Positive-Integer (in-vector bw-position)])
     (bwrep->list bwrep)))
 
 ;; list->bwrep: (listof loc) -> int
 ;; convert the list of locations into a bitwise representation
-(define: (list->bwrep [lo-loc : (Listof Byte)]) : Integer
+(define: (list->bwrep [lo-loc : (Listof Loc)]) : Integer
   #|(foldl (lambda (a-loc bwint)
            (+ (arithmetic-shift 1 a-loc) bwint))
          0
@@ -242,7 +248,7 @@
 
 ;; bwrep-direct: N N N N -> fixnum
 ;; get the blank-int directly from the locations of the four blanks
-(define (bwrep-direct b1 b2 b3 b4)
+(define: (bwrep-direct [b1 : Byte] [b2 : Byte] [b3 : Byte] [b4 : Byte]) : Integer
   (+ (arithmetic-shift 1 b1)
      (arithmetic-shift 1 b2)
      (arithmetic-shift 1 b3)
@@ -251,53 +257,48 @@
 
 ;; bwrep->list: int -> (listof loc)
 ;; extract the locs encoded in the given int
-(define: (bwrep->list [n : Positive-Integer]) : (Listof Byte)
+(define: (bwrep->list [n : Positive-Integer]) : (Listof Loc)
   (for/list ([i (in-range (integer-length n))]
              #:when (bitwise-bit-set? n i))
-    i))    
+    (cast i Byte)))    
 
 
-;; pre-spaces: pre-position -> (listof cell)
-;; extract the spaces *** expected to be at the end of the initialization lists ***
-(define: (pre-spaces [p : prepos]) : (Listof Cell)
-  (prepos-spaces p))
-
-;; pre-compress: pre-position -> (listof (cons tile-id (listof cell)))
+;; pre-compress: prepos -> (listof (cons tile-id (listof cell)))
 ;; collapse pieces of the same type and give spaces their unique id of -1
-(define: (pre-compress [p : prepos]) : (Listof (Pairof Byte (Listof Cell)))
-  (cons (cons 0 (pre-spaces p))
+(define: (pre-compress [p : prepos]) : (Listof (List* Byte Cell))
+  (cons (ann (cons 0 (prepos-spaces p)) (List* Byte Cell))
         (for/list: : (Listof (Pairof Byte (Listof Cell))) ([i : Byte (in-range 1 *num-piece-types*)])
-          (cons i
-                (for/list: : (Listof Cell) ([a-piece : TileSpec (prepos-tspecs p)]
-                                            #:when (= i (car a-piece)))
-                  (cdr a-piece))))))
+          (ann (cons i 
+                     (for/list: : (Listof Cell) ([a-piece : TileSpec (prepos-tspecs p)]
+                                                 #:when (= i (car a-piece)))
+                       (cdr a-piece))) (List* Byte Cell)))))
 
 
 ;;------------------------------------------------------------------------------------------------------
 ;; BLOCK-10 PUZZLE INIT (variant 12)
-(define *block10-piece-types*
-  '#((reserved-spaces)               ; 0 reserved for spaces in actual position representation
-     ((0 . 0)(0 . 1)(1 . 0)(1 . 1))  ; 1  2x2
-     ((0 . 0)(0 . 1)(1 . 0))         ; 2  Upper Left pointing L
-     ((0 . 0)(1 . -1)(1 . 0))        ; 3  Lower Right pointing L
-     ((0 . 0)(1 . 0))                ; 4  2x1 vertical rectangle
-     ((0 . 0))))                     ; 5  1x1 unit square
+(define: *block10-piece-types* : (Vectorof (Listof Any))
+   '#((reserved-spaces)               ; 0 reserved for spaces in actual position representation
+             ((0 . 0)(0 . 1)(1 . 0)(1 . 1))  ; 1  2x2
+             ((0 . 0)(0 . 1)(1 . 0))         ; 2  Upper Left pointing L
+             ((0 . 0)(1 . -1)(1 . 0))        ; 3  Lower Right pointing L
+             ((0 . 0)(1 . 0))                ; 4  2x1 vertical rectangle
+             ((0 . 0))))                     ; 5  1x1 unit square
 
-(define *block10-start* ; variant 12
-  '((1 4 . 1)
-    (2 3 . 0)
-    (3 1 . 3)
-    (4 1 . 0)
-    (4 3 . 3)
-    (5 2 . 1)
-    (5 3 . 2)
-    (5 5 . 0)
-    (5 5 . 3)
-    ((0 . 1) (0 . 2) (1 . 1) (1 . 2)) ; spaces
-    ))
+(define: *block10-start* : prepos ; variant 12
+  (prepos '((1 4 . 1)
+            (2 3 . 0)
+            (3 1 . 3)
+            (4 1 . 0)
+            (4 3 . 3)
+            (5 2 . 1)
+            (5 3 . 2)
+            (5 5 . 0)
+            (5 5 . 3))
+          '((0 . 1) (0 . 2) (1 . 1) (1 . 2)) ; spaces
+          ))
 
 (define *block10-name* "block10v12")
-(define *block10-target* '((1 0 . 1)))
+(define: *block10-target* : TileSpec (cons 1 (cons 0 1)))
 (define *block10-invalid-cells* '((0 . 0) (0 . 3)))
 
 (define (block10-init)
@@ -307,7 +308,7 @@
 ;; CLIMB-12 PUZZLE INIT
 ;; piece-type is implicit in position within list, each pair specifies the cells of the piece
 ;; and their location relative to the (arbitrary) origin of that piece, (0 0).
-(define *climb12-piece-types*
+(define: *climb12-piece-types* : (Vectorof (Listof Any))
   '#((reserved-spaces)
      ((0 . 0)(1 . -1)(1 . 0)(1 . 1))           ; 1  4 square T (stem up)
      ((0 . 0)(0 . 1)(1 . 0))                   ; 2  Upper Left pointing L
@@ -317,24 +318,24 @@
      ((0 . 0))))                               ; 6  1x1 unit square
 
 ;; specify board-state by triples: piece-type, board-row, board-col
-(define *climb12-start*
-  '((1 4 . 2)
-    (2 2 . 1)
-    (3 2 . 3)
-    (4 1 . 0)
-    (4 1 . 4)
-    (5 4 . 0)
-    (5 4 . 3)
-    (6 3 . 0)
-    (6 3 . 4)
-    (6 5 . 0)
-    (6 5 . 4)
-    ((0 . 2) (1 . 1) (1 . 2) (1 . 3))  ; spaces
-    ))
+(define: *climb12-start* : prepos
+  (prepos '((1 4 . 2)
+            (2 2 . 1)
+            (3 2 . 3)
+            (4 1 . 0)
+            (4 1 . 4)
+            (5 4 . 0)
+            (5 4 . 3)
+            (6 3 . 0)
+            (6 3 . 4)
+            (6 5 . 0)
+            (6 5 . 4))
+          '((0 . 2) (1 . 1) (1 . 2) (1 . 3))  ; spaces
+          ))
 
 ;; specify target as triple: piece-type, board-row, board-col
 (define *climb12-name* "climb12")
-(define *climb12-target* '((1 0 . 2)))
+(define: *climb12-target* : TileSpec (cons 1 (cons 0 2)))
 (define *climb12-invalid-cells* '((0 . 0) (0 . 1) (0 . 3) (0 . 4)))
 
 (define (climb12-init)
@@ -343,7 +344,7 @@
 ;;------------------------------------------------------------------------------------------------------
 ;; CLIMB-15 PUZZLE INIT
 ;; (variation 1: 104 moves)
-(define *climb15-piece-types*
+(define: *climb15-piece-types* : (Vectorof (Listof Any))
   '#((reserved-spaces)
      ((0 . 0)(1 . -1)(1 . 0)(1 . 1))           ; 1  4 square T (stem up)
      ((0 . 0)(0 . 1)(1 . 0))                   ; 2  Upper Left pointing L
@@ -355,26 +356,26 @@
      ((0 . 0))                                 ; 8  1x1 unit square
      ((0 . 0)(0 . 1)(1 . 0)(1 . 1))))          ; 9  2x2 square
      
-(define *climb15-start*
-  '((1 6 . 2)
-    (2 2 . 0)
-    (3 2 . 2)
-    (4 4 . 2)
-    (5 4 . 3)
-    (6 2 . 3)
-    (6 2 . 4)
-    (7 6 . 0)
-    (7 6 . 3)
-    (8 1 . 0)
-    (8 1 . 4)
-    (8 7 . 0)
-    (8 7 . 4)
-    (9 4 . 0)
-    ((0 . 2)(1 . 1)(1 . 2)(1 . 3))
-    ))
+(define: *climb15-start* : prepos
+  (prepos '((1 6 . 2)
+            (2 2 . 0)
+            (3 2 . 2)
+            (4 4 . 2)
+            (5 4 . 3)
+            (6 2 . 3)
+            (6 2 . 4)
+            (7 6 . 0)
+            (7 6 . 3)
+            (8 1 . 0)
+            (8 1 . 4)
+            (8 7 . 0)
+            (8 7 . 4)
+            (9 4 . 0))
+          '((0 . 2)(1 . 1)(1 . 2)(1 . 3))
+          ))
 
 (define *climb15-name* "climb15")
-(define *climb15-target* '((1 0 . 2)))
+(define: *climb15-target* : TileSpec (cons 1 (cons 0 2)))
 (define *climb15-invalid-cells* '((0 . 0) (0 . 1) (0 . 3) (0 . 4)))
 
 (define (climb15-init)
@@ -397,10 +398,10 @@
 ;; 9  |___|_____|___|
 
 (define *climbpro24-name* "climbpro24")
-(define *climbpro24-target* '((1 0 . 3)))
+(define: *climbpro24-target* : TileSpec (cons 1 (cons 0 3)))
 (define *climbpro24-invalid-cells* '((0 . 0)(0 . 1)(0 . 2)(0 . 4)(0 . 5)(0 . 6)))
 
-(define *climbpro24-piece-types*
+(define: *climbpro24-piece-types* : (Vectorof (Listof Any))
   '#((reserved-spaces)
      ((0 . 0)(1 . -1)(1 . 0)(1 . 1))           ; 1  4 square T (stem up)
      ((0 . 0)(0 . 1)(1 . 0)(1 . 1))            ; 2  2x2 square
@@ -413,32 +414,33 @@
      ((0 . 0)(0 . 1)(0 . 2))                   ; 9  1x3 horizontal rectangle
      ((0 . 0))))                               ; 10 1x1 unit square
 
-(define *climbpro24-start*
-  '((1 8 . 3)    ; T piece
-    (2 2 . 0)    ; 2x2
-    (2 2 . 5)    ; 2x2
-    (2 8 . 0)    ; 2x2
-    (2 8 . 5)    ; 2x2
-    (3 4 . 5)    ; up-left L
-    (4 3 . 3)    ; up-right L
-    (4 4 . 0)    ; up-right L
-    (5 6 . 1)    ; down-right L
-    (6 3 . 2)    ; down-left L
-    (6 6 . 5)    ; down-left L
-    (7 5 . 0)    ; 2x1 (vertical)
-    (7 5 . 2)    ; 2x1 (vertical)
-    (7 5 . 4)    ; 2x1 (vertical)
-    (7 5 . 6)    ; 2x1 (vertical)
-    (8 1 . 0)    ; 1x2 (horizontal)
-    (8 1 . 5)    ; 1x2 (horizontal)
-    (9 2 . 2)    ; 1x3 (horizontal)
-    (9 7 . 2)    ; 1x3 (horizontal)
-    (10 5 . 3)   ; 1x1
-    (10 6 . 3)   ; 1x1
-    (10 8 . 2)   ; 1x1
-    (10 8 . 4)   ; 1x1
-    ((0 . 3)(1 . 2)(1 . 3)(1 . 4))
-    ))
+(define: *climbpro24-start* : prepos
+  (prepos '((1 8 . 3)    ; T piece
+            (2 2 . 0)    ; 2x2
+            (2 2 . 5)    ; 2x2
+            (2 8 . 0)    ; 2x2
+            (2 8 . 5)    ; 2x2
+            (3 4 . 5)    ; up-left L
+            (4 3 . 3)    ; up-right L
+            (4 4 . 0)    ; up-right L
+            (5 6 . 1)    ; down-right L
+            (6 3 . 2)    ; down-left L
+            (6 6 . 5)    ; down-left L
+            (7 5 . 0)    ; 2x1 (vertical)
+            (7 5 . 2)    ; 2x1 (vertical)
+            (7 5 . 4)    ; 2x1 (vertical)
+            (7 5 . 6)    ; 2x1 (vertical)
+            (8 1 . 0)    ; 1x2 (horizontal)
+            (8 1 . 5)    ; 1x2 (horizontal)
+            (9 2 . 2)    ; 1x3 (horizontal)
+            (9 7 . 2)    ; 1x3 (horizontal)
+            (10 5 . 3)   ; 1x1
+            (10 6 . 3)   ; 1x1
+            (10 8 . 2)   ; 1x1
+            (10 8 . 4)   ; 1x1
+            )
+          '((0 . 3)(1 . 2)(1 . 3)(1 . 4))
+          ))
 
 (define (climbpro24-init)
   (init-all! *climbpro24-piece-types* *climbpro24-start* *climbpro24-target* 10 7 *climbpro24-invalid-cells* *climbpro24-name*))
