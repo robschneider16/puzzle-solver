@@ -3,9 +3,13 @@
                
 (require math/array
          racket/list
-         racket/set
+         ;racket/set
          racket/vector
          )
+
+
+(require/typed racket/set
+               [list->set (-> (Listof Any) (Setof Any))])
 
 (provide EXPAND-SPACE-SIZE
          hc-position hc-position-hc hc-position-bs hc-position? set-hc-position-hc!
@@ -16,14 +20,12 @@
          *num-piece-types* *piece-types* *num-pieces*
          *bs-ptype-index*
          *target* *bw* *bh* *bsz*
-         ;*expandpos*
-         *expandbuf*
          *expansion-space*
          *piecelocvec* 
          *start*
          *piece-type-template*
          *num-spaces*
-         charify charify-int decharify intify
+         charify-int intify
          ;old-positionify ;** temp for testing
          list->bwrep ;; used only during initialization in compile-ms-array! via better-move-schema
          bwrep-direct
@@ -61,7 +63,7 @@
 
 ;; a bw-position is a (vector int)
 ;; where each int is a bitwise representation of the locations of the pieces of that type
-(define-type BW-Position (Vectorof Integer))
+(define-type-alias BW-Position (Vectorof Integer))
 
 ;; a bs-position is a bytestring, where each byte represents the location of the corresponding tile
 
@@ -85,9 +87,9 @@
 ;(define EXPAND-SPACE-SIZE 2000000)
 
 ;; move trans for up, right, down and left respectively
-(define *prim-move-translations* '((-1 . 0) (0 . 1) (1 . 0) (0 . -1)))
-(define *charify-offset* 48)
-(define *max-board-size* 64)
+(define: *prim-move-translations* : (Listof (Pairof Fixnum Fixnum)) '((-1 . 0) (0 . 1) (1 . 0) (0 . -1)))
+(define: *charify-offset* : Byte 48)
+(define: *max-board-size* : Byte 64)
 
 ;; puzzle specific parameters
 (define: *puzzle-name* : String "a string identifying the puzzle for selecting possible configuration files")
@@ -95,7 +97,7 @@
 (define: *num-piece-types* : Byte 0)
 (define: *piece-types* : (Vectorof (Setof Any)) (vector))
 (define: *num-pieces* : Byte 0)
-(define *start* empty)
+(define: *start* : hc-position (hc-position 0 #"uninitialized"))
 (define: *piece-type-template* : (Vectorof Byte) (vector)) ; for each piece-type index, stores how many blocks of that type there are
 (define: *num-spaces* : Byte 0)
 (define: *bs-ptype-index* : (Vectorof Byte) (vector)) ;; for a byte's index in a position, store the byte's piece-type
@@ -103,13 +105,11 @@
 (define: *bw* : Byte 0)
 (define: *bh* : Byte 0)
 (define: *bsz* : Byte 0)
-;(define *expandpos* (vector))  ;; a (vectorof position) contains locations to index into *piecelocvec*
-(define *expandbuf* (vector)) ;; a vector of mutable pairs holding piece-type and location
-(define *expansion-space* (vector))
-(define *piecelocvec* (vector));; vector boolean representing used move locations where the index is the location to which a single piece was moved
+(define: *expansion-space* : (Vectorof hc-position) (vector))
+(define: *piecelocvec* : (Vectorof Boolean) (vector));; vector boolean representing used move locations where the index is the location to which a single piece was moved
 ;(define *bsbuffer* #"") ;; a reusable buffer for holding expansions of a given position
-(define: *cell-to-loc* : (Array Byte) (array 0))
-(define: *loc-to-cell* : (Vectorof (U Cell False)) (vector))
+(define: *cell-to-loc* : (Mutable-Array (U Byte False)) (mutable-array 0 : (U Byte False)))
+(define: *loc-to-cell* : (Vectorof Cell) (vector))
 
 
 ;; init-all!: piece-type-vector prepos target N N (listof (N . N)) string -> void
@@ -131,10 +131,9 @@
                                 ([pt : (Listof Loc) (old-positionify (bw-positionify (pre-compress s)))])
                                 (assert (length pt) byte?)))
   (set! *num-spaces* (vector-ref *piece-type-template* 0))
-  ;(set! *expandpos* (make-vector (vector-ref *piece-type-template* 0) #f)) ;; any single piece can never generate more than the number of spaces
-  (set! *expandbuf* (build-vector (* (vector-ref *piece-type-template* 0) *num-pieces*) (lambda (_) (mcons 0 (make-bytes *num-pieces*)))))
-  (set! *expansion-space* (build-vector (+ EXPAND-SPACE-SIZE *bsz*) (lambda (_) (hc-position 0 (make-bytes *num-pieces*)))))
-  (set! *piecelocvec* (make-vector *bsz* #f))
+  (set! *expansion-space* (cast (build-vector (+ EXPAND-SPACE-SIZE *bsz*) (lambda (_) (hc-position 0 (make-bytes *num-pieces*))))
+                                (Vectorof hc-position)))
+  (set! *piecelocvec* (cast (make-vector *bsz* #f) (Vectorof Boolean)))
   ;(set! *bsbuffer* (make-bytes (* 4 *num-pieces*) 0))
   #|(set! *bs-ptype-index* (for/vector: : (Vectorof Byte) #:length *num-pieces* 
                            ([i : Byte *num-pieces*])
@@ -155,9 +154,9 @@
   ;; should set *target* to a bytestring index and an expected location for that indexed value
   ;;******** this only works for a single goal-spec for a tile-type with only one instance, but ....
   (set! *target* (cons (cast (for/sum: : Integer ([ntypes : Byte (in-vector *piece-type-template*)]
-                                                  [i : Byte (in-range (car t))])
-                               ntypes) Byte)
-                       (cast (+ (cell-to-loc (cdr (car t))) *charify-offset*) Byte)))
+                                                  [i : Byte (car t)])
+                               (assert ntypes byte?)) Byte)
+                       (cast (+ (cell-to-loc (cdr t)) *charify-offset*) Byte)))
   )
 
 ;;---------------------------------------------------------------------------------
@@ -166,17 +165,20 @@
 ;; init-cell-loc-maps!: N N (listof (N . N)) -> void
 ;; called only at initialization: init the cell-to-loc and loc-to-cell arrays
 (define: (init-cell-loc-maps! [nrow : Byte] [ncol : Byte] [invalid : (Listof Cell)]) : Void
-  (set! *loc-to-cell* (for*/vector ([r nrow][c ncol] #:unless (member (cons r c) invalid))
+  (set! *loc-to-cell* (for*/vector: : (Vectorof Cell) ([r nrow][c ncol] #:unless (member (cons r c) invalid))
                         (cons r c)))
-  (set! *cell-to-loc* (for*/array: #:shape #(nrow ncol) ([i (vector-length *loc-to-cell*)])
+  (set! *cell-to-loc* (for/array: #:shape (vector nrow ncol) ([i (vector-length *loc-to-cell*)]) : (U Byte False)
                                   (if (member (vector-ref *loc-to-cell* i) invalid)
                                       #f
-                                      i))))
+                                      (cast i Byte)))))
 
 ;; cell-to-loc: cell -> int
 ;; convert ordered pair to row-major-order rank location
 (define: (cell-to-loc [pair : Cell]) : Loc
-  (array-ref *cell-to-loc* (car pair) (cdr pair)))
+  (let: ([maybe-loc : (U Byte False) (array-ref *cell-to-loc* (vector (car pair) (cdr pair)))])
+    (if (boolean? maybe-loc)
+        (error 'cell-to-loc "attempt to access loc for invalid cell")
+        maybe-loc)))
 
 ;; loc-to-cell: int -> cell
 (define: (loc-to-cell [i : Loc]) : Cell
@@ -186,8 +188,8 @@
 
 ;; charify: bw-position -> bytearray
 ;; convert a bitwise represented position into a series of bytes
-(define: (charify [bw-p : (Listof Integer)]) : Bytes
-  (for/fold ([res #""])
+(define: (charify [bw-p : (Vectorof Integer)]) : Bytes
+  (for/fold: : Bytes ([res : Bytes #""])
     ([pt (in-vector bw-p)])
     (bytes-append res (charify-int pt))))
 
@@ -195,21 +197,10 @@
 ;; convert a single int to a bytearray rep of each 1 appearing in the int's binary representation
 ;; that is, the resulting bytearray will be as long as the number of 1's in the given int
 (define: (charify-int [i : Integer]) : Bytes
-  (for/fold ([res #""])
+  (for/fold: : Bytes ([res #""])
     ([b (integer-length i)]
      #:when (bitwise-bit-set? i b))
     (bytes-append res (bytes (+ b *charify-offset*)))))
-
-;; decharify: bytestring -> bw-position
-;; for the inverse of charify
-(define: (decharify [ba : Bytes]) : BW-Position
-  (if (eof-object? ba)
-      ba
-      (let ([running-start 0])
-        (for/vector ([num-of-pt (in-vector *piece-type-template*)])
-          (let ([res (intify ba running-start (+ running-start num-of-pt))])
-            (set! running-start (+ running-start num-of-pt))
-            res)))))
 
 ;; intify: bytestring [int] [int] -> int
 ;; convert a given series of bytes to a bitwise overlay of their corresponding positions
@@ -227,9 +218,9 @@
 ;;*** called only during initialization
 ;****** WORKING HERE
 (define: (bw-positionify [old-position : (Listof (List* Byte Cell))]) : BW-Position
-  (for/vector: : (Vectorof Integer) ([pspec : (List* Byte Cell) (in-list old-position)]
-                                     [i : Byte (in-range *num-piece-types*)])
-    (unless (= i (first pspec)) (error 'positionify "mis-matched piece-type in vector representation of position"))
+  (for/vector: : BW-Position ([pspec : (List* Byte Cell) (in-list old-position)]
+                              [i : Byte *num-piece-types*])
+    (unless (= i (car pspec)) (error 'positionify "mis-matched piece-type in vector representation of position"))
     (list->bwrep (map cell-to-loc (cdr pspec)))))
 
 ;; old-positionify: bw-position -> old-position
@@ -266,12 +257,12 @@
 ;; pre-compress: prepos -> (listof (cons tile-id (listof cell)))
 ;; collapse pieces of the same type and give spaces their unique id of -1
 (define: (pre-compress [p : prepos]) : (Listof (List* Byte Cell))
-  (cons (ann (cons 0 (prepos-spaces p)) (List* Byte Cell))
-        (for/list: : (Listof (Pairof Byte (Listof Cell))) ([i : Byte (in-range 1 *num-piece-types*)])
-          (ann (cons i 
-                     (for/list: : (Listof Cell) ([a-piece : TileSpec (prepos-tspecs p)]
-                                                 #:when (= i (car a-piece)))
-                       (cdr a-piece))) (List* Byte Cell)))))
+  (cons (ann ((inst cons Byte (List* Cell)) 0 (prepos-spaces p)) (List* Byte Cell))
+        (for/list: : (Listof (List* Byte Cell)) ([i : Byte (in-range 1 *num-piece-types*)])
+          (cast (cons i 
+                      (for/list: : (Listof Cell) ([a-piece : TileSpec (prepos-tspecs p)]
+                                                  #:when (= i (car a-piece)))
+                        (cdr a-piece))) (List* Byte Cell)))))
 
 
 ;;------------------------------------------------------------------------------------------------------

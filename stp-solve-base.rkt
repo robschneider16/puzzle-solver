@@ -21,6 +21,10 @@
 |#
 (provide (all-defined-out))
 
+;; a vector of mutable pairs holding piece-type and location
+(define *expandbuf* (build-vector (* (vector-ref *piece-type-template* 0) *num-pieces*) (lambda (_) (mcons 0 (make-bytes *num-pieces*)))))
+
+
 ;; hcposition<?: hc-position hc-position -> boolean
 (define (hcposition<? p1 p2)
   (or (< (hc-position-hc p1) (hc-position-hc p2))
