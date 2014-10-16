@@ -49,7 +49,8 @@
 (define-type-alias Loc Byte)
 
 ;; a tile-spec is a triple, (cons a c), where a is the tile-type and c is the cell of the piece-type's origin
-(define-type TileSpec (Pairof Byte Cell))
+(define-type TileSpec (List* Byte Cell))
+;;(struct: tspec ([tiletype : Byte] [origin : Cell]))
 
 ;; a tile-loc-spec (tlspec), is a (list t l), where t is the tile-type and l is the loc of that tile
 
@@ -134,23 +135,28 @@
   (set! *expansion-space* (cast (build-vector (+ EXPAND-SPACE-SIZE *bsz*) (lambda (_) (hc-position 0 (make-bytes *num-pieces*))))
                                 (Vectorof hc-position)))
   (set! *piecelocvec* (cast (make-vector *bsz* #f) (Vectorof Boolean)))
-  ;(set! *bsbuffer* (make-bytes (* 4 *num-pieces*) 0))
-  #|(set! *bs-ptype-index* (for/vector: : (Vectorof Byte) #:length *num-pieces* 
-                           ([i : Byte *num-pieces*])
-                           (for/last: : Byte ([ptindex-for-i : Byte (in-range *num-piece-types*)] ;; at most, once for each piece type
-                                              #:break (< i (for/sum: : Byte ;; sum the number of pieces that have alread been covered
-                                                             ([ptype-count : Byte (in-vector *piece-type-template*)]
-                                                              [x : Byte (in-range ptindex-for-i)])
-                                                             ptype-count)))
-                             ptindex-for-i)))|#
+  #|
+  (set! *bs-ptype-index*
+        (for/vector: : (Vectorof Byte) #:length *num-pieces* 
+          ([i : Byte *num-pieces*])
+          (for/last: : Byte 
+            ([ptindex-for-i : Byte (in-range *num-piece-types*)] ;; at most, once for each piece type
+             #:break (< i (for/sum: : Byte ;; sum the number of pieces that have alread been covered
+                            ([ptype-count : Byte (in-vector *piece-type-template*)]
+                             [x : Byte (in-range ptindex-for-i)])
+                            ptype-count)))
+            ptindex-for-i)))
+  |#
   
   (set! *bs-ptype-index*
-        (list->vector
-         (for/fold: : (Listof Byte) ([res : (Listof Byte) '()])
-           ([ptype-count : Byte (in-vector *piece-type-template*)]
-            [index : Byte *num-piece-types*])
-           (append res (for/list: : (Listof Byte) ([i : Byte ptype-count]) index)))))
-  
+        (cast 
+         (list->vector
+          (for/fold: : (Listof Byte) ([res : (Listof Byte) '()])
+            ([ptype-count : Byte (in-vector *piece-type-template*)]
+             [index : Byte *num-piece-types*])
+            (append res (for/list: : (Listof Byte) ([i : Byte ptype-count]) index))))
+         (Vectorof Byte)))
+        
   ;; should set *target* to a bytestring index and an expected location for that indexed value
   ;;******** this only works for a single goal-spec for a tile-type with only one instance, but ....
   (set! *target* (cons (cast (for/sum: : Integer ([ntypes : Byte (in-vector *piece-type-template*)]
@@ -221,12 +227,12 @@
   (for/vector: : BW-Position ([pspec : (List* Byte Cell) (in-list old-position)]
                               [i : Byte *num-piece-types*])
     (unless (= i (car pspec)) (error 'positionify "mis-matched piece-type in vector representation of position"))
-    (list->bwrep (map cell-to-loc (cdr pspec)))))
+    (list->bwrep (map cell-to-loc (cast (cdr pspec) (Listof Cell))))))
 
 ;; old-positionify: bw-position -> old-position
 (define: (old-positionify [bw-position : BW-Position]) : (Vectorof (Listof Loc))
-  (for/vector: : (Vectorof (Listof Loc)) ([bwrep : Positive-Integer (in-vector bw-position)])
-    (bwrep->list bwrep)))
+  (for/vector: : (Vectorof (Listof Loc)) ([bwrep : Integer bw-position])
+    (bwrep->list (cast bwrep Positive-Integer))))
 
 ;; list->bwrep: (listof loc) -> int
 ;; convert the list of locations into a bitwise representation
@@ -257,12 +263,14 @@
 ;; pre-compress: prepos -> (listof (cons tile-id (listof cell)))
 ;; collapse pieces of the same type and give spaces their unique id of -1
 (define: (pre-compress [p : prepos]) : (Listof (List* Byte Cell))
-  (cons (ann ((inst cons Byte (List* Cell)) 0 (prepos-spaces p)) (List* Byte Cell))
-        (for/list: : (Listof (List* Byte Cell)) ([i : Byte (in-range 1 *num-piece-types*)])
-          (cast (cons i 
+  (cons (ann ((cast cons (Byte (Listof Cell) -> (List* Byte Cell))) 0 (prepos-spaces p))
+             (List* Byte Cell))
+        (for/list: : (Listof (List* Byte Cell)) ([i : Integer (in-range 1 (cast *num-piece-types* Byte))])
+          (cast (cons i
                       (for/list: : (Listof Cell) ([a-piece : TileSpec (prepos-tspecs p)]
                                                   #:when (= i (car a-piece)))
-                        (cdr a-piece))) (List* Byte Cell)))))
+                        (cdr a-piece)))
+                (List* Byte Cell)))))
 
 
 ;;------------------------------------------------------------------------------------------------------
