@@ -12,7 +12,8 @@
                [list->set (-> (Listof Any) (Setof Any))])
 
 (provide EXPAND-SPACE-SIZE
-         hc-position hc-position-hc hc-position-bs hc-position? set-hc-position-hc!
+         (struct-out hc-position)
+         ;hc-position hc-position-hc hc-position-bs hc-position? set-hc-position-hc!
          make-hcpos
          *prim-move-translations* *charify-offset* *max-board-size*
          *puzzle-name*
@@ -36,7 +37,9 @@
          block10-init
          climb12-init
          climb15-init
-         climbpro24-init)
+         climbpro24-init
+         report-puzzle-name
+         abox)
 
 
 ;; ******************************************************************************
@@ -49,14 +52,13 @@
 (define-type-alias Loc Byte)
 
 ;; a tile-spec is a triple, (cons a c), where a is the tile-type and c is the cell of the piece-type's origin
-(define-type TileSpec (List* Byte Cell))
+(define-type TileSpec (Pairof Byte Cell))
 (struct: tspec ([tiletype : Byte] [origin : Cell]))
 
 ;; a tile-loc-spec (tlspec), is a (list t l), where t is the tile-type and l is the loc of that tile
 
 ;; a pre-position is a (append (listof tile-spec) (listof cell))
 (struct: prepos ([tspecs : (Listof tspec)] [spaces : (Listof Cell)]))
-;(define-type PrePosition (List* TileSpec ... (Listof Cell)))
 
 ;; a old-position is a (vectorof (listof int))
 ;; where the index of the top-level vectors reflect the piece-type as given in the init,
@@ -223,8 +225,8 @@
 ;; create a bitwise-'position' representation of a board state based on the given start-list pre-position format
 ;;*** called only during initialization
 ;****** WORKING HERE
-(define: (bw-positionify [old-position : (Listof (List* Byte Cell))]) : BW-Position
-  (for/vector: : BW-Position ([pspec : (List* Byte Cell) (in-list old-position)]
+(define: (bw-positionify [old-position : (Listof (Pairof Byte (Listof Cell)))]) : BW-Position
+  (for/vector: : BW-Position ([pspec : (Pairof Byte (Listof Cell)) (in-list old-position)]
                               [i : Byte *num-piece-types*])
     (unless (= i (car pspec)) (error 'positionify "mis-matched piece-type in vector representation of position"))
     (list->bwrep (map cell-to-loc (cast (cdr pspec) (Listof Cell))))))
@@ -262,15 +264,15 @@
 
 ;; pre-compress: prepos -> (listof (cons tile-id (listof cell)))
 ;; collapse pieces of the same type and give spaces their unique id of -1
-(define: (pre-compress [p : prepos]) : (Listof (List* Byte Cell))
-  (cons (ann ((cast cons (Byte (Listof Cell) -> (List* Byte Cell))) 0 (prepos-spaces p))
-             (List* Byte Cell))
-        (for/list: : (Listof (List* Byte Cell)) ([i : Integer (in-range 1 (cast *num-piece-types* Byte))])
+(define: (pre-compress [p : prepos]) : (Listof (Pairof Byte (Listof Cell)))
+  (cons (ann (cons 0 (prepos-spaces p))
+             (Pairof Byte (Listof Cell)))
+        (for/list: : (Listof (Pairof Byte (Listof Cell))) ([i : Integer (in-range 1 (cast *num-piece-types* Byte))])
           (cast (cons i
                       (for/list: : (Listof Cell) ([a-piece : tspec (prepos-tspecs p)]
                                                   #:when (= i (tspec-tiletype a-piece)))
                         (tspec-origin a-piece)))
-                (List* Byte Cell)))))
+                (Pairof Byte (Listof Cell))))))
 
 
 ;;------------------------------------------------------------------------------------------------------
@@ -447,6 +449,9 @@
 
 ;;------------------------------------------------------------------------------------------------------
 ;(block10-init) ; for local testing
-(climb12-init)
+;(climb12-init)
 ;(climb15-init)
 ;(climbpro24-init)
+(define (report-puzzle-name) *puzzle-name*)
+(define abox (box 3))
+;(define: (incbox [Box : b]) (set-box! b (add1 (unbox b))))
