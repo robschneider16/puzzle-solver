@@ -1,5 +1,5 @@
 #lang racket/base
-
+;hashddd
 (require (planet gcr/riot))
 ;(require (planet soegaard/gzip:2:2))
 ;(require file/gzip)
@@ -81,31 +81,36 @@
 ;; expand just the current-fringe and remove duplicates in the expansion and repeats from prev-fringe
 ;; returning the new fringe
 (define (expand-fringe-self pf cf depth)
+  
   (let* ([prev-fringe-set (for/fold ([the-fringe (set)])
                             ([sgmnt (fringe-segments pf)])
                             (set-union the-fringe
                                        (list->set (read-fringe-from-file (filespec-fullpathname sgmnt)))))] ; pf- and cf-spec's in expand-fringe-self should have empty fbase
+         
          [current-fringe-vec 
           (list->vector (for/fold ([the-fringe empty])
                           ([sgmnt (reverse (fringe-segments cf))])
                           (append (read-fringe-from-file (filespec-fullpathname sgmnt)) the-fringe)))]
+         
          [new-cf-name (format "fringe-d~a" depth)]
          [new-cf-fullpath (format "~a~a" *share-store* new-cf-name)]
          ;[prntmsg (printf "finished reading the fringes~%")]
          [exp-ptr 0]
          [expand-them (for ([p-to-expand current-fringe-vec])
-                        (set! exp-ptr (expand* p-to-expand exp-ptr)))]
-         [res (set->list (for/set ([i exp-ptr]
-                                   #:unless (or (set-member? prev-fringe-set (vector-ref *expansion-space* i))
-                                                (position-in-vec? current-fringe-vec (vector-ref *expansion-space* i))))
-                           (when (is-goal? (vector-ref *expansion-space* i)) (set! *found-goal* (vector-ref *expansion-space* i)))
-                           (vector-ref *expansion-space* i)))]
+                        (set! exp-ptr (expand* p-to-expand depth)))]
+         [res (set->list (for/set ([i (hash-count *expansion-hash*)]
+                                   #:unless (or (set-member? prev-fringe-set (vector-ref (list->vector (hash-values *expansion-hash*)) i));hash-  ;old code set-member? prev-fringe-set (vector-ref *expansion-space* i))
+                                                (position-in-vec? current-fringe-vec (vector-ref (list->vector (hash-values *expansion-hash*)) i)))) ;; old code (vector-ref *expansion-space* i))))
+                           (when (is-goal? (vector-ref (list->vector (hash-values *expansion-hash*)) i)) (set! *found-goal* (vector-ref (list->vector (hash-values *expansion-hash*)) i)))
+                           (vector-ref (list->vector (hash-values *expansion-hash*)) i)))]
          )
-    #|(printf "Finished the work packet generating a set of ~a positions~%" (set-count res))
-    (for ([p res])
-      (printf "pos: ~a~%~a~%" (stringify p) p))|#
+    ;(printf "Finished the work packet generating a set of ~a positions~%" (set-count res))
+    
+    ;(for ([p res])
+     ; (printf "pos: ~a~%" (hc-position-bs p)))
     (for ([sgmnt (fringe-segments pf)]) (delete-file (filespec-fullpathname sgmnt)))
-    (write-fringe-to-disk (sort res hcposition<?) new-cf-fullpath)
+    (write-fringe-to-disk (sort res hcposition<?) new-cf-fullpath);Here and also above, we will save as hash tables.
+    (hash-clear! *expansion-hash*)
     (make-fringe *share-store*
                  (list (make-filespec new-cf-name (length res) (file-size new-cf-fullpath) *share-store*))
                  (length res))))
@@ -152,6 +157,8 @@
       (set! start-range (+ start-range (filespec-pcount fs)))
       (list (- start-range (filespec-pcount fs)) start-range))))
 
+
+
 ;; remove-dupes: fringe fringe (listof filespec) string int int float float float -> sampling-stat
 ;; Running in distributed worker processes:
 ;; Remove duplicate positions from the list of expand-fspec files (i.e., partial-expansion...),
@@ -166,15 +173,17 @@
   #|(printf "EXPAND PHASE 2 (REMOVE DUPLICATES) pf: ~a~%cf: ~a~%all of lo-expand-fspec: ~a~%ofile-name: ~a~%depth: ~a~%"
           pf cf lo-expand-fspec ofile-name depth);|#
   ;; EXPAND PHASE 2 (REMOVE DUPLICATES)
-  (let* ([pffh (fh-from-fringe pf)]
-         [cffh (fh-from-fringe cf)]
+  (let* ([pffh (fh-from-fringe pf)];previous fringe fringe head
+         [cffh (fh-from-fringe cf)];current fringe fringe head
          [n-pos-to-process (for/sum ([an-fspec lo-expand-fspec]) (filespec-pcount an-fspec))]
          [lo-effh (for/list ([an-fspec lo-expand-fspec]) (fh-from-filespec an-fspec))]
+         
          [heap-o-fheads (let ([lheap (make-heap (lambda (fh1 fh2) (hcposition<? (fringehead-next fh1) (fringehead-next fh2))))])
                           (heap-add-all! lheap lo-effh)
                           lheap)]
          ; writing directly to NFS doesn't seem any slower than *local-store* and then copy -- that claim still needs verification
-         ; write to one slice-ofile at a time, since everything is sorted
+         ; write to one slice-ofile at a time, since everything is sorted 
+         ;slice-ofile changed to a hash table
          [proto-slice-num 0]
          [slice-upper-bound (vector-ref *proto-fringe-slice-bounds* (add1 proto-slice-num))]
          [proto-slice-ofile (open-output-file (string-append *share-store* ofile-name "-" (~a proto-slice-num #:left-pad-string "0" #:width 3 #:align 'right)))]
@@ -195,6 +204,8 @@
                   other-expand-time)]
          [last-pos-bs #"NoLastPos"]
          )
+    
+    
     ;; locally merge the pre-proto-fringes, removing duplicates from prev- and current-fringes
     (for ([an-fhead (in-heap/consume! heap-o-fheads)])
       (let ([efpos (fringehead-next an-fhead)])
@@ -207,6 +218,8 @@
                       (and (position-in-fhead? efpos cffh) (vector-set! sample-stats 1 (add1 (vector-ref sample-stats 1)))))))
           (set! last-pos-bs (hc-position-bs efpos))
           (do ([efpos-hc (hc-position-hc efpos)])
+            
+            
             ;; if efpos-hc is >= to the slice-upper-bound, advance the proto-slice-num/ofile/upper-bound until it is not
             ((< efpos-hc slice-upper-bound))
             (close-output-port proto-slice-ofile)
@@ -247,8 +260,12 @@
          [fullpath (string-append *local-store* f)]
          [this-batch 0]
          [sort-time 0]
-         [write-time 0])
-    ;; scrub the last part of the vector with bogus positions
+         [write-time 0]
+         ;for testing the hash table implementation in place of the expansion-space/buffer, convert back to a vector of hash codes and sort. 
+         ;[expansion-space (build-vector(hash-count *expansion-hash*) (lambda (N) (hash-iterate-val *expansion-hash* N)))];currently extracts length from count of expansion-hash, use pcount?
+         [expansion-space (list->vector (hash-values *expansion-hash*))];this sets it as a list, we want a vector.
+         )
+         ;; scrub the last part of the vector with bogus positions
     #|
     (for ([i (in-range pcount (vector-length *expansion-space*))])
       (set! hc-to-scrub (vector-ref *expansion-space* i))
@@ -258,12 +275,13 @@
     ;; sort the vector
     (set! sort-time (current-milliseconds))
     ;(vector-sort! hcposition<? *expansion-space*)
-    (vector-sort! *expansion-space* hcposition<? 0 pcount)
+    (vector-sort! expansion-space hcposition<? 0 pcount)
     (set! sort-time (- (current-milliseconds) sort-time))
     ;; write the first pcount positions to the file
     (set! write-time (current-milliseconds))
-    (set! this-batch (write-fringe-to-disk *expansion-space* fullpath pcount #t))
+    (set! this-batch (write-fringe-to-disk expansion-space fullpath pcount #t))
     (set! write-time (- (current-milliseconds) write-time))
+    (hash-clear! *expansion-hash*)
     ;; return the two values: augmented list of filespecs, and the incremented number of duplicates eliminated during writing
     (values (cons (make-filespec f this-batch (file-size fullpath) *local-store*)
                   ofiles)
@@ -301,7 +319,7 @@
       ((>= i assignment-count)
        (set!-values (pre-ofiles dupes-caught-here sort-time write-time)
                     (dump-partial-expansion expansion-ptr pre-ofile-template-fname pre-ofile-counter pre-ofiles dupes-caught-here sort-time write-time)))
-      ;; When we have collected the max number of expansions, create another pre-proto-fringe file
+      ;; When we have collected the max number of expansions into our hash table, , create another pre-proto-fringe hash table file
       (when (>= expansion-ptr EXPAND-SPACE-SIZE)
         (set!-values (pre-ofiles dupes-caught-here sort-time write-time)
                      (dump-partial-expansion expansion-ptr pre-ofile-template-fname pre-ofile-counter pre-ofiles dupes-caught-here sort-time write-time))
@@ -546,14 +564,14 @@
       (distributed-expand-fringe prev-fringe current-fringe depth)))
 
 
-(define *max-depth* 10)(set! *max-depth* 255)
+(define *max-depth* 10)(set! *max-depth* 60)
 
 ;; cfs-file: fringe fringe int -> position
 ;; perform a file-based cluster-fringe-search at given depth
 ;; using given previous and current fringes
 (define (cfs-file prev-fringe current-fringe depth)
   (set! *depth-start-time* (current-seconds))
-  (cond [(or (zero? (fringe-pcount current-fringe)) (> depth *max-depth*)) #f]
+  (cond [(or (zero? (fringe-pcount current-fringe)) (> depth *max-depth*)) (printf "failed, nothing in current fringe")]
         [*found-goal*
          (print "found goal")
          *found-goal*]
@@ -573,7 +591,7 @@
   (let ([d-1 (format "~afringe-d-1" *share-store*)]
         [d0 (format "~afringe-d0" *share-store*)])
     (for ([f (directory-list *share-store*)] #:unless (char=? #\. (string-ref (path->string f) 0))) 
-      (delete-file (build-path *share-store* f))) ; actually should use pattern match to delete only fringe* or proto*
+      (delete-file (build-path *share-store* f))); actually should use pattern match to delete only fringe* or proto*
     (write-fringe-to-disk empty d-1)
     (write-fringe-to-disk (list start-position) d0)
     (cfs-file (make-fringe *share-store* (list (make-filespec "fringe-d-1" 0 (file-size d-1) *share-store*)) 0)

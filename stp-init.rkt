@@ -16,7 +16,8 @@
          *target* *bw* *bh* *bsz*
          ;*expandpos*
          *expandbuf*
-         *expansion-space*
+         ;*expansion-space*
+         *expansion-hash*
          *piecelocvec* 
          *start*
          *piece-type-template*
@@ -97,7 +98,8 @@
 (define *bsz* 0)
 ;(define *expandpos* (vector))  ;; a (vectorof position) contains locations to index into *piecelocvec*
 (define *expandbuf* (vector)) ;; a vector of mutable pairs holding piece-type and location
-(define *expansion-space* (vector))
+;;(define *expansion-space* (vector))
+(define *expansion-hash* (hash));;use a hash table instead of a vector for position expansion. 
 (define *piecelocvec* (vector));; vector boolean representing used move locations where the index is the location to which a single piece was moved
 ;(define *bsbuffer* #"") ;; a reusable buffer for holding expansions of a given position
 (define *cell-to-loc* "2d array of row-col indexing to locations skipping invalid squares")
@@ -122,7 +124,8 @@
   (set! *num-spaces* (vector-ref *piece-type-template* 0))
   ;(set! *expandpos* (make-vector (vector-ref *piece-type-template* 0) #f)) ;; any single piece can never generate more than the number of spaces
   (set! *expandbuf* (build-vector (* (vector-ref *piece-type-template* 0) *num-pieces*) (lambda (_) (mcons 0 (make-bytes *num-pieces*)))))
-  (set! *expansion-space* (build-vector (+ EXPAND-SPACE-SIZE *bsz*) (lambda (_) (hc-position 0 (make-bytes *num-pieces*)))))
+  ;(set! *expansion-space* (build-vector (+ EXPAND-SPACE-SIZE *bsz*) (lambda (_) (hc-position 0 (make-bytes *num-pieces*)))))
+  (set! *expansion-hash* (make-hash));hash table of hc-position-hc as the key, and the hc-position as the value.
   (set! *piecelocvec* (make-vector *bsz* #f))
   ;(set! *bsbuffer* (make-bytes (* 4 *num-pieces*) 0))
   (set! *bs-ptype-index* (for/vector #:length *num-pieces* 
