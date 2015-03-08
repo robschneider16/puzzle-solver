@@ -113,6 +113,11 @@
 (define (position-in-vec? v p)
   (vec-member? v p hcposition<?))
 
+;; position-in-hash?: (HashTableof position) position -> boolean
+;; determine if given position is in HashTable of positions
+(define (position-in-hash? h p)
+  (hash-ref h (hc-position-hc p) #f))
+
 ;; find-pos-index: fixnum (vectorof position) -> int
 ;; find the index of the *FIRST* position (if present) or of the first position greater than where it would be
 ;; *** THIS IS NOT _EXACTLY_ CORRECT: assumes only used to pick responsibility-ranges
@@ -137,6 +142,19 @@
           [(= (hc-position-hc x) (hc-position-hc (vector-ref v mid))) (vector-ref v mid)]
           [(compare? x (vector-ref v mid)) (vec-member? v x compare? low mid)]
           [else (vec-member? v x compare? (add1 mid) high)])))
+
+
+;; hash-member?: (hashtableof hc-position) hc-position (hc-position hc-position -> boolean) [int] [int] -> boolean
+;; determine if the given item appears in the SORTED hashtable of positions
+(define (hash-member? h x compare? [low 0] [high (hash-count h)])
+  (let ((mid (floor (/ (+ low high) 2)))
+        (v (list->vector (hash-values h)))) 
+    (cond [(>= low high) #f]
+          [(= (hc-position-hc x) (hc-position-hc (vector-ref v mid))) (vector-ref v mid)]
+          [(compare? x (vector-ref v mid)) (vec-member? v x compare? low mid)]
+          [else (vec-member? v x compare? (add1 mid) high)])))
+
+
 
 ;; update-expandbuf!: int bytestring int int move-schema int -> void
 ;; update the *expandbuf* vector with the new location and altered bytestring
@@ -196,30 +214,6 @@
     ;; until no further moves of this piece
     ((= new-positions-to-check start-check))))
 
-;; expand: hc-position int -> int
-;; generate next states from this one
-;; *expandbuf*: holds all the pairs of piece-loc and bytstring expansions/successors of the given hc-position
-;; *piecelocvec*: holds the bytestring successors of a single piece
-;; expand-count: counts expansions/successors for a single piece
-(define expand
-  (let ([expand-count (box 0)]
-        )
-    (lambda (hc-s exp-ptr)
-      (let ([bs (hc-position-bs hc-s)]
-            [target-hc-pos 'mutable-hc-pos-in-*expansion-space*])
-        (set-box! expand-count 0)
-        (for ([i (in-range *num-spaces* *num-pieces*)]) ;; start after spaces
-          (let ([ptype (vector-ref *bs-ptype-index* i)]
-                [ploc (- (bytes-ref bs i) *charify-offset*)])
-            (vector-fill! *piecelocvec* #f) ; reset for next piece
-            (expand-piece ptype ploc bs expand-count *piecelocvec*)
-            ))
-        (for ([i (unbox expand-count)])
-          (set! target-hc-pos (vector-ref *expansion-space* (+ exp-ptr i)))
-          (set-hc-position-hc! target-hc-pos (equal-hash-code (mcdr (vector-ref *expandbuf* i))))
-          ;; copy bytes to the *expansion-space*
-          (bytes-copy! (hc-position-bs target-hc-pos) 0 (mcdr (vector-ref *expandbuf* i))))
-        (+ exp-ptr (unbox expand-count))))))
 
 ;; bw-valid-move?: number number -> boolean
 ;; determine if the current location of the spaces supports a move's prerequisites given as space-prereq

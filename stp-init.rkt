@@ -18,7 +18,9 @@
          *expandbuf*
          ;*expansion-space*
          *expansion-hash*
-         *piecelocvec* 
+         *piecelocvec*
+         *found-goal*
+         set-found-goal
          *start*
          *piece-type-template*
          *num-spaces*
@@ -34,6 +36,7 @@
          climb12-init
          climb15-init
          climbpro24-init)
+
 
 
 ;; ******************************************************************************
@@ -67,14 +70,19 @@
 (struct hc-position (hc bs) #:transparent #:mutable)
 ;; the hc is the hashcode of the bytestring
 
+(define *found-goal* #f)
+
+;;
+;;
+(define (set-found-goal hc-pos) (set! *found-goal* hc-pos))
+
 ;; make-hcpos: bs-position -> hc-position
 ;; wrapper for the position rep augmented with the hashcode
 (define (make-hcpos bsrep) (hc-position (equal-hash-code bsrep) bsrep))
 
-
 ;; INITIALIZE STUFF FOR SLIDING-TILE-SOLVER
 
-(define EXPAND-SPACE-SIZE 500000)
+(define EXPAND-SPACE-SIZE 22000000)
 ;(define EXPAND-SPACE-SIZE 2000000)
 
 ;; move trans for up, right, down and left respectively
@@ -93,6 +101,7 @@
 (define *num-spaces* 0)
 (define *bs-ptype-index* (vector));; for a byte's index in a position, store the byte's piece-type
 (define *target* empty)
+(define *found-goal?* #f)
 (define *bw* 0)
 (define *bh* 0)
 (define *bsz* 0)

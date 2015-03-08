@@ -7,9 +7,9 @@
          racket/format)
 
 (require 
- ;racket/generator
- "stp-init.rkt"
- "stp-solve-base.rkt")
+  ;racket/generator
+  "stp-init.rkt"
+  "stp-solve-base.rkt")
 
 (provide (all-defined-out))
 
@@ -47,9 +47,9 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 
 ;; a filespec is a vector: (vector {tentative-removal: min-hashcode max-hashcode} fname position-count file-size basepath)
 (define (make-filespec ;minhc maxhc 
-                       fname pcount fsize fbase) 
+         fname pcount fsize fbase) 
   (vector ;minhc maxhc
-          fname pcount fsize fbase))
+   fname pcount fsize fbase))
 ;(define (filespec-minhc fs) (vector-ref fs 0))
 ;(define (filespec-maxhc fs) (vector-ref fs 1))
 (define (filespec-fname fs) (vector-ref fs 0)); was 2
@@ -153,39 +153,39 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 ;; -----------------------------------------------------------------------------------
 ;; --- BULK FRINGE READING/WRITING ---------------------------------------------------
 
-;; write-fringe-to-disk: (listof or vectorof hc-position) string -> int
+;; write-fringe-to-disk: (hashof hc-position) string -> int
 ;; writes the bytestring portions of the hc-positions from the given fringe (whether list or vector) into a file with given file-name.
 ;; return the number written, not counting duplicates if remove-dupes is non-false
-(define (write-fringe-to-disk fringe file-name [how-many -1] [remove-dupes #f])
-  (let ([my-output (open-output-file file-name #:exists 'replace)]
-        [stop-at (if (negative? how-many)
-                     (or (and (vector? fringe) (vector-length fringe))
-                         (length fringe))
-                     how-many)]
-        [last-pos #"NoLastPos"]
-        [num-written 0])
-    (for ([i stop-at]
-          [hcposition fringe])
-      (let ([hc-bs (hc-position-bs hcposition)])
-        (cond [remove-dupes
-               (unless (bytes=? hc-bs last-pos)
-                 (set! last-pos hc-bs)
-                 (write-bs->file hc-bs my-output)
-                 (set! num-written (add1 num-written)))]
-              [else (write-bs->file hc-bs my-output)
-                    (set! num-written (add1 num-written))])))
+(define (write-fringe-to-disk f file-name [how-many -1] [remove-dupes #f])
+  (let  ([my-output (open-output-file file-name #:exists 'replace)]
+         [stop-at (hash-count f)]
+         [last-pos #"NoLastPos"]
+         )
+    (for ([(k v) (in-hash f)])
+      (write-bs->file (hc-position-bs v) my-output)
+      )
     (close-output-port my-output)
-    num-written))
+    (hash-count f)))
 
-;; read-fringe-from-file: string -> (listof position)
+;; read-fringe-from-file: string -> (hashof position)
 ;; reads a file from a file path (if you are in the current directory just simply the file-name)
 ;; and returns the fringe made up of hc-positions that was in that file.
 (define (read-fringe-from-file file-name)
+  (let* ([iport (open-input-file file-name)]
+         [hash-fringe (for/hash ([hcpos (port->list read-bs->hcpos
+                                                    iport)])
+                        (values (hc-position-hc hcpos) hcpos))]) 
+    (close-input-port iport)
+    hash-fringe))
+
+
+(define (read-fringe-from-file-old file-name)
   (let* ([iport (open-input-file file-name)]
          [the-fringe (port->list read-bs->hcpos
                                  iport)])
     (close-input-port iport)
     the-fringe))
+
 
 
 ;; -----------------------------------------------------------------------------------
@@ -227,7 +227,7 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
                      (copy-file (filespec-fullpathname fspec) remote-name))
                    (rebase-filespec fspec target)))
                (fringe-pcount f)))
-                 
+
 
 ;; delete-fringe: fringe -> void
 ;; remove all the files that make up the given fringe
@@ -248,7 +248,7 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
       (copy-file fname fullname)) ;; YUCK!
     (or (not (file-exists? fullname))
         (< (file-size fullname) fsize))))
-      
+
 
 ;; wait-for-files: (listof fspec) [check-alt-flag #f] -> 'ready
 ;; given a list of fringe-specs, wait until the file is present in the specified location
@@ -266,7 +266,7 @@ findex (short for fringe-index): (listof segment-spec) [assumes the list of segm
 ;; reports the number of positions in the given fringe file assuming the file was written with write-fringe-to-disk
 (define (position-count-in-file f)
   (/ (file-size f) *num-pieces*))
-                    
+
 ;; check-sorted-fringe?: string -> boolean
 ;; assuming the string, f, points to a sorted file of positions, check to make sure they are sorted
 (define (check-sorted-fringe? f)

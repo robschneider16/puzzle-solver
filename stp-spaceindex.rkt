@@ -16,6 +16,7 @@
 (define *spaceindex* "the hashtable to hold the possible moves indexed by space configurations")
 (define ret-false (lambda () #f))
 
+
 (define (choose n k)
   (if (>= k (/ n 2))
       (/ (for/product ([i (in-range (add1 k) (add1 n))]) i)
@@ -223,10 +224,11 @@
 
 ;;Generate-and-write-new-pos-ht: N, byte-string, EBMS, N, N, (int . int) -> void
 ;;generates the new position, and writes the HC as the key, and the byte_string as Value, Into the global Hash Table named *expansion-hash* (defined in stp-init)
-(define (generate-and-write-new-pos-ht bufindex src-bspos an-ebms piece-type ploc0 crc)
+(define (generate-and-write-new-pos-ht src-bspos an-ebms piece-type ploc0 crc)
   (let* ([targetbs (bytes-copy src-bspos)]
          [piece-start (for/sum ([i piece-type]) (vector-ref *piece-type-template* i))]
          [piece-end (+ piece-start (vector-ref *piece-type-template* piece-type))]
+         [new-hc-position 0]
          )
     
     
@@ -249,23 +251,25 @@
                                                                                 (rcbyte->rcpair (ebms-newcloc an-ebms)) ; canonical new-loc of piece
                                                                                 )))
                                             ))))
+    (set! new-hc-position (make-hcpos targetbs))
     ;; set the hashcode and the hc-position
     ;(set-hc-position-hc! the-hcpos (equal-hash-code targetbs))
-    (hash-set! *expansion-hash* (equal-hash-code targetbs) (make-hcpos targetbs));;Could also check out if we should use hash-ref before to see if it exists, or just replace.
+    (hash-set! *expansion-hash* (equal-hash-code targetbs) new-hc-position);;Could also check out if we should use hash-ref before to see if it exists, or just replace.
+    (when (is-goal? new-hc-position)
+      (set-found-goal new-hc-position))
 ))
 
          
 
 
-;; expand*: hc-position int -> int
+;; expand*: hc-position int -> void
 ;; the new successor generation utilizing the spaceindex
 ; -> two-part double-hash version <-
-(define (expand* hc-s exp-ptr)
+(define (expand* hc-s)
   (let* ([bs (hc-position-bs hc-s)]     ; 
          [config-ref-cell (rcbyte->rcpair (bytes-ref bs 0))] ; the row-col translation of the blank-config
          [canonical-blank-config (subbytes bs 1 4)]
          [possible-moves-hash (hash-ref *spaceindex* canonical-blank-config)]
-         [expanded-ptr exp-ptr]
          )
     
     ;(printf "index: ~a~%" canonical-blank-config)
@@ -292,12 +296,12 @@
             ;(generate-and-write-new-pos expanded-ptr bs ebms ptype ploc0 config-ref-cell)
             
             ;create the new position, and add it to the hash table
-            (generate-and-write-new-pos-ht expanded-ptr bs ebms ptype ploc0 config-ref-cell)
+            (generate-and-write-new-pos-ht bs ebms ptype ploc0 config-ref-cell)
             
             ; and go to the next one
-            (set! expanded-ptr (hash-count *expansion-hash*))
+            
             ))))
-    expanded-ptr))
+    ))
 
 
 

@@ -1,0 +1,14 @@
+[2015-03-06T13:52:17] Listening for connections on port 2355
+[2015-03-06T13:52:19] new connection: "Roberts-MacBook-Pro.local-brhrj" ip: ::1
+[2015-03-06T13:52:19] new connection: "Roberts-MacBook-Pro.local-vkhpm" ip: ::1
+[2015-03-06T13:52:19] new connection: "Roberts-MacBook-Pro.local-fcsvv" ip: ::1
+[2015-03-06T13:52:19] new connection: "Roberts-MacBook-Pro.local-vzzwf" ip: ::1
+[2015-03-06T13:52:19] "Roberts-MacBook-Pro.local-brhrj" is waiting for work
+[2015-03-06T13:52:19] "Roberts-MacBook-Pro.local-vzzwf" is waiting for work
+[2015-03-06T13:52:19] "Roberts-MacBook-Pro.local-vkhpm" is waiting for work
+[2015-03-06T13:52:19] "Roberts-MacBook-Pro.local-fcsvv" is waiting for work
+user break
+  context...:
+   /Applications/Racket v6.1/share/pkgs/compatibility-lib/mzlib/thread.rkt:75:14: loop
+   /Applications/Racket v6.1/collects/racket/contract/private/arrow-val-first.rkt:255:18
+   (submod /Users/robertschneider/Library/Racket/planet/300/6.1/cache/gcr/riot.plt/1/1/server.rkt main): [running body]
