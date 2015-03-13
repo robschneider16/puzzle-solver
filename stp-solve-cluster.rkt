@@ -256,11 +256,13 @@
     ;(when (file-exists? (string-append *local-store* (fspec-fname pfspec))) (delete-file (string-append *local-store* (fspec-fname pfspec))))
     sample-stats))
 
+
+
 ;; dump-partial-expansion: int string int (listof fspec) float float -> (values (listof fspec) int float float)
 ;; given the count of pending expanded positions to write, the out-file template, the out-file counter, and the previously written filespecs,
 ;; sort and write the specified number of positions to the appropriately opened new file,
 ;; returning two values: the list with the new filespec added and the number of duplicates eliminated at this phase
-(define (dump-partial-expansion pcount ofile-template ofile-counter ofiles prev-dupes sort-time0 write-time0)
+(define (dump-partial-expansion ofile-template ofile-counter ofiles prev-dupes sort-time0 write-time0)
   (let* ([hc-to-scrub 'hcpos-to-scrub]
          [f (format "~a~a" ofile-template ofile-counter)]
          [fullpath (string-append *local-store* f)]
@@ -269,7 +271,7 @@
          [write-time 0]
          ;for testing the hash table implementation in place of the expansion-space/buffer, convert back to a vector of hash codes and sort. 
          ;[expansion-space (build-vector(hash-count *expansion-hash*) (lambda (N) (hash-iterate-val *expansion-hash* N)))];currently extracts length from count of expansion-hash, use pcount?
-         [expansion-space (list->vector (hash-values *expansion-hash*))];this sets it as a list, we want a vector.
+         [expansion-space *expansion-hash*];this sets it as a list, we want a vector.
          )
          ;; scrub the last part of the vector with bogus positions
     #|
@@ -281,7 +283,7 @@
     ;; sort the vector
     (set! sort-time (current-milliseconds))
     ;(vector-sort! hcposition<? *expansion-space*)
-    (vector-sort! expansion-space hcposition<? 0 pcount)
+    ;(vector-sort! expansion-space hcposition<? 0 pcount);;dont need to sort because our hash merging will take care of this
     (set! sort-time (- (current-milliseconds) sort-time))
     ;; write the first pcount positions to the file
     (set! write-time (current-milliseconds))
@@ -295,64 +297,113 @@
             (+ sort-time sort-time0)
             (+ write-time write-time0))))
 
-;; remote-expand-part-fringe: (list int int) int fringe fringe int -> {whatever returned by remove-dupes}
+;; remote-expand-part-fringe: (list int int) int fringe fringe int -> {sampling stat?}
 ;; given a pair of indices into the current-fringe that should be expanded by this process, a process-id,
 ;; and the prev- and current-fringes, and the depth ...
+;; and the ranges of all the other segments,
 ;; expand the positions in the indices range, ignoring duplicates other than within the new fringe being constructed.
-(define (remote-expand-part-fringe ipair process-id pf cf depth)
+;; when expanding positions, write them to the correct hash table that contains its position within the pair of indices.
+(define (remote-expand-part-fringe ipair ranges process-id pf cf depth)
   ;; prev-fringe spec points to default shared directory; current-fringe spec points to *local-store* folder
   ;(printf "remote-expand-part-fringe: starting with pf: ~a, and cf: ~a~%" pf cf)
   ;; EXPAND PHASE 1
   (let* ([expand-part-time (current-milliseconds)]
-         [pre-ofile-template-fname (format "partial-expansion~a" (~a process-id #:left-pad-string "0" #:width 2 #:align 'right))]
-         [pre-ofile-counter 0]
          [pre-ofiles empty]
          ;; *** Dynamically choose the size of the pre-proto-fringes to keep the number of files below 500 ***
          [start (first ipair)]
          [end (second ipair)]
          [assignment-count (- end start)]
+         [my-slice-num (get-slice-num (floor(/ assignment-count 2)))] ;;looks at a number in the middle of the slice to get its number? 
+         [vector-of-slice-ofiles (for/vector (i *n-processors*) (open-output-file (format "fringe-segment-d~a-~a-~a" depth i my-slice-num)))];(~a i #:left-pad-string "0" #:width 3 #:align 'right )?
+         
          [expanded-phase1 1];; technically, not yet, but during initialization in pre-resv do loop
          ;; make the fringehead advanced to the right place
-         [cffh (fh-from-fringe cf start)]
+         [cffh (fh-from-fringe cf start)];;does check the first?
+         [pffh (fh-from-fringe pf start)]
          [dupes-caught-here 0]
-         [sort-time 0.0]
+         [sort-time  0.0]
          [write-time 0.0]
+         [cf-and-pf-hashtable (hash)]
+         [merged-files-expansion-hash (hash)]
+         [sample-stats 
+          (vector 0 ; number of positions preserved for further merging
+                  0 ; number of positions discarded because duplicate with prev- or current-fringes
+                  0 ; number of positions discarded because duplicate with another partial-expansion
+                  slice-counts
+                  #f 
+                  ofile-name ;; here, use the stem of the shared ofile-name 
+                  0
+                  n-pos-to-process
+                  partial-exp-dupes 
+                  part-sort-time 
+                  part-write-time
+                  other-expand-time)]
          
-         ;[This-Nodes-list-of-output-files-to-other-nodes 
+         ;[This-Nodes-list-of-output-files-to-other-nodes] 
          
          )
     ;; do the actual expansions
-    (do ([i 1 (add1 i)]
-         (expand* (fringehead-next cffh))
-         [expansion-ptr (hash-count *expansion-hash*)]) ;; ptr + 1 maybe? 
-      ;;walk through expansion-hash, write positions to the correct hash-table slice. write-to-disk.
+    (for ([i assignment-count]
+          [cfpos (fringehead-next cffh)]
+          [pfpos (fringehead-next pffh)]
+         (expand* cfpos);;why does it strt with next
+         [expansion-ptr (hash-count *expansion-hash*)]
+         [vect-of-expansion (list-vector (hash-values *expansion-hash*))])
       
+      (hash-set cf-and-pf-hashtable (hc-position-hc cfpos) (hc-position-bs cfpos))
+      (hash-set cf-and-pf-hashtable (hc-position-hc pfpos) (hc-position-bs pfpos))
+         
+         ;;loops through expansion hash, writing each position to the correct hash table.
+         (for ([j expansion-ptr];;loops through each item in expansion-hash
+               [efpos (vector-ref vect-of-expansion j)]
+              [slice-index (get-slice-num efpos)]) ;;index for which bin to place position
+           (write-bytes  (hc-position-bs efpos) (vector-ref vector-of-slice-ofiles slice-index)))
+         
+         (hash-clear *expansion-hash*);;delete the positions that we put into place.
+          
       
-      ;;iterate through expansion-hash, and place into new vectors. (should create a new expand* that does this 
-      ((>= i assignment-count)
-       (set!-values (pre-ofiles dupes-caught-here sort-time write-time)
-                    (dump-partial-expansion expansion-ptr pre-ofile-template-fname pre-ofile-counter pre-ofiles dupes-caught-here sort-time write-time)))
-      ;; When we have collected the max number of expansions into our hash table, create another pre-proto-fringe hash table file
-      (when (>= expansion-ptr EXPAND-SPACE-SIZE)
-        (set!-values (pre-ofiles dupes-caught-here sort-time write-time)
-                     (dump-partial-expansion expansion-ptr pre-ofile-template-fname pre-ofile-counter pre-ofiles dupes-caught-here sort-time write-time))
-        (set! pre-ofile-counter (add1 pre-ofile-counter))
-        (set! expansion-ptr 0))
       (advance-fhead! cffh)
+      
       (set! expanded-phase1 (add1 expanded-phase1)))
+    
+    
     #|(printf "remote-exp-part-fringe: PHASE 1: expanding ~a positions of assigned ~a~%" 
             expanded-phase1 assignment-count);|#
+    
     (when (< expanded-phase1 assignment-count)
       (error 'remote-expand-part-fringe
              (format "only expanded ~a of the assigned ~a (~a-~a) positions" expanded-phase1 assignment-count start end)))
+    
     (close-input-port (fringehead-iprt cffh))
     
     
-    ;; PHASE 2: now pass through the proto-fringe expansion file(s) as well as prev-fringe and current-fringe to remove duplicates
-    (remove-dupes pf cf pre-ofiles 
-                  (format "proto-fringe-d~a-~a" depth (~a process-id #:left-pad-string "0" #:width 2 #:align 'right)) ;; ofile-name
-                  depth
-                  dupes-caught-here sort-time write-time (- (current-milliseconds) expand-part-time))))
+    
+    (for (i *n-processors*) (close-output-port (vector-ref vector-of-flice-ofiles i)))
+    ;;open files of expansions that belong to this fringe. TRANSPOSE Point. switch my-slice and index.
+    (set vector-of-slice-ofiles (for/vector (i *n-processors*) (open-output-file (format "fringe-segment-d~a-~a-~a" depth my-slice-num i ))));(~a i #:left-pad-string "0" #:width 3 #:align 'right )?
+        
+    
+    ;; PHASE 2: now pass through the proto-fringes generated from other files, and merge them into a hash table
+    (for ([i *n-processors*]
+          [open-file (vector-ref vector-of-slice-ofiles i)]
+          [efpos 0]
+          [cur-file-fh (fh-from-fringe open-file 0)]
+          ;;pointer to front of open-file fh?
+        )
+       ;;for eachposition in the file. // do until fh pointer is null?
+      (set efpos (fringehead-next cur-file-fh))
+      (cond;;and late-duplicate-removal?
+        [(false? (hash-ref cf-and-pf-hashtable (hc-position-hc efpos) #f)) (hash-set merged-files-expansion-hash (hc-position-hc efpos) (hc-position-bs efpos)) (vector-set! sample-stats 1 (add1 (vector-ref sample-stats 0)))]
+        [else (vector-set! sample-stats 1 (add1 (vector-ref sample-stats 1)))])
+      (when (is-goal? efpos) (vector-set! sample-stats 4 (hc-position-bs efpos))))
+    
+    sample-stats))
+    
+    ;;return sampling stat?
+    
+    
+  
+
 
 
 ;; remote-expand-fringe: (listof (list fixnum fixnum)) fringe fringe int -> (listof sampling-stat)
@@ -363,14 +414,13 @@
 (define (remote-expand-fringe ranges pf cf depth)
   ;;(printf "remote-expand-fringe: current-fringe of ~a split as: ~a~%" cur-fringe-size (map (lambda (pr) (- (second pr) (first pr))) ranges))
   (let* ([distrib-results (for/work ([range-pair ranges]
-                                     [i (in-range (length ranges))])
-                                    (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end")) ;;prevent riot cache-failure
-                                    ;; need alternate version of wait-for-files that just checks on the assigned range
+                                     [i (in-range (length ranges))])                                    (when (> depth *max-depth*) (error 'distributed-expand-fringe "ran off end")) ;;prevent riot cache-failure
+                                    ;; need alternate version ofwait-for-files that just checks on the assigned range
                                     ;; but for now, just append the fspecs
                                     #| push the wait into where we're trying to access positions 
                                     (wait-for-files (append (map (lambda (seg) (segment-fspec seg)) pf-findex)
                                                             (map (lambda (seg) (segment-fspec seg)) cf-findex)) #t)|#
-                                    (remote-expand-part-fringe range-pair i pf cf depth)
+                                    (remote-expand-part-fringe range-pair ranges i pf cf depth)
                                     )])
     ;(printf "remote-expand-fringe: respective expansion counts: ~a~%" (map (lambda (ssv) (vector-ref ssv 0)) distrib-results))
     distrib-results))
