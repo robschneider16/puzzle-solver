@@ -1,8 +1,25 @@
-[2015-03-06T13:52:18] Connecting to localhost port 2355
-[2015-03-06T13:52:19] Connected. We are Roberts-MacBook-Pro.local-vkhpm
-[2015-03-06T13:52:19] Waiting for more work
+[2015-03-16T16:21:29] Connecting to localhost port 2355
+[2015-03-16T16:21:29] Connected. We are Roberts-MacBook-Pro.local-rhklv
+[2015-03-16T16:21:29] Waiting for more work
+[2015-03-16T16:21:31] Starting workunit fa736784d3d5c16edf3e1d3b6e59c19f
+[2015-03-16T16:21:31] Running serialized lambda
 user break
   context...:
-   /Applications/Racket v6.1/collects/racket/contract/private/arrow-val-first.rkt:255:18
+   /Users/robertschneider/Code/Research/puzzle-solver/stp-fringefilerep.rkt:89:4: doloop
+   /Users/robertschneider/Code/Research/puzzle-solver/stp-fringefilerep.rkt:87:0: advance-fhead!
+   /Users/robertschneider/Code/Research/puzzle-solver/stp-solve-cluster.rkt:219:4: doloop
+   /Users/robertschneider/Code/Research/puzzle-solver/stp-solve-cluster.rkt:174:0: remote-expand-part-fringe
    /Users/robertschneider/Library/Racket/planet/300/6.1/cache/gcr/riot.plt/1/1/worker.rkt:60:2: loop
    (submod /Users/robertschneider/Library/Racket/planet/300/6.1/cache/gcr/riot.plt/1/1/worker.rkt main): [running body]
+'#(5 14 11 14 8 0 2 3 7 7)
+#"WdVVB7915@C;?EI"
+advance-fhead!: sleeping while waiting on fringefiles/fringe-d23 after reading 13124 of 13124 positions
+advance-fhead!: sleeping while waiting on fringefiles/fringe-d23 after reading 13124 of 13124 positions
+advance-fhead!: sleeping while waiting on fringefiles/fringe-d23 after reading 13124 of 13124 positions
+advance-fhead!: sleeping while waiting on fringefiles/fringe-d23 after reading 13124 of 13124 positions
+advance-fhead!: sleeping while waiting on fringefiles/fringe-d23 after reading 13124 of 13124 positions
+advance-fhead!: sleeping while waiting on fringefiles/fringe-d23 after reading 13124 of 13124 positions
+advance-fhead!: sleeping while waiting on fringefiles/fringe-d23 after reading 13124 of 13124 positions
+advance-fhead!: sleeping while waiting on fringefiles/fringe-d23 after reading 13124 of 13124 positions
+advance-fhead!: sleeping while waiting on fringefiles/fringe-d23 after reading 13124 of 13124 positions
+advance-fhead!: sleeping while waiting on fringefiles/fringe-d23 after reading 13124 of 13124 positions

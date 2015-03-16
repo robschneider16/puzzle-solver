@@ -1,12 +1,15 @@
-[2015-03-06T13:52:17] Listening for connections on port 2355
-[2015-03-06T13:52:19] new connection: "Roberts-MacBook-Pro.local-brhrj" ip: ::1
-[2015-03-06T13:52:19] new connection: "Roberts-MacBook-Pro.local-vkhpm" ip: ::1
-[2015-03-06T13:52:19] new connection: "Roberts-MacBook-Pro.local-fcsvv" ip: ::1
-[2015-03-06T13:52:19] new connection: "Roberts-MacBook-Pro.local-vzzwf" ip: ::1
-[2015-03-06T13:52:19] "Roberts-MacBook-Pro.local-brhrj" is waiting for work
-[2015-03-06T13:52:19] "Roberts-MacBook-Pro.local-vzzwf" is waiting for work
-[2015-03-06T13:52:19] "Roberts-MacBook-Pro.local-vkhpm" is waiting for work
-[2015-03-06T13:52:19] "Roberts-MacBook-Pro.local-fcsvv" is waiting for work
+[2015-03-16T16:21:27] Listening for connections on port 2355
+[2015-03-16T16:21:29] new connection: "Roberts-MacBook-Pro.local-rhklv" ip: ::1
+[2015-03-16T16:21:29] new connection: "Roberts-MacBook-Pro.local-cjrbj" ip: ::1
+[2015-03-16T16:21:29] new connection: "Roberts-MacBook-Pro.local-ffghm" ip: ::1
+[2015-03-16T16:21:29] new connection: "Roberts-MacBook-Pro.local-fnvkt" ip: ::1
+[2015-03-16T16:21:29] "Roberts-MacBook-Pro.local-rhklv" is waiting for work
+[2015-03-16T16:21:29] "Roberts-MacBook-Pro.local-ffghm" is waiting for work
+[2015-03-16T16:21:29] "Roberts-MacBook-Pro.local-cjrbj" is waiting for work
+[2015-03-16T16:21:29] "Roberts-MacBook-Pro.local-fnvkt" is waiting for work
+[2015-03-16T16:21:30] new connection: "Roberts-MacBook-Pro.local-zfvyz" ip: ::1
+[2015-03-16T16:21:31] workunit: fa736784d3d5c16edf3e1d3b6e59c19f
+[2015-03-16T16:21:31] assigned fa736784d3d5c16edf3e1d3b6e59c19f to "Roberts-MacBook-Pro.local-rhklv"
 user break
   context...:
    /Applications/Racket v6.1/share/pkgs/compatibility-lib/mzlib/thread.rkt:75:14: loop
